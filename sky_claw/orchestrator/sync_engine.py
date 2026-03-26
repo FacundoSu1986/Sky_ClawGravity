@@ -158,23 +158,22 @@ class SyncEngine:
         Returns:
             The created :class:`asyncio.Task`.
         """
-        task: asyncio.Task[Any] = asyncio.create_task(coro)
+        async def _download_wrapper() -> None:
+            try:
+                await coro
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.error("Download task failed with exception: %s", exc, exc_info=exc)
+                detail = f"{context} failed: {exc}"
+                try:
+                    await self._registry.log_tasks_batch([(None, "download_mod", "failed", detail)])
+                except Exception as comp_exc:
+                    logger.error("Failed to log compensation task: %s", comp_exc)
+                    
+        task: asyncio.Task[Any] = asyncio.create_task(_download_wrapper())
         self._download_tasks.add(task)
-        
-        def _on_done(t: asyncio.Task[Any]) -> None:
-            self._download_tasks.discard(t)
-            if not t.cancelled():
-                exc = t.exception()
-                if exc:
-                    logger.error("Download task %s failed with exception: %s", t.get_name(), exc, exc_info=exc)
-                    detail = f"{context} failed: {exc}"
-                    comp_task = asyncio.create_task(
-                        self._registry.log_tasks_batch([(None, "download_mod", "failed", detail)])
-                    )
-                    self._download_tasks.add(comp_task)
-                    comp_task.add_done_callback(self._download_tasks.discard)
-
-        task.add_done_callback(_on_done)
+        task.add_done_callback(self._download_tasks.discard)
         logger.info("Enqueued download task %s with context %r", task.get_name(), context)
         return task
 

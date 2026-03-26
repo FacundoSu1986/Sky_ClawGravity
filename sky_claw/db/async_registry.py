@@ -134,7 +134,7 @@ class AsyncModRegistry:
             
             db_file = pathlib.Path(self._db_path)
             
-            db_exists = await asyncio.to_thread(db_file.exists)
+            db_exists = db_file.exists()
             if db_exists:
                 backup_path = db_file.with_name(f"{db_file.stem}.corrupt.{int(time.time())}{db_file.suffix}")
                 

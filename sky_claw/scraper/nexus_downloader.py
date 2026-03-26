@@ -23,6 +23,7 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
+import aiofiles
 import aiohttp
 
 from sky_claw.config import (
@@ -284,7 +285,7 @@ class NexusDownloader:
             MD5ValidationError: When the hash does not match.
             EgressViolation: If the CDN URL is not in the egress allow-list.
         """
-        await asyncio.to_thread(self._staging_dir.mkdir, parents=True, exist_ok=True)
+        self._staging_dir.mkdir(parents=True, exist_ok=True)
         dest = self._staging_dir / file_info.file_name
 
         if file_info.download_url == "FREE_FALLBACK":
@@ -317,20 +318,14 @@ class NexusDownloader:
                     if content_length:
                         progress.total_bytes = int(content_length)
 
-                def _open_fh():
-                    return open(dest, "wb")
-                    
-                fh = await asyncio.to_thread(_open_fh)
-                try:
+                async with aiofiles.open(dest, "wb") as fh:
                     async for chunk in resp.content.iter_chunked(self._chunk_size):
-                        await asyncio.to_thread(fh.write, chunk)
+                        await fh.write(chunk)
                         md5_hash.update(chunk)
                         progress.downloaded_bytes += len(chunk)
                         if progress_cb is not None:
                             await progress_cb(progress)
                         await asyncio.sleep(0)  # Release GIL during CPU-bound hash chunking
-                finally:
-                    await asyncio.to_thread(fh.close)
 
         except aiohttp.ClientError as exc:
             await _cleanup(dest)
@@ -399,7 +394,7 @@ class NexusDownloader:
         # but here we'll watch the mo2 `downloads` folder as well.
         # Staging dir is `mods`, its parent is the mo2 root.
         mo2_downloads_dir = self._staging_dir.parent / "downloads"
-        await asyncio.to_thread(mo2_downloads_dir.mkdir, parents=True, exist_ok=True)
+        mo2_downloads_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info("Waiting for %r to appear in %s ...", file_info.file_name, mo2_downloads_dir)
         
@@ -412,9 +407,8 @@ class NexusDownloader:
 
         while elapsed < timeout_seconds:
             # Allow user to just put it directly in staging dir
-            dest_exists = await asyncio.to_thread(dest.exists)
-            if dest_exists:
-                dest_size = (await asyncio.to_thread(dest.stat)).st_size
+            if dest.exists():
+                dest_size = dest.stat().st_size
                 if dest_size > 0:
                     if file_info.size_bytes > 0 and dest_size != file_info.size_bytes:
                         pass  # Still downloading
@@ -422,19 +416,16 @@ class NexusDownloader:
                         try:
                             # On Windows, browsers lock the file for writing while downloading.
                             # If we can open it in append mode, the browser has released the lock.
-                            def _check_open_a_dest():
-                                with open(dest, "a"):
-                                    pass
-                            await asyncio.to_thread(_check_open_a_dest)
+                            with open(dest, "a"):
+                                pass
                             logger.info("Manual download detected directly in staging dir: %s", dest)
                             return dest
                         except (PermissionError, OSError):
                             pass  # Locked/Downloading
 
             # Poll the MO2 downloads directory
-            target_exists = await asyncio.to_thread(target_in_downloads.exists)
-            if target_exists:
-                target_size = (await asyncio.to_thread(target_in_downloads.stat)).st_size
+            if target_in_downloads.exists():
+                target_size = target_in_downloads.stat().st_size
                 if target_size > 0:
                     # Heuristic 1: If size known, it must match.
                     is_size_met = (file_info.size_bytes == 0) or (target_size == file_info.size_bytes)
@@ -442,15 +433,13 @@ class NexusDownloader:
                     if is_size_met:
                         try:
                             # Heuristic 2: Verify the OS-level file lock is released.
-                            def _check_open_a_target():
-                                with open(target_in_downloads, "a"):
-                                    pass
-                            await asyncio.to_thread(_check_open_a_target)
+                            with open(target_in_downloads, "a"):
+                                pass
                             
                             # Extra validation for unknown size: wait 1s to ensure size stability
                             if file_info.size_bytes == 0:
                                 await asyncio.sleep(1)
-                                target_size_new = (await asyncio.to_thread(target_in_downloads.stat)).st_size
+                                target_size_new = target_in_downloads.stat().st_size
                                 if target_size_new != target_size:
                                     raise PermissionError("File size changed, still downloading")
 
@@ -522,11 +511,8 @@ class NexusDownloader:
 
 async def _cleanup(path: pathlib.Path) -> None:
     """Silently remove *path* if it exists (partial-download cleanup)."""
-    def _do_rm() -> None:
-        try:
-            if path.exists():
-                path.unlink()
-        except OSError:
-            logger.warning("Could not remove partial download at %s", path)
-            
-    await asyncio.to_thread(_do_rm)
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        logger.warning("Could not remove partial download at %s", path)
