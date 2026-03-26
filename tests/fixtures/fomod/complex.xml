@@ -1,0 +1,104 @@
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <moduleName>Complex Multi-Step Mod</moduleName>
+    <requiredInstallFiles>
+        <file source="core\base.esm" destination="base.esm" priority="0" />
+        <folder source="core\meshes" destination="meshes" priority="0" />
+    </requiredInstallFiles>
+    <installSteps>
+        <installStep name="Game Version">
+            <optionalFileGroups>
+                <group name="Select Game" type="SelectExactlyOne">
+                    <plugins>
+                        <plugin name="SSE">
+                            <description>Skyrim Special Edition</description>
+                            <conditionFlags>
+                                <flag name="game">sse</flag>
+                            </conditionFlags>
+                            <files>
+                                <file source="sse\plugin.esp" destination="plugin.esp" />
+                            </files>
+                            <typeDescriptor><type name="Recommended"/></typeDescriptor>
+                        </plugin>
+                        <plugin name="AE">
+                            <description>Anniversary Edition</description>
+                            <conditionFlags>
+                                <flag name="game">ae</flag>
+                            </conditionFlags>
+                            <files>
+                                <file source="ae\plugin.esp" destination="plugin.esp" />
+                            </files>
+                            <typeDescriptor><type name="Optional"/></typeDescriptor>
+                        </plugin>
+                    </plugins>
+                </group>
+            </optionalFileGroups>
+        </installStep>
+        <installStep name="Texture Resolution">
+            <optionalFileGroups>
+                <group name="Textures" type="SelectExactlyOne">
+                    <plugins>
+                        <plugin name="1K">
+                            <description>1K textures</description>
+                            <image path="images\1k_preview.png" />
+                            <files>
+                                <folder source="textures\1k" destination="textures" priority="10" />
+                            </files>
+                            <typeDescriptor><type name="Optional"/></typeDescriptor>
+                        </plugin>
+                        <plugin name="2K">
+                            <description>2K textures</description>
+                            <image path="images\2k_preview.png" />
+                            <files>
+                                <folder source="textures\2k" destination="textures" priority="10" />
+                            </files>
+                            <typeDescriptor><type name="Recommended"/></typeDescriptor>
+                        </plugin>
+                    </plugins>
+                </group>
+            </optionalFileGroups>
+        </installStep>
+        <installStep name="SSE Patches">
+            <visible>
+                <dependencies operator="And">
+                    <flagDependency flag="game" value="sse" />
+                </dependencies>
+            </visible>
+            <optionalFileGroups>
+                <group name="Patches" type="SelectAll">
+                    <plugins>
+                        <plugin name="DLC Patch">
+                            <description>Required patch for all DLCs</description>
+                            <files>
+                                <file source="patches\dlc_patch.esp" destination="dlc_patch.esp" priority="20" />
+                            </files>
+                            <typeDescriptor><type name="Required"/></typeDescriptor>
+                        </plugin>
+                    </plugins>
+                </group>
+                <group name="Optional Patches" type="SelectAny">
+                    <plugins>
+                        <plugin name="ENB Compatibility">
+                            <description>Fixes for ENB users</description>
+                            <files>
+                                <folder source="patches\enb" destination="enb_compat" priority="30" />
+                            </files>
+                            <typeDescriptor><type name="Optional"/></typeDescriptor>
+                        </plugin>
+                    </plugins>
+                </group>
+            </optionalFileGroups>
+        </installStep>
+    </installSteps>
+    <conditionalFileInstalls>
+        <patterns>
+            <pattern>
+                <dependencies operator="And">
+                    <flagDependency flag="game" value="ae" />
+                </dependencies>
+                <files>
+                    <file source="ae\ae_patch.esp" destination="ae_patch.esp" priority="20" />
+                </files>
+            </pattern>
+        </patterns>
+    </conditionalFileInstalls>
+</config>

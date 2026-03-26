@@ -1,0 +1,73 @@
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <moduleName>Conditional Mod</moduleName>
+    <installSteps>
+        <installStep name="Choose Version">
+            <optionalFileGroups>
+                <group name="Version" type="SelectExactlyOne">
+                    <plugins>
+                        <plugin name="Standard">
+                            <description>Standard version</description>
+                            <conditionFlags>
+                                <flag name="version">standard</flag>
+                            </conditionFlags>
+                            <files>
+                                <file source="standard\plugin.esp" destination="plugin.esp" />
+                            </files>
+                            <typeDescriptor><type name="Optional"/></typeDescriptor>
+                        </plugin>
+                        <plugin name="Lite">
+                            <description>Lightweight version</description>
+                            <conditionFlags>
+                                <flag name="version">lite</flag>
+                            </conditionFlags>
+                            <files>
+                                <file source="lite\plugin.esp" destination="plugin.esp" />
+                            </files>
+                            <typeDescriptor><type name="Optional"/></typeDescriptor>
+                        </plugin>
+                    </plugins>
+                </group>
+            </optionalFileGroups>
+        </installStep>
+        <installStep name="Patches">
+            <visible>
+                <dependencies operator="And">
+                    <flagDependency flag="version" value="standard" />
+                </dependencies>
+            </visible>
+            <optionalFileGroups>
+                <group name="Compatibility" type="SelectAny">
+                    <plugins>
+                        <plugin name="USSEP Patch">
+                            <description>Patch for Unofficial Skyrim SE Patch</description>
+                            <files>
+                                <file source="patches\ussep.esp" destination="ussep_patch.esp" />
+                            </files>
+                            <typeDescriptor><type name="Optional"/></typeDescriptor>
+                        </plugin>
+                    </plugins>
+                </group>
+            </optionalFileGroups>
+        </installStep>
+    </installSteps>
+    <conditionalFileInstalls>
+        <patterns>
+            <pattern>
+                <dependencies operator="And">
+                    <flagDependency flag="version" value="standard" />
+                </dependencies>
+                <files>
+                    <file source="extras\standard_readme.txt" destination="readme.txt" />
+                </files>
+            </pattern>
+            <pattern>
+                <dependencies operator="And">
+                    <flagDependency flag="version" value="lite" />
+                </dependencies>
+                <files>
+                    <file source="extras\lite_readme.txt" destination="readme.txt" />
+                </files>
+            </pattern>
+        </patterns>
+    </conditionalFileInstalls>
+</config>

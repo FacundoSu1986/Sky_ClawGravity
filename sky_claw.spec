@@ -1,0 +1,127 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""PyInstaller spec file for Sky-Claw.
+
+Build with::
+
+    pyinstaller sky_claw.spec --clean
+"""
+
+import os
+import sys
+
+block_cipher = None
+
+# Collect data files: web UI static assets and xEdit scripts.
+datas = [
+    ("sky_claw/web/static", "sky_claw/web/static"),
+    ("sky_claw/xedit/scripts", "sky_claw/xedit/scripts"),
+]
+
+# Hidden imports that PyInstaller cannot detect automatically.
+hiddenimports = [
+    # Async I/O
+    "aiohttp",
+    "aiosqlite",
+    "aiofiles",
+    "aiofiles.os",
+    # Validation
+    "pydantic",
+    "pydantic_core",
+    "pydantic.deprecated.decorator",
+    # Retry logic
+    "tenacity",
+    # XML parsing
+    "defusedxml",
+    "defusedxml.ElementTree",
+    # Archive extraction (optional, may not be installed)
+    "py7zr",
+    "rarfile",
+    # LLM providers
+    "sky_claw.agent.providers",
+    # Web UI
+    "sky_claw.web",
+    "sky_claw.web.app",
+    # SSL/TLS for HTTPS
+    "ssl",
+    "certifi",
+    # SQLite
+    "sqlite3",
+    # All sky_claw submodules
+    "sky_claw.agent.router",
+    "sky_claw.agent.tools",
+    "sky_claw.comms.telegram",
+    "sky_claw.comms.telegram_sender",
+    "sky_claw.db.async_registry",
+    "sky_claw.db.registry",
+    "sky_claw.fomod.installer",
+    "sky_claw.fomod.parser",
+    "sky_claw.fomod.resolver",
+    "sky_claw.loot.cli",
+    "sky_claw.mo2.vfs",
+    "sky_claw.orchestrator.sync_engine",
+    "sky_claw.scraper.masterlist",
+    "sky_claw.scraper.nexus_downloader",
+    "sky_claw.security.hitl",
+    "sky_claw.security.network_gateway",
+    "sky_claw.security.path_validator",
+    "sky_claw.security.sanitize",
+    "sky_claw.tools_installer",
+    "sky_claw.local_config",
+    "sky_claw.xedit.runner",
+    "sky_claw.xedit.output_parser",
+    "sky_claw.xedit.conflict_analyzer",
+]
+
+a = Analysis(
+    ["sky_claw/__main__.py"],
+    pathex=[],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[
+        "tests",
+        "pytest",
+        "_pytest",
+        "hypothesis",
+        "test",
+    ],
+    noarchive=False,
+    optimize=0,
+    cipher=block_cipher,
+)
+
+pyz = PYZ(a.pure, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name="SkyClawApp",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    version_info={
+        "FileVersion": (0, 1, 0, 0),
+        "ProductVersion": (0, 1, 0, 0),
+        "FileDescription": "Agente autónomo de modding para Skyrim",
+        "ProductName": "Sky-Claw",
+        "CompanyName": "FacundoSu1986",
+        "InternalName": "SkyClawApp",
+        "OriginalFilename": "SkyClawApp.exe",
+        "LegalCopyright": "MIT License",
+    } if sys.platform == "win32" else None,
+)

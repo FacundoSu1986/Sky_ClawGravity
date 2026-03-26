@@ -1,0 +1,181 @@
+import os
+import pathlib
+import tomllib
+import keyring
+from typing import Any, Optional
+
+class Config:
+    """Central configuration management for Sky-Claw.
+    
+    Loads from ~/.sky_claw/config.toml, allowing overrides via environment 
+    variables prefixed with SKY_CLAW_.
+    """
+    
+    DEFAULT_CONFIG_DIR = pathlib.Path.home() / ".sky_claw"
+    DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.toml"
+
+    def __init__(self, config_path: Optional[pathlib.Path] = None):
+        self._config_path = config_path or self.DEFAULT_CONFIG_FILE
+        self._data: dict[str, Any] = self._load_defaults()
+        self._load_from_file()
+        self._load_from_keyring()
+        self._load_from_env()
+
+    def _load_from_keyring(self):
+        sensitive_keys = [
+            "llm_api_key", "openai_api_key", "anthropic_api_key", 
+            "deepseek_api_key", "nexus_api_key", "telegram_bot_token"
+        ]
+        migrated = False
+        for key in sensitive_keys:
+            plaintext = self._data.get(key)
+            try:
+                stored = keyring.get_password("sky_claw", key)
+                if stored:
+                    self._data[key] = stored
+                    if plaintext and plaintext == stored:
+                        migrated = True
+            except Exception:
+                stored = None
+
+            if plaintext and not stored:
+                try:
+                    keyring.set_password("sky_claw", key, plaintext)
+                    migrated = True
+                except Exception:
+                    pass
+        
+        # If we found plain text keys and migrated them, scrub them from the TOML
+        if migrated:
+            self.save()
+
+    def _load_defaults(self) -> dict[str, Any]:
+        return {
+            "mo2_root": "",
+            "install_dir": "C:/Modding",
+            "loot_exe": "",
+            "xedit_exe": "",
+            "pandora_exe": "",
+            "bodyslide_exe": "",
+            "skyrim_path": "",
+            "llm_provider": "anthropic",
+            "llm_model": "",
+            "llm_api_key": "",
+            "openai_api_key": "",
+            "anthropic_api_key": "",
+            "deepseek_api_key": "",
+            "nexus_api_key": "",
+            "telegram_bot_token": "",
+            "telegram_chat_id": "",
+            "first_run": True,
+        }
+
+    def _load_from_file(self):
+        if self._config_path.exists():
+            try:
+                with open(self._config_path, "rb") as f:
+                    file_data = tomllib.load(f)
+                    self._data.update(file_data)
+            except Exception as exc:
+                print(f"Warning: Failed to load config.toml: {exc}")
+                pass
+
+    def _load_from_env(self):
+        for key in self._data.keys():
+            env_key = f"SKY_CLAW_{key.upper()}"
+            env_val = os.environ.get(env_key)
+            if env_val:
+                # Basic type conversion for boolean
+                if isinstance(self._data[key], bool):
+                    self._data[key] = env_val.lower() in ("true", "1", "yes")
+                else:
+                    self._data[key] = env_val
+
+    def __getattr__(self, name: str) -> Any:
+        if name in self._data:
+            return self._data[name]
+        raise AttributeError(f"'Config' object has no attribute '{name}'")
+
+    def save(self):
+        """Persist current configuration to TOML."""
+        self._config_path.parent.mkdir(parents=True, exist_ok=True)
+        import tomli_w
+        
+        sensitive_keys = [
+            "llm_api_key", "openai_api_key", "anthropic_api_key", 
+            "deepseek_api_key", "nexus_api_key", "telegram_bot_token"
+        ]
+        
+        save_data = dict(self._data)
+        for key in sensitive_keys:
+            val = save_data.pop(key, None)
+            if val:
+                try:
+                    keyring.set_password("sky_claw", key, str(val))
+                except Exception:
+                    # Fallback to plain text if secure store is unavailable
+                    save_data[key] = val
+
+        with open(self._config_path, "wb") as f:
+            tomli_w.dump(save_data, f)
+
+    @property
+    def as_dict(self) -> dict[str, Any]:
+        return dict(self._data)
+
+
+# ── Backward Compatibility ──────────────────────────────────────────
+# These constants are used by legacy modules and tests.
+# In the future, they should move to the Config class or TOML.
+
+_global_cfg = Config()
+
+DB_PATH = pathlib.Path(_global_cfg.mo2_root) / "mod_registry.db" if _global_cfg.mo2_root else pathlib.Path("mod_registry.db")
+ALLOWED_HOSTS = frozenset([
+    "api.deepseek.com",
+    "api.openai.com",
+    "api.telegram.org",
+    "www.nexusmods.com",
+    "api.nexusmods.com",
+    "premium-files.nexusmods.com",
+    "cf-files.nexusmods.com",
+    "staticdelivery.nexusmods.com",
+    "api.github.com",
+    "github.com",
+    "raw.githubusercontent.com",
+    "api.anthropic.com",
+])
+OUT_OF_SCOPE_HOSTS = frozenset([
+    "github.com",
+    "discord.com",
+    "dropbox.com",
+    "mega.nz",
+    "patreon.com",
+])
+HITL_TIMEOUT_SECONDS = 300
+LOOT_COMMON_PATHS = [
+    r"C:\Program Files\LOOT\loot.exe",
+    r"C:\Program Files (x86)\LOOT\loot.exe",
+]
+XEDIT_COMMON_PATHS = [
+    r"C:\Program Files\SSEEdit\SSEEdit.exe",
+    r"C:\Modding\SSEEdit\SSEEdit.exe",
+]
+# Mapping of host patterns to allowed HTTP methods.
+ALLOWED_METHODS = {
+    "api.nexusmods.com": frozenset(["GET", "POST", "HEAD"]),
+    "github.com": frozenset(["GET"]),
+    "raw.githubusercontent.com": frozenset(["GET"]),
+    "api.anthropic.com": frozenset(["POST"]),
+    "api.deepseek.com": frozenset(["POST"]),
+    "api.openai.com": frozenset(["POST"]),
+    "api.telegram.org": frozenset(["GET", "POST"]),
+    "api.github.com": frozenset(["GET"]),
+    "www.nexusmods.com": frozenset(["GET"]),
+    "premium-files.nexusmods.com": frozenset(["GET"]),
+    "cf-files.nexusmods.com": frozenset(["GET"]),
+    "staticdelivery.nexusmods.com": frozenset(["GET"]),
+}
+TELEGRAM_PATH_PREFIX = "/bot"
+NEXUS_DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+NEXUS_DOWNLOAD_TIMEOUT_SECONDS = 600
