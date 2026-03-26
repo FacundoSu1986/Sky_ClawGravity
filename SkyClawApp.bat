@@ -3,9 +3,9 @@ setlocal enabledelayedexpansion
 title Sky-Claw - Skyrim Mod Manager
 
 echo.
-echo  ============================
-echo   Sky-Claw - Iniciando...
-echo  ============================
+echo ============================
+echo  Sky-Claw - Iniciando
+echo ============================
 echo.
 
 cd /d "%~dp0"
@@ -19,14 +19,17 @@ if %errorlevel% equ 0 (
 )
 
 :: 2. Try to run .exe version
+set "EXE_PATH="
 if exist "dist\SkyClawApp.exe" (
     set "EXE_PATH=dist\SkyClawApp.exe"
-) else if exist "SkyClawApp.exe" (
-    set "EXE_PATH=SkyClawApp.exe"
+) else (
+    if exist "SkyClawApp.exe" (
+        set "EXE_PATH=SkyClawApp.exe"
+    )
 )
 
 if defined EXE_PATH (
-    echo [+] Iniciando version compilada (!EXE_PATH!)...
+    echo [+] Iniciando version compilada [!EXE_PATH!]
     "!EXE_PATH!"
     if errorlevel 1 (
         echo.
@@ -34,18 +37,18 @@ if defined EXE_PATH (
     )
 ) else (
     :: 3. Fallback to Python
-    echo [+] No se encontro .exe compilado. Buscando Python...
+    echo [+] No se encontro .exe compilado. Buscando Python
     
     :: Check if venv exists
     if exist "venv\Scripts\python.exe" (
-        echo [i] Usando entorno virtual (venv).
+        echo [i] Usando entorno virtual [venv]
         set "PY_CMD=venv\Scripts\python.exe"
     ) else (
-        echo [i] Usando Python del sistema.
+        echo [i] Usando Python del sistema
         set "PY_CMD=python"
     )
     
-    echo [+] Iniciando con !PY_CMD!...
+    echo [+] Iniciando con !PY_CMD!
     !PY_CMD! -m sky_claw --mode web --port 8888
     if errorlevel 1 (
         echo.
