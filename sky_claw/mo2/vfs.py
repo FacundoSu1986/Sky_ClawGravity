@@ -34,6 +34,7 @@ class MO2Controller:
     ) -> None:
         self._root = mo2_root.resolve()
         self._validator = path_validator
+        self._modlist_lock = asyncio.Lock()  # NUEVO: Lock de exclusión mutua
 
     @property
     def root(self) -> pathlib.Path:
@@ -94,29 +95,30 @@ class MO2Controller:
         modlist_path = self._root / "profiles" / profile / "modlist.txt"
         validated = self._validator.validate(modlist_path)
 
-        # Check if already present.
-        existing_names: set[str] = set()
-        try:
+        async with self._modlist_lock:  # CORRECCIÓN: Escritura atómica
+            # Check if already present.
+            existing_names: set[str] = set()
+            try:
+                async with aiofiles.open(
+                    validated, mode="r", encoding="utf-8-sig"
+                ) as fh:
+                    async for raw_line in fh:
+                        line = raw_line.strip()
+                        if line and line[0] in ("+", "-"):
+                            existing_names.add(line[1:].strip())
+            except FileNotFoundError:
+                pass
+
+            if mod_name in existing_names:
+                logger.info("Mod %r already in modlist for profile %r", mod_name, profile)
+                return
+
             async with aiofiles.open(
-                validated, mode="r", encoding="utf-8-sig"
+                validated, mode="a", encoding="utf-8"
             ) as fh:
-                async for raw_line in fh:
-                    line = raw_line.strip()
-                    if line and line[0] in ("+", "-"):
-                        existing_names.add(line[1:].strip())
-        except FileNotFoundError:
-            pass
+                await fh.write(f"+{mod_name}\n")
 
-        if mod_name in existing_names:
-            logger.info("Mod %r already in modlist for profile %r", mod_name, profile)
-            return
-
-        async with aiofiles.open(
-            validated, mode="a", encoding="utf-8"
-        ) as fh:
-            await fh.write(f"+{mod_name}\n")
-
-        logger.info("Added +%s to modlist for profile %r", mod_name, profile)
+            logger.info("Added +%s to modlist for profile %r", mod_name, profile)
 
     async def remove_mod_from_modlist(
         self,
@@ -132,25 +134,26 @@ class MO2Controller:
         modlist_path = self._root / "profiles" / profile / "modlist.txt"
         validated = self._validator.validate(modlist_path)
 
-        lines: list[str] = []
-        found = False
-        try:
-            async with aiofiles.open(validated, mode="r", encoding="utf-8-sig") as fh:
-                async for raw_line in fh:
-                    line = raw_line.strip()
-                    if line and line[1:].strip() == mod_name and line[0] in ("+", "-"):
-                        found = True
-                        continue  # Skip this line
-                    lines.append(raw_line)
-        except FileNotFoundError:
-            return
+        async with self._modlist_lock:  # CORRECCIÓN: Escritura atómica
+            lines: list[str] = []
+            found = False
+            try:
+                async with aiofiles.open(validated, mode="r", encoding="utf-8-sig") as fh:
+                    async for raw_line in fh:
+                        line = raw_line.strip()
+                        if line and line[1:].strip() == mod_name and line[0] in ("+", "-"):
+                            found = True
+                            continue  # Skip this line
+                        lines.append(raw_line)
+            except FileNotFoundError:
+                return
 
-        if not found:
-            return
+            if not found:
+                return
 
-        async with aiofiles.open(validated, mode="w", encoding="utf-8") as fh:
-            await fh.writelines(lines)
-        logger.info("Removed %s from modlist for profile %r", mod_name, profile)
+            async with aiofiles.open(validated, mode="w", encoding="utf-8") as fh:
+                await fh.writelines(lines)
+            logger.info("Removed %s from modlist for profile %r", mod_name, profile)
 
     async def toggle_mod_in_modlist(
         self,
@@ -168,30 +171,31 @@ class MO2Controller:
         modlist_path = self._root / "profiles" / profile / "modlist.txt"
         validated = self._validator.validate(modlist_path)
 
-        lines: list[str] = []
-        changed = False
-        target_prefix = "+" if enable else "-"
+        async with self._modlist_lock:  # CORRECCIÓN: Escritura atómica
+            lines: list[str] = []
+            changed = False
+            target_prefix = "+" if enable else "-"
 
-        try:
-            async with aiofiles.open(validated, mode="r", encoding="utf-8-sig") as fh:
-                async for raw_line in fh:
-                    line = raw_line.strip()
-                    if line and line[1:].strip() == mod_name and line[0] in ("+", "-"):
-                        if line[0] != target_prefix:
-                            lines.append(f"{target_prefix}{mod_name}\n")
-                            changed = True
+            try:
+                async with aiofiles.open(validated, mode="r", encoding="utf-8-sig") as fh:
+                    async for raw_line in fh:
+                        line = raw_line.strip()
+                        if line and line[1:].strip() == mod_name and line[0] in ("+", "-"):
+                            if line[0] != target_prefix:
+                                lines.append(f"{target_prefix}{mod_name}\n")
+                                changed = True
+                            else:
+                                lines.append(raw_line)
                         else:
                             lines.append(raw_line)
-                    else:
-                        lines.append(raw_line)
-        except FileNotFoundError:
-            return
+            except FileNotFoundError:
+                return
 
-        if changed:
-            async with aiofiles.open(validated, mode="w", encoding="utf-8") as fh:
-                await fh.writelines(lines)
-            state = "Enabled" if enable else "Disabled"
-            logger.info("%s %s in modlist for profile %r", state, mod_name, profile)
+            if changed:
+                async with aiofiles.open(validated, mode="w", encoding="utf-8") as fh:
+                    await fh.writelines(lines)
+                state = "Enabled" if enable else "Disabled"
+                logger.info("%s %s in modlist for profile %r", state, mod_name, profile)
 
     async def delete_mod_files(self, mod_name: str) -> None:
         """Delete the mod directory from MO2's mods folder entirely.

@@ -1,21 +1,3 @@
-"""Nexus Mods premium downloader with chunked transfer and MD5 validation.
-
-Security invariants
-~~~~~~~~~~~~~~~~~~~
-* :meth:`NetworkGateway.authorize` is called before **every** outbound
-  request — both metadata queries and actual file transfers.
-* No file bytes are written until :class:`HITLGuard` has returned
-  ``Decision.APPROVED``.  The guard is enforced at the call-site
-  (:meth:`AsyncToolRegistry._download_mod`), not here.
-* Downloaded files land exclusively in the MO2 staging directory passed
-  at construction time.
-* Post-download MD5 is validated against the hash provided by the Nexus
-  API.  A mismatch deletes the partial file and raises
-  :class:`MD5ValidationError`.
-"""
-
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import logging
@@ -25,6 +7,12 @@ from typing import Awaitable, Callable
 
 import aiofiles
 import aiohttp
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from sky_claw.config import (
     NEXUS_DOWNLOAD_CHUNK_SIZE,
@@ -36,31 +24,16 @@ logger = logging.getLogger(__name__)
 
 _NEXUS_API_BASE = "https://api.nexusmods.com/v1"
 
-# Type alias for the optional progress callback.
 ProgressCallback = Callable[["DownloadProgress"], Awaitable[None]] | None
 
-
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
-
-
 class DownloadError(Exception):
-    """Raised when a Nexus download fails for any non-validation reason."""
-
+    pass
 
 class MD5ValidationError(DownloadError):
-    """Raised when the downloaded file's MD5 hash does not match the expected value."""
-
+    pass
 
 class PremiumRequiredError(DownloadError):
-    """Raised when a Premium API key is required to generate direct links."""
-
-
-# ---------------------------------------------------------------------------
-# Data classes
-# ---------------------------------------------------------------------------
-
+    pass
 
 @dataclass(frozen=True, slots=True)
 class FileInfo:
@@ -104,37 +77,27 @@ class DownloadProgress:
             return 0.0
         return min((self.downloaded_bytes / self.total_bytes) * 100, 100.0)
 
+def _should_retry_nexus(exc: BaseException) -> bool:
+    """Determina si la excepción justifica un reintento (Network drop, 429, Hash mismatch)."""
+    if isinstance(exc, (aiohttp.ClientConnectionError, asyncio.TimeoutError, OSError, MD5ValidationError)):
+        return True
+    if isinstance(exc, aiohttp.ClientResponseError):
+        # Reintentar explícitamente en Rate Limits (429) y errores del servidor Nexus (5xx)
+        return exc.status == 429 or exc.status >= 500
+    if isinstance(exc, DownloadError):
+        msg = str(exc).lower()
+        return "429" in msg or "502" in msg or "503" in msg or "timeout" in msg
+    return False
 
-# ---------------------------------------------------------------------------
-# Downloader
-# ---------------------------------------------------------------------------
-
+def _log_retry(retry_state) -> None:
+    logger.warning(
+        "Falla en Nexus (Intento %d/5). Reintentando en %.1fs... Motivo: %s",
+        retry_state.attempt_number,
+        retry_state.next_action.sleep,
+        repr(retry_state.outcome.exception())
+    )
 
 class NexusDownloader:
-    """Premium Nexus Mods downloader.
-
-    Every HTTP request goes through :class:`NetworkGateway` for egress
-    control before it is dispatched.  No file I/O happens until the caller
-    has obtained HITL approval externally.
-
-    Parameters
-    ----------
-    api_key:
-        Nexus Mods premium API key.  Required for download-link generation.
-    gateway:
-        :class:`NetworkGateway` instance; ``authorize()`` is called before
-        every request.
-    staging_dir:
-        MO2 staging directory.  All files are written here.
-    chunk_size:
-        Read chunk size in bytes (default: ``NEXUS_DOWNLOAD_CHUNK_SIZE``).
-    timeout:
-        Per-download timeout in seconds (default:
-        ``NEXUS_DOWNLOAD_TIMEOUT_SECONDS``).
-    game_domain:
-        Nexus game-domain slug (default: ``skyrimspecialedition``).
-    """
-
     def __init__(
         self,
         api_key: str,
@@ -151,48 +114,28 @@ class NexusDownloader:
         self._timeout = timeout
         self._game_domain = game_domain
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     @property
     def staging_dir(self) -> pathlib.Path:
-        """MO2 staging directory where downloads are saved."""
         return self._staging_dir
 
     @property
     def timeout(self) -> int:
-        """Per-download timeout in seconds."""
         return self._timeout
 
+    # Aplicamos Exponential Backoff. Empieza en 2s, sube hasta 60s, max 5 intentos.
+    @retry(
+        wait=wait_exponential(multiplier=2, min=2, max=60),
+        stop=stop_after_attempt(5),
+        retry=retry_if_exception(_should_retry_nexus),
+        before_sleep=_log_retry,
+        reraise=True
+    )
     async def get_file_info(
         self,
         nexus_id: int,
         file_id: int | None,
         session: aiohttp.ClientSession,
     ) -> FileInfo:
-        """Query Nexus API for file metadata and obtain a CDN download URL.
-
-        This method makes **two** authorized requests:
-        1. File metadata endpoint — size, filename, MD5.
-        2. Download-link endpoint — CDN URL for premium users.
-        
-        If `file_id` is None, it queries the /files.json endpoint automatically 
-        and picks the primary file, or the latest uploaded file.
-
-        Args:
-            nexus_id: Nexus Mods numeric mod ID.
-            file_id: Nexus Mods numeric file ID (optional).
-            session: Active :class:`aiohttp.ClientSession`.
-
-        Returns:
-            :class:`FileInfo` populated with all metadata.
-
-        Raises:
-            DownloadError: On HTTP 401 (bad key), 403 (not premium), 404
-                (file not found), or any other non-2xx status.
-            EgressViolation: If the URL is not in the egress allow-list.
-        """
         headers = {"apikey": self._api_key, "Accept": "application/json"}
         meta_timeout = aiohttp.ClientTimeout(total=30)
         
@@ -200,11 +143,11 @@ class NexusDownloader:
             files_url = f"{_NEXUS_API_BASE}/games/{self._game_domain}/mods/{nexus_id}/files.json"
             self._gateway.authorize("GET", files_url)
             async with session.get(files_url, headers=headers, timeout=meta_timeout) as resp:
-                if resp.status == 401 or resp.status == 403:
+                if resp.status in (401, 403):
                     raise DownloadError("Invalid or missing Nexus API key")
                 if resp.status == 404:
                     raise DownloadError(f"Mod {nexus_id} not found")
-                resp.raise_for_status()
+                resp.raise_for_status() # Dispara ClientResponseError en 429 para activar el reintento
                 files_data = await resp.json()
             
             files_list = files_data.get("files", [])
@@ -215,7 +158,7 @@ class NexusDownloader:
             target_file = primary_files[0] if primary_files else files_list[-1]
             file_id = target_file["file_id"]
             if isinstance(target_file.get("file_id"), list):
-                file_id = target_file["file_id"][1]  # edge case handling
+                file_id = target_file["file_id"][1]
             
         meta_url = (
             f"{_NEXUS_API_BASE}/games/{self._game_domain}"
@@ -227,20 +170,13 @@ class NexusDownloader:
             if resp.status == 401:
                 raise DownloadError("Invalid or missing Nexus API key")
             if resp.status == 403:
-                raise DownloadError(
-                    "Nexus API key does not have premium access"
-                )
+                raise DownloadError("Nexus API key does not have premium access")
             if resp.status == 404:
-                raise DownloadError(
-                    f"File {file_id} not found for mod {nexus_id}"
-                )
+                raise DownloadError(f"File {file_id} not found for mod {nexus_id}")
             resp.raise_for_status()
             data = await resp.json()
 
-        size_bytes: int = int(
-            data.get("size_in_bytes")
-            or data.get("size", 0) * 1024
-        )
+        size_bytes: int = int(data.get("size_in_bytes") or data.get("size", 0) * 1024)
         md5: str = str(data.get("md5") or "")
         file_name: str = str(data.get("file_name", f"mod_{nexus_id}_file_{file_id}"))
 
@@ -258,33 +194,20 @@ class NexusDownloader:
             download_url=download_url,
         )
 
+    # Backoff más agresivo para la descarga en sí.
+    @retry(
+        wait=wait_exponential(multiplier=4, min=5, max=120),
+        stop=stop_after_attempt(5),
+        retry=retry_if_exception(_should_retry_nexus),
+        before_sleep=_log_retry,
+        reraise=True
+    )
     async def download(
         self,
         file_info: FileInfo,
         session: aiohttp.ClientSession,
         progress_cb: ProgressCallback = None,
     ) -> pathlib.Path:
-        """Download a file using chunked transfer and validate its MD5 hash.
-
-        The file is written to ``self.staging_dir / file_info.file_name``.
-        If any error occurs mid-transfer the partial file is deleted before
-        the exception propagates.  If MD5 validation fails the file is also
-        deleted and :class:`MD5ValidationError` is raised.
-
-        Args:
-            file_info: Metadata from :meth:`get_file_info`.
-            session: Active :class:`aiohttp.ClientSession`.
-            progress_cb: Optional async callable receiving
-                :class:`DownloadProgress` after each chunk.
-
-        Returns:
-            Absolute path to the downloaded file inside the staging directory.
-
-        Raises:
-            DownloadError: On network or I/O failure.
-            MD5ValidationError: When the hash does not match.
-            EgressViolation: If the CDN URL is not in the egress allow-list.
-        """
         self._staging_dir.mkdir(parents=True, exist_ok=True)
         dest = self._staging_dir / file_info.file_name
 
@@ -297,22 +220,14 @@ class NexusDownloader:
             file_name=file_info.file_name,
             total_bytes=file_info.size_bytes,
         )
-        timeout = aiohttp.ClientTimeout(
-            total=self._timeout,
-            sock_read=60,
-        )
+        timeout = aiohttp.ClientTimeout(total=self._timeout, sock_read=60)
         headers = {"apikey": self._api_key}
         md5_hash = hashlib.md5()
 
         try:
-            async with session.get(
-                file_info.download_url,
-                headers=headers,
-                timeout=timeout,
-            ) as resp:
+            async with session.get(file_info.download_url, headers=headers, timeout=timeout) as resp:
                 resp.raise_for_status()
 
-                # Use Content-Length when size was absent from file metadata.
                 if progress.total_bytes == 0:
                     content_length = resp.headers.get("Content-Length")
                     if content_length:
@@ -325,7 +240,8 @@ class NexusDownloader:
                         progress.downloaded_bytes += len(chunk)
                         if progress_cb is not None:
                             await progress_cb(progress)
-                        await asyncio.sleep(0)  # Release GIL during CPU-bound hash chunking
+                        # Yield the event loop para evitar bloquear el thread principal
+                        await asyncio.sleep(0)
 
         except aiohttp.ClientError as exc:
             await _cleanup(dest)
@@ -334,39 +250,20 @@ class NexusDownloader:
             await _cleanup(dest)
             raise DownloadError(f"I/O or timeout error for {file_info.file_name!r}: {exc}") from exc
 
-        # ------------------------------------------------------------------
-        # Post-download MD5 validation
-        # ------------------------------------------------------------------
+        # POST-DOWNLOAD: Validación de Hash estricta. 
+        # Si esto falla, lanza MD5ValidationError, lo atrapa Tenacity, limpia el archivo corrupto y reintenta.
         if file_info.md5:
             actual = md5_hash.hexdigest()
             if actual.lower() != file_info.md5.lower():
                 await _cleanup(dest)
                 raise MD5ValidationError(
-                    f"MD5 mismatch for {file_info.file_name!r}: "
-                    f"expected={file_info.md5!r} got={actual!r}"
+                    f"MD5 mismatch for {file_info.file_name!r}: expected={file_info.md5!r} got={actual!r}"
                 )
-            logger.info(
-                "MD5 OK for %s (%s)",
-                file_info.file_name,
-                actual,
-            )
+            logger.info("MD5 validado OK para %s (%s)", file_info.file_name, actual)
         else:
-            logger.warning(
-                "No MD5 available for %s — skipping hash validation",
-                file_info.file_name,
-            )
+            logger.warning("Sin hash provisto por Nexus para %s. Omitiendo validación.", file_info.file_name)
 
-        logger.info(
-            "Download complete: %s → %s (%d bytes)",
-            file_info.file_name,
-            dest,
-            progress.downloaded_bytes,
-        )
         return dest
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
 
     async def _handle_manual_fallback(
         self,
@@ -502,12 +399,6 @@ class NexusDownloader:
         # Prefer the first link (Nexus orders by preference).
         uri: str = links[0]["URI"]
         return uri
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 async def _cleanup(path: pathlib.Path) -> None:
     """Silently remove *path* if it exists (partial-download cleanup)."""

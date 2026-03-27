@@ -901,7 +901,7 @@ class AsyncToolRegistry:
         archive_path: str,
         selections: dict[str, list[str]] | None = None,
     ) -> str:
-        """Install a mod from archive into MO2.
+        """Install a mod from archive into MO2 with mandatory HITL approval.
 
         Args:
             archive_path: Path to the mod archive.
@@ -915,6 +915,21 @@ class AsyncToolRegistry:
             selections=selections or {},
         )
 
+        if self._hitl is None:
+            return json.dumps({"error": "HITL guard is not configured. Installation blocked."})
+
+        # CORRECCIÓN: HITL Obligatorio para instalaciones destructivas
+        request_id = f"install-{pathlib.Path(params.archive_path).name}"
+        decision = await self._hitl.request_approval(
+            request_id=request_id,
+            reason=f"Confirmar instalación de mod: {pathlib.Path(params.archive_path).name}",
+            detail=f"Selecciones FOMOD detectadas: {json.dumps(params.selections)}"
+        )
+
+        if decision is not Decision.APPROVED:
+            return json.dumps({"status": "denied", "reason": "User rejected the installation."})
+
+        # Proceder con la lógica de instalación original...
         if self._fomod_installer is None:
             return json.dumps({"error": "FOMOD installer is not configured"})
 
