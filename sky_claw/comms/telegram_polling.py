@@ -38,19 +38,19 @@ class TelegramPolling:
         self,
         token: str,
         webhook_handler: UpdateHandler,
-        session: aiohttp.ClientSession,
         interval: float = 1.0,
         authorized_chat_id: str | int | None = None,
     ) -> None:
         self._token = token
         self._handler = webhook_handler
-        self._session = session
         self._interval = interval
         self._authorized_chat_id = authorized_chat_id
         self._last_update_id = 0
         self._running = False
         self._url = TELEGRAM_API_GET_UPDATES.format(token=token)
         self._dlq: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self._session: aiohttp.ClientSession | None = None
+        self._polling_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """Start the polling loop."""
@@ -58,24 +58,45 @@ class TelegramPolling:
             return
         self._running = True
         logger.info("Telegram long polling started")
-        asyncio.create_task(self._run_loop())
+        self._polling_task = asyncio.create_task(self._run_loop())
 
     async def stop(self) -> None:
         """Stop the polling loop."""
         self._running = False
+        if self._polling_task:
+            self._polling_task.cancel()
         logger.info("Telegram long polling stopped")
 
     async def _run_loop(self) -> None:
         """Internal polling loop."""
-        while self._running:
-            try:
-                await self._poll_once()
-            except Exception as exc:
-                logger.exception("Error in Telegram polling loop: %s", exc)
-            await asyncio.sleep(self._interval)
+        self._session = aiohttp.ClientSession()
+        try:
+            while self._running:
+                try:
+                    await self._poll_once()
+                except asyncio.CancelledError:
+                    logger.info("Telegram polling cancelled.")
+                    break
+                except Exception as exc:
+                    logger.exception("Error in Telegram polling loop: %s", exc)
+                
+                try:
+                    await asyncio.sleep(self._interval)
+                except asyncio.CancelledError:
+                    break
+        except asyncio.CancelledError:
+            logger.info("Telegram polling task cancelled.")
+        finally:
+            self._running = False
+            if self._session and not self._session.closed:
+                await self._session.close()
+                self._session = None
 
     async def _poll_once(self) -> None:
         """Perform a single getUpdates request."""
+        if not self._session:
+            return
+
         params = {
             "offset": self._last_update_id + 1,
             "timeout": 30,  # Long polling timeout in seconds

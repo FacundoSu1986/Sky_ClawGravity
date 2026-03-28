@@ -48,37 +48,39 @@ def _parse_hitl_command(text: str) -> tuple[bool, str] | None:
     return None
 
 
-def escape_mdv2(text: str) -> str:
+import html
+
+def escape_html(text: str) -> str:
     if not text:
         return ""
-    return re.sub(r"([_*\[\]\(\)\~`\>\#\+\-\=\|\{\}\.\!])", r"\\\1", str(text))
+    return html.escape(str(text))
 
 
 def _format_update_payload(payload: UpdatePayload) -> str:
     lines = [
-        "📊 *Reporte de Actualización de Mods*",
-        f"🔍 *Total verificados:* {payload.total_checked}",
+        "📊 <b>Reporte de Actualización de Mods</b>",
+        f"🔍 <b>Total verificados:</b> {payload.total_checked}",
         ""
     ]
 
     if payload.updated_mods:
-        lines.append(f"✅ *Actualizados exitosamente:* \\({len(payload.updated_mods)}\\)")
+        lines.append(f"✅ <b>Actualizados exitosamente:</b> ({len(payload.updated_mods)})")
         for mod in payload.updated_mods:
-            name = escape_mdv2(mod["name"])
-            old_v = escape_mdv2(mod.get("old_version", "?"))
-            new_v = escape_mdv2(mod.get("new_version", "?"))
-            lines.append(f"\\- {name}: {old_v} ➡️ {new_v}")
+            name = escape_html(mod["name"])
+            old_v = escape_html(mod.get("old_version", "?"))
+            new_v = escape_html(mod.get("new_version", "?"))
+            lines.append(f"- <i>{name}</i>: <pre>{old_v} ➡️ {new_v}</pre>")
         lines.append("")
 
     if payload.failed_mods:
-        lines.append(f"❌ *Fallidos:* \\({len(payload.failed_mods)}\\)")
+        lines.append(f"❌ <b>Fallidos:</b> ({len(payload.failed_mods)})")
         for mod in payload.failed_mods:
-            name = escape_mdv2(mod["name"])
-            err = escape_mdv2(mod.get("error", "Error desconocido")[:60])
-            lines.append(f"\\- {name}: {err}...")
+            name = escape_html(mod["name"])
+            err = escape_html(mod.get("error", "Error desconocido")[:60])
+            lines.append(f"- <i>{name}</i>: <pre>{err}...</pre>")
         lines.append("")
 
-    lines.append(f"✨ *Al día:* {len(payload.up_to_date_mods)}")
+    lines.append(f"✨ <b>Al día:</b> {len(payload.up_to_date_mods)}")
     return "\n".join(lines)
 
 
@@ -225,7 +227,7 @@ class TelegramWebhook:
             sync_engine = self._router._tools._sync_engine
             payload = await sync_engine.check_for_updates(self._session)
             report = _format_update_payload(payload)
-            await self._sender.send(chat_id, report, parse_mode="MarkdownV2")
+            await self._sender.send(chat_id, report, parse_mode="HTML")
         except Exception as exc:
             import logging
             logging.getLogger(__name__).exception("Falla en /update_mods: %s", exc)

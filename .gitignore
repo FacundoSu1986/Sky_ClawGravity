@@ -38,3 +38,9 @@ coverage.xml
 
 # Logs
 logs/
+
+# From architectural review
+*.log
+*.db-shm
+*.db-wal
+sky_claw/logs/

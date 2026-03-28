@@ -90,11 +90,10 @@ class TelegramSender:
         payload = {
             "chat_id": chat_id,
             "text": text,
+            "parse_mode": parse_mode or "HTML"
         }
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
-        if parse_mode:
-            payload["parse_mode"] = parse_mode
             
         url = self._url + "sendMessage"
         resp = await self._gateway.request(

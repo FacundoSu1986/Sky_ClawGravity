@@ -6,6 +6,7 @@ Usage::
     python -m sky_claw --mode telegram     # Telegram webhook server
     python -m sky_claw --mode oneshot "install Requiem"
     python -m sky_claw --mode web --port 8888  # local web UI
+    python -m sky_claw --mode gui         # local desktop UI (NiceGUI)
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import os
 import pathlib
 import sys
 import uuid
+import queue
 
 import aiohttp
 from aiohttp import web
@@ -168,16 +170,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 class AppContext:
-    """Manages lifecycle of all async resources.
-
-    Supports two initialization modes:
-
-    * **Full** (CLI / Telegram / oneshot): call :meth:`start` which runs
-      ``start_minimal`` + ``start_full`` in sequence.
-    * **Lazy** (Web UI / .exe): call :meth:`start_minimal` to create just the
-      HTTP session (enough to serve the setup wizard), then call
-      :meth:`start_full` after the user completes configuration.
-    """
+    """Manages lifecycle of all async resources."""
 
     def __init__(self, args: argparse.Namespace) -> None:
         self._args = args
@@ -193,25 +186,16 @@ class AppContext:
         self.tools_installer: ToolsInstaller | None = None
         
         # GUI communication queues
-        import queue
         self.gui_queue: queue.Queue = queue.Queue()
         self.logic_queue: queue.Queue = queue.Queue()
-
-    # ── Properties ────────────────────────────────────────────────────
 
     @property
     def is_configured(self) -> bool:
         """True when the full stack (provider + router) is ready."""
         return self.router is not None
 
-    # ── Lifecycle: minimal (HTTP session only) ────────────────────────
-
     async def start_minimal(self) -> None:
-        """Phase 1: resolve config path + create HTTP session.
-
-        This is enough to serve the web UI setup wizard.  No LLM provider,
-        database, or tool registry is initialised.
-        """
+        """Phase 1: resolve config path + create HTTP session."""
         self._resolve_config_path()
         self.session = aiohttp.ClientSession()
         logger.info(
@@ -219,19 +203,10 @@ class AppContext:
             self.config_path,
         )
 
-    # ── Lifecycle: full initialisation ────────────────────────────────
-
     async def start_full(self) -> None:
-        """Phase 2: load config, inject env vars, create provider + router.
-
-        Can be called after :meth:`start_minimal` (lazy mode) or
-        standalone from :meth:`start`.  Safe to call multiple times —
-        the second call will close the existing router first.
-        """
+        """Phase 2: load config, inject env vars, create provider + router."""
         assert self.config_path is not None, "start_minimal() must run first"
 
-        # If called a second time (e.g. user re-ran setup wizard), tear down
-        # the previous router so we can rebuild it cleanly.
         if self.polling is not None:
             await self.polling.stop()
             self.polling = None
@@ -242,20 +217,15 @@ class AppContext:
             await self.registry.close()
             self.registry = None
 
-        # Ensure we have an HTTP session.
         if self.session is None:
             self.session = aiohttp.ClientSession()
 
         config_path = self.config_path
         logger.info("start_full — Config path: %s (exists=%s)", config_path, config_path.exists())
 
-        # ── Load local config ────────────────────────────────────────
         local_cfg = Config(config_path)
-
-        # ── Inject API keys into env vars ────────────────────────────
         self._apply_config_to_env(local_cfg)
 
-        # ── Override CLI defaults with config values ─────────────────
         mo2_root = self._args.mo2_root
         config_changed = False
 
@@ -270,12 +240,6 @@ class AppContext:
                 mo2_root = cfg_mo2
                 logger.info("Using mo2_root from config (exists): %s", mo2_root)
 
-        if local_cfg.skyrim_path:
-            logger.info("Skyrim path from config: %s", local_cfg.skyrim_path)
-        if local_cfg.install_dir:
-            logger.info("Install dir from config: %s", local_cfg.install_dir)
-
-        # ── Auto-detect MO2 / Skyrim if still missing ────────────────
         if not mo2_root.exists():
             detected_mo2 = await AutoDetector.find_mo2()
             if detected_mo2 is not None:
@@ -291,7 +255,6 @@ class AppContext:
                 config_changed = True
                 logger.info("Zero-config: Skyrim detected at %s", detected_skyrim)
 
-        # ── Create LLM provider ──────────────────────────────────────
         provider_name = self._args.provider if self._args.provider else local_cfg.llm_provider
         try:
             provider = create_provider(provider_name=provider_name)
@@ -312,11 +275,9 @@ class AppContext:
             except ValueError:
                 logger.warning("Invalid telegram_chat_id in config (must be int)")
 
-        # Database
         self.registry = AsyncModRegistry(self._args.db_path)
         await self.registry.open()
 
-        # MO2 controller — build sandbox roots dynamically.
         install_dir = getattr(self._args, "install_dir", None)
         if local_cfg.install_dir:
             install_dir = pathlib.Path(local_cfg.install_dir)
@@ -330,11 +291,9 @@ class AppContext:
         validator = PathValidator(roots=sandbox_roots)
         mo2 = MO2Controller(mo2_root, validator)
 
-        # Scraper + sync engine
         self.gateway = NetworkGateway()
         masterlist = MasterlistClient(gateway=self.gateway, api_key=nexus_key)
 
-        # TelegramSender
         if bot_token:
             self.sender = TelegramSender(
                 bot_token=bot_token,
@@ -342,112 +301,75 @@ class AppContext:
                 session=self.session,
             )
 
-        # HITL Notification
         async def _hitl_notify(req: HITLRequest) -> None:
             if self.sender is None or operator_chat_id is None:
-                logger.info(
-                    "HITL auto-approving (no sender/operator_chat_id): %s",
-                    req.request_id,
-                )
+                logger.info("HITL auto-approving: %s", req.request_id)
                 self.hitl.respond(req.request_id, True)
                 return
-            msg = (
-                f"🛡️ *HITL Approval Required*\n\n"
-                f"ID: `{req.request_id}`\n"
-                f"Reason: {req.reason}\n\n"
-                f"{req.detail}"
-            )
-            reply_markup = {
-                "inline_keyboard": [[
-                    {"text": "✅ Approve", "callback_data": f"hitl:approve:{req.request_id}"},
-                    {"text": "❌ Deny", "callback_data": f"hitl:deny:{req.request_id}"}
-                ]]
-            }
+            msg = f"🛡️ *HITL Approval Required*\n\nID: `{req.request_id}`\nReason: {req.reason}\n\n{req.detail}"
+            # Send using sender directly
             try:
-                await self.sender.send(operator_chat_id, msg, reply_markup=reply_markup)
-            except Exception as exc:
-                logger.exception(
-                    "Failed to send HITL notification for %s", req.request_id
+                await self.sender.send(
+                    operator_chat_id, 
+                    msg, 
+                    reply_markup={
+                        "inline_keyboard": [[
+                            {"text": "✅ Approve", "callback_data": f"hitl:approve:{req.request_id}"},
+                            {"text": "❌ Deny", "callback_data": f"hitl:deny:{req.request_id}"}
+                        ]]
+                    }
                 )
+            except Exception:
+                logger.exception("Failed to send HITL notification")
 
         self.hitl = HITLGuard(notify_fn=_hitl_notify)
-
         sync_engine = SyncEngine(mo2, masterlist, self.registry, hitl=self.hitl)
 
-        # Initial synchronization if database is empty
         if await self.registry.is_empty():
-            logger.info("Database is empty. Starting initial SyncEngine registration from MO2 Default profile...")
-            # Note: SyncEngine.run reads C:\Modding\MO2\profiles\Default\modlist.txt via mo2 controller
+            logger.info("Database empty, initial Sync from MO2...")
             try:
                 await sync_engine.run(self.session, profile="Default")
-                logger.info("Initial synchronization completed successfully.")
             except Exception as exc:
                 logger.exception("Initial synchronization failed: %s", exc)
 
-        # ToolsInstaller
         self.tools_installer = ToolsInstaller(
             hitl=self.hitl,
             gateway=self.gateway,
             path_validator=validator,
         )
 
-        # Auto-detect LOOT
         loot_exe = self._args.loot_exe
         if local_cfg.loot_exe:
             cfg_loot = pathlib.Path(local_cfg.loot_exe)
-            if cfg_loot.exists():
-                loot_exe = cfg_loot
+            if cfg_loot.exists(): loot_exe = cfg_loot
         if loot_exe is None or not loot_exe.exists():
             found = scan_common_paths(LOOT_COMMON_PATHS, "loot.exe")
-            if found is not None:
+            if found:
                 loot_exe = found
                 local_cfg.loot_exe = str(found)
                 config_changed = True
-                logger.info("Auto-detected LOOT at %s", loot_exe)
-            else:
-                detected_loot = await AutoDetector.find_loot()
-                if detected_loot is not None:
-                    loot_exe = detected_loot
-                    local_cfg.loot_exe = str(detected_loot)
-                    config_changed = True
-                    logger.info("Zero-config: LOOT detected at %s", detected_loot)
 
-        # Auto-detect SSEEdit
         xedit_exe = getattr(self._args, "xedit_exe", None)
         if local_cfg.xedit_exe:
             cfg_xedit = pathlib.Path(local_cfg.xedit_exe)
-            if cfg_xedit.exists():
-                xedit_exe = cfg_xedit
+            if cfg_xedit.exists(): xedit_exe = cfg_xedit
         if xedit_exe is None or not xedit_exe.exists():
             found = scan_common_paths(XEDIT_COMMON_PATHS, "SSEEdit.exe")
-            if found is not None:
+            if found:
                 xedit_exe = found
                 local_cfg.xedit_exe = str(found)
                 config_changed = True
-                logger.info("Auto-detected SSEEdit at %s", xedit_exe)
-            else:
-                detected_xedit = await AutoDetector.find_xedit()
-                if detected_xedit is not None:
-                    xedit_exe = detected_xedit
-                    local_cfg.xedit_exe = str(detected_xedit)
-                    config_changed = True
-                    logger.info("Zero-config: SSEEdit detected at %s", detected_xedit)
 
-        # Persist auto-detected paths.
         if config_changed:
             local_cfg.save()
 
-        # NexusDownloader
         if nexus_key:
             self.downloader = NexusDownloader(
                 api_key=nexus_key,
                 gateway=self.gateway,
                 staging_dir=self._args.staging_dir,
             )
-        else:
-            logger.warning("NEXUS_API_KEY not set — download_mod tool will be unavailable")
 
-        # Tool registry
         tool_registry = AsyncToolRegistry(
             registry=self.registry,
             mo2=mo2,
@@ -469,7 +391,6 @@ class AppContext:
             config_path=config_path,
         )
 
-        # LLM router
         history_db = str(self._args.db_path).replace(".db", "_history.db")
         self.router = LLMRouter(
             provider=provider,
@@ -479,8 +400,6 @@ class AppContext:
         )
         await self.router.open()
 
-        # Telegram Polling (for local HITL responses without webhooks)
-        # We start this AFTER the router is open and self.router is set.
         if bot_token and getattr(self._args, "mode", "cli") != "telegram":
             webhook_handler = TelegramWebhook(
                 router=self.router,
@@ -491,155 +410,107 @@ class AppContext:
             self.polling = TelegramPolling(
                 token=bot_token,
                 webhook_handler=webhook_handler,
-                session=self.session,
                 authorized_chat_id=operator_chat_id,
             )
             await self.polling.start()
-            logger.info("Auto-started Telegram long polling for HITL responses (router ready)")
+            logger.info("Telegram polling started")
 
-        logger.info("start_full complete — router ready")
-
-    # ── Lifecycle: full start (CLI / Telegram / oneshot shortcut) ─────
+        logger.info("start_full complete")
 
     async def start(self) -> None:
-        """Initialize all components (convenience for non-web modes).
-
-        Equivalent to ``start_minimal()`` + ``start_full()``.
-        """
+        """Initialize all components."""
         await self.start_minimal()
         await self.start_full()
 
     async def stop(self) -> None:
         """Gracefully shutdown all resources."""
-        if self.session is not None:
-            await self.session.close()
+        if self.polling is not None:
+            await self.polling.stop()
+            self.polling = None
         if self.router is not None:
             await self.router.close()
+            self.router = None
         if self.registry is not None:
             await self.registry.close()
-
-    # ── Private helpers ───────────────────────────────────────────────
+            self.registry = None
+        if self.session is not None:
+            await self.session.close()
+            self.session = None
 
     def _resolve_config_path(self) -> None:
-        """Set ``self.config_path`` to the standard TOML location.
-        Supports legacy sky_claw_config.json if it exists in CWD for test compatibility.
-        """
         legacy_path = pathlib.Path.cwd() / "sky_claw_config.json"
         if legacy_path.exists():
             self.config_path = legacy_path
-            logger.info("Config path resolved to legacy JSON: %s", self.config_path)
             return
-
         from sky_claw.config import Config
         self.config_path = Config.DEFAULT_CONFIG_FILE
-        logger.info("Config path resolved to TOML: %s", self.config_path)
 
     @staticmethod
     def _apply_config_to_env(cfg: Config) -> None:
-        """Inject API keys from Config into environment variables."""
-        # Main LLM Keys
         llm_key = getattr(cfg, "llm_api_key", None)
         if llm_key:
-            if "ANTHROPIC_API_KEY" not in os.environ:
-                os.environ["ANTHROPIC_API_KEY"] = llm_key
-            if "OPENAI_API_KEY" not in os.environ:
-                os.environ["OPENAI_API_KEY"] = llm_key
-            if "DEEPSEEK_API_KEY" not in os.environ:
-                os.environ["DEEPSEEK_API_KEY"] = llm_key
-
-        # Provider-specific keys (highest priority)
-        if (val := getattr(cfg, "anthropic_api_key", None)) and "ANTHROPIC_API_KEY" not in os.environ:
-            os.environ["ANTHROPIC_API_KEY"] = val
-        if (val := getattr(cfg, "openai_api_key", None)) and "OPENAI_API_KEY" not in os.environ:
-            os.environ["OPENAI_API_KEY"] = val
-        if (val := getattr(cfg, "deepseek_api_key", None)) and "DEEPSEEK_API_KEY" not in os.environ:
-            os.environ["DEEPSEEK_API_KEY"] = val
-
-        if (val := getattr(cfg, "nexus_api_key", None)) and "NEXUS_API_KEY" not in os.environ:
-            os.environ["NEXUS_API_KEY"] = val
-        if (val := getattr(cfg, "telegram_bot_token", None)) and "TELEGRAM_BOT_TOKEN" not in os.environ:
-            os.environ["TELEGRAM_BOT_TOKEN"] = val
-        if (val := getattr(cfg, "telegram_chat_id", None)) and "TELEGRAM_CHAT_ID" not in os.environ:
-            os.environ["TELEGRAM_CHAT_ID"] = str(val)
+            for env in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"]:
+                if env not in os.environ: os.environ[env] = llm_key
+        if (v := getattr(cfg, "anthropic_api_key", None)) and "ANTHROPIC_API_KEY" not in os.environ:
+            os.environ["ANTHROPIC_API_KEY"] = v
+        if (v := getattr(cfg, "openai_api_key", None)) and "OPENAI_API_KEY" not in os.environ:
+            os.environ["OPENAI_API_KEY"] = v
+        if (v := getattr(cfg, "deepseek_api_key", None)) and "DEEPSEEK_API_KEY" not in os.environ:
+            os.environ["DEEPSEEK_API_KEY"] = v
+        if (v := getattr(cfg, "nexus_api_key", None)) and "NEXUS_API_KEY" not in os.environ:
+            os.environ["NEXUS_API_KEY"] = v
+        if (v := getattr(cfg, "telegram_bot_token", None)) and "TELEGRAM_BOT_TOKEN" not in os.environ:
+            os.environ["TELEGRAM_BOT_TOKEN"] = v
 
 
 async def _run_cli(ctx: AppContext) -> None:
-    """Interactive REPL: read user input, send to router, print response."""
-    assert ctx.router is not None
-    assert ctx.session is not None
-
+    assert ctx.router and ctx.session
     print("Sky-Claw interactive mode. Type 'exit' or 'quit' to leave.\n")
     chat_id = "cli-session"
-
     while True:
         try:
             user_input = await asyncio.to_thread(input, "you> ")
         except (EOFError, KeyboardInterrupt):
             print("\nBye!")
             break
-
         text = user_input.strip()
-        if not text:
-            continue
+        if not text: continue
         correlation_id_var.set(str(uuid.uuid4()))
         try:
             response = await ctx.router.chat(text, ctx.session, chat_id=chat_id)
             print(f"\nsky-claw> {response}\n")
         except RuntimeError as exc:
-            logger.error("CLI error: %s", exc)
             print(f"\n[error] {exc}\n")
 
 
 async def _run_oneshot(ctx: AppContext, command: str) -> None:
-    """Execute a single command and exit."""
-    assert ctx.router is not None
-    assert ctx.session is not None
-
+    assert ctx.router and ctx.session
     correlation_id_var.set(str(uuid.uuid4()))
     try:
         response = await ctx.router.chat(command, ctx.session, chat_id="oneshot")
         print(response)
     except RuntimeError as exc:
-        logger.error("Oneshot error: %s", exc)
         print(f"[error] {exc}", file=sys.stderr)
         sys.exit(1)
 
 
 async def _run_telegram(ctx: AppContext, host: str, port: int) -> None:
-    """Start the Telegram polling client."""
-    assert ctx.router is not None
-    assert ctx.session is not None
-    assert ctx.gateway is not None
-
+    assert ctx.router and ctx.session and ctx.gateway
     if ctx.sender is None:
-        print(
-            "Error: TELEGRAM_BOT_TOKEN environment variable is required.",
-            file=sys.stderr,
-        )
+        print("Error: TELEGRAM_BOT_TOKEN required.", file=sys.stderr)
         sys.exit(1)
-
     webhook_handler = TelegramWebhook(
-        router=ctx.router,
-        sender=ctx.sender,
-        session=ctx.session,
-        hitl=ctx.hitl,
+        router=ctx.router, sender=ctx.sender, session=ctx.session, hitl=ctx.hitl
     )
-
     polling = TelegramPolling(
         token=ctx.sender._token,
         webhook_handler=webhook_handler,
-        session=ctx.session,
         authorized_chat_id=ctx._args.operator_chat_id,
     )
-
     await polling.start()
-
-    logger.info("Telegram long polling client started")
-    print("Telegram long polling client started")
-    print("Press Ctrl+C to stop.")
-
+    print("Telegram polling started. Press Ctrl+C to stop.")
     try:
-        await asyncio.Event().wait()  # Block until cancelled
+        await asyncio.Event().wait()
     except asyncio.CancelledError:
         pass
     finally:
@@ -647,25 +518,11 @@ async def _run_telegram(ctx: AppContext, host: str, port: int) -> None:
 
 
 async def _run_web(ctx: AppContext, port: int) -> None:
-    """Start the local web UI server with lazy initialization.
-
-    Phase 1 — start_minimal(): HTTP session only, enough to serve the
-    setup wizard.  Phase 2 — start_full(): triggered either immediately
-    (if config already exists) or after the user completes the wizard.
-    """
-    # Phase 1: minimal — just session, config path resolved.
     assert ctx.session is not None
-
-    # Check whether the user already has a valid config.
     local_cfg = load_local_config(ctx.config_path)
     already_configured = not local_cfg.first_run and bool(local_cfg.get_api_key())
+    if already_configured: await ctx.start_full()
 
-    if already_configured:
-        # Config exists → full init right away (normal restart).
-        logger.info("Config found — running start_full immediately")
-        await ctx.start_full()
-
-    # Build the web app.  Router may still be None at this point (first run).
     web_app = WebApp(
         router=ctx.router,
         session=ctx.session,
@@ -673,21 +530,15 @@ async def _run_web(ctx: AppContext, port: int) -> None:
         tools_installer=ctx.tools_installer,
         on_setup_complete=_make_setup_callback(ctx),
     )
-    app = web_app.create_app()
-
-    runner = web.AppRunner(app)
+    runner = web.AppRunner(web_app.create_app())
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", port)
     await site.start()
 
     url = f"http://localhost:{port}"
-    logger.info("Web UI listening on %s", url)
-    print(f"\n  Sky-Claw Web UI: {url}")
-    print("  Press Ctrl+C to stop.\n")
-
+    print(f"\n  Sky-Claw Web UI: {url}\n")
     import webbrowser
     webbrowser.open(url)
-
     try:
         await asyncio.Event().wait()
     except asyncio.CancelledError:
@@ -697,43 +548,66 @@ async def _run_web(ctx: AppContext, port: int) -> None:
 
 
 def _make_setup_callback(ctx: AppContext):
-    """Return an async callback that WebApp calls after POST /api/setup."""
-
     async def _on_setup_complete(web_app: WebApp) -> None:
-        logger.info("Setup wizard complete — running start_full()")
         await ctx.start_full()
-        # Update the WebApp's references so future requests use the new router.
         web_app._router = ctx.router
         web_app._tools_installer = ctx.tools_installer
-        logger.info("WebApp references updated — chat is now available")
-
     return _on_setup_complete
 
+# --- GUI BACKGROUND TASKS ---
 
-async def _main(argv: list[str] | None = None) -> None:
-    args = _parse_args(argv)
+async def _gui_logic_loop(ctx: AppContext) -> None:
+    """Processes chat messages from GUI in a background task."""
+    while True:
+        try:
+            item = await asyncio.to_thread(ctx.logic_queue.get)
+            if item[0] == "chat":
+                text = item[1]
+                correlation_id_var.set(str(uuid.uuid4()))
+                try:
+                    response = await ctx.router.chat(text, ctx.session, chat_id="gui-session")
+                    ctx.gui_queue.put(("response", response))
+                except Exception as e:
+                    logger.exception("Logic error in chat: %s", e)
+                    ctx.gui_queue.put(("response", f"Error arcano: {e}"))
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.exception("GUI logic loop error: %s", e)
+            await asyncio.sleep(1)
 
-    # Initialize structured logging
-    log_level = logging.DEBUG if args.verbose else logging.INFO
-    setup_logging(level=log_level)
+async def _gui_mod_update_loop(ctx: AppContext) -> None:
+    """Periodically fetches modlist for the GUI."""
+    while True:
+        try:
+            if ctx.registry:
+                mods_dicts = await ctx.registry.search_mods("")
+                mods = [m["name"] for m in mods_dicts]
+                ctx.gui_queue.put(("modlist", mods))
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.error("Error updating modlist in GUI: %s", exc)
+            await asyncio.sleep(5)
 
+# --- ENTRY POINTS ---
+
+async def _main_async(args: argparse.Namespace) -> None:
+    """Asynchronous runner for CLI, Web, and Telegram modes."""
     logger.info("Sky-Claw starting in %s mode", args.mode)
-
     if args.mode == "oneshot" and not args.command:
         print("Error: oneshot mode requires a command argument.", file=sys.stderr)
         sys.exit(1)
 
     ctx = AppContext(args)
-
     if args.mode == "web":
-        # Lazy initialization: minimal first, full after config.
         await ctx.start_minimal()
         try:
             await _run_web(ctx, args.port)
         finally:
             await ctx.stop()
     else:
-        # CLI / Telegram / oneshot: full init at start.
         await ctx.start()
         try:
             if args.mode == "cli":
@@ -742,59 +616,52 @@ async def _main(argv: list[str] | None = None) -> None:
                 await _run_oneshot(ctx, args.command)
             elif args.mode == "telegram":
                 await _run_telegram(ctx, args.webhook_host, args.webhook_port)
-            elif args.mode == "gui":
-                await _run_gui(ctx)
         finally:
             await ctx.stop()
 
+async def start_full(args: argparse.Namespace) -> AppContext:
+    """Helper for NiceGUI to initialize the full stack."""
+    ctx = AppContext(args)
+    await ctx.start()
+    return ctx
+
+def run_gui_mode(args):
+    from sky_claw.gui.app import SkyClawGUI
+    from nicegui import ui, app
+
+    # Creamos la página principal
+    @ui.page('/')
+    async def main_page():
+        # Iniciamos el contexto y la UI
+        ctx = await start_full(args)
+        gui = SkyClawGUI(ctx)
+        gui.build_ui()
+        
+        # Log de éxito en la consola de la UI
+        logger.info("GUI y Contexto iniciados correctamente.")
+
+    # Arrancamos el servidor
+    ui.run(
+        title="Sky-Claw | Elder Scrolls Agent",
+        dark=True,
+        show=True,
+        reload=False,
+        port=8080
+    )
 
 def main(argv: list[str] | None = None) -> None:
-    """Synchronous entry point."""
-    asyncio.run(_main(argv))
+    """Unified entry point controller."""
+    args = _parse_args(argv)
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    setup_logging(level=log_level)
 
-
-async def _run_gui(ctx: AppContext) -> None:
-    """Start the Desktop GUI."""
-    from sky_claw.gui.app import SkyClawGUI
-    import queue
-    import threading
-
-    ctx.gui_queue = queue.Queue()  # For logic -> GUI
-    ctx.logic_queue = queue.Queue() # For GUI -> logic
-    
-    gui = SkyClawGUI(ctx)
-    
-    # Background task to process logic_queue
-    async def process_logic():
-        while True:
-            try:
-                # Use to_thread to Avoid blocking event loop
-                item = await asyncio.to_thread(ctx.logic_queue.get)
-                if item[0] == "chat":
-                    text = item[1]
-                    correlation_id_var.set(str(uuid.uuid4()))
-                    response = await ctx.router.chat(text, ctx.session, chat_id="gui-session")
-                    ctx.gui_queue.put(("response", response))
-            except Exception as e:
-                logger.exception("GUI Logic error: %s", e)
-                ctx.gui_queue.put(("response", f"Error: {e}"))
-
-    # Periodic background task to update modlist in GUI
-    async def update_mods_periodic():
-        while True:
-            try:
-                mods_dicts = await ctx.registry.search_mods("")
-                mods = [m["name"] for m in mods_dicts]
-                ctx.gui_queue.put(("modlist", mods))
-            except Exception as exc:
-                logger.error("Error updating modlist in GUI: %s", exc)
-            await asyncio.sleep(10)
-
-    asyncio.create_task(process_logic())
-    asyncio.create_task(update_mods_periodic())
-    
-    # Run Tkinter in main thread
-    await asyncio.to_thread(gui.run)
+    if args.mode == "gui":
+        run_gui_mode(args)
+    else:
+        try:
+            asyncio.run(_main_async(args))
+        except KeyboardInterrupt:
+            pass
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)
