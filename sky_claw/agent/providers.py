@@ -78,7 +78,7 @@ class AnthropicProvider(LLMProvider):
     """Anthropic Messages API provider."""
 
     API_URL = "https://api.anthropic.com/v1/messages"
-    DEFAULT_MODEL = "claude-sonnet-4-6"
+    DEFAULT_MODEL = "claude-3-5-sonnet-20240620"
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -294,10 +294,10 @@ class OpenAIProvider(LLMProvider):
 
 
 class DeepSeekProvider(LLMProvider):
-    """DeepSeek API provider (OpenAI-compatible)."""
+    """DeepSeek API Provider."""
 
-    API_URL = "https://api.deepseek.com/v1/chat/completions"
     DEFAULT_MODEL = "deepseek-chat"
+    API_URL = "https://api.deepseek.com/v1/chat/completions"
 
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
@@ -316,7 +316,9 @@ class DeepSeekProvider(LLMProvider):
         system_prompt: str = "",
         model: str = "",
     ) -> dict[str, Any]:
-        model = model or self.DEFAULT_MODEL
+        # Forzamos el modelo si viene vacío o con espacios
+        model = model.strip() if (model and model.strip()) else self.DEFAULT_MODEL
+        
         oai_messages = _convert_messages_to_openai(messages)
         if system_prompt:
             oai_messages.insert(0, {"role": "system", "content": system_prompt})
@@ -401,6 +403,7 @@ def create_provider(
     *,
     provider_name: str | None = None,
     api_key: str | None = None,
+    model: str | None = None,
 ) -> LLMProvider:
     """Create an LLM provider based on environment and arguments.
 
@@ -409,6 +412,7 @@ def create_provider(
     Args:
         provider_name: Ignored.
         api_key: Override API key.
+        model: Override model name.
 
     Returns:
         An initialised :class:`LLMProvider`.
@@ -419,5 +423,8 @@ def create_provider(
     key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
     if not key:
         raise ProviderConfigError("DEEPSEEK_API_KEY is required for DeepSeek provider")
+    
     logger.info("Using DeepSeek provider")
+    # Pasamos el modelo al constructor o lo dejamos para la llamada chat()
+    # DeepSeekProvider ahora maneja el modelo en chat() para cumplir con LLMProvider interface
     return DeepSeekProvider(key)

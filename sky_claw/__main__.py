@@ -49,6 +49,7 @@ from sky_claw.tools_installer import (
 )
 from sky_claw.agent.animation_hub import AnimationHub, EngineConfig
 from sky_claw.local_config import load as load_local_config
+from sky_claw.orchestrator.supervisor import SupervisorAgent
 
 logger = logging.getLogger("sky_claw")
 
@@ -257,7 +258,7 @@ class AppContext:
 
         provider_name = self._args.provider if self._args.provider else local_cfg.llm_provider
         try:
-            provider = create_provider(provider_name=provider_name)
+            provider = create_provider(provider_name=provider_name, model=local_cfg.llm_model)
             logger.info("Provider created: %s (model: %s)", type(provider).__name__, local_cfg.llm_model)
         except ProviderConfigError as exc:
             logger.warning("LLM provider config error: %s — falling back to Ollama", exc)
@@ -639,6 +640,10 @@ def run_gui_mode(args):
         
         # Log de éxito en la consola de la UI
         logger.info("GUI y Contexto iniciados correctamente.")
+
+        supervisor = SupervisorAgent()
+        asyncio.create_task(supervisor.start())
+        logger.info("Sky-Claw Daemon Core inicializado en background.")
 
     # Arrancamos el servidor
     ui.run(
