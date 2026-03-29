@@ -8,8 +8,8 @@ from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 import sys
 from pathlib import Path
 
-# Zero Trust AST Import (Cross-Platform/WSL2 Resolution)
-WORK_DIR = Path(__file__).resolve().parent.parent.parent.parent
+# Zero Trust AST Import (Local Repo Resolution)
+WORK_DIR = Path(__file__).resolve().parent.parent.parent
 AST_SKILLS_PATH = WORK_DIR / ".agents" / "skills" / "skyclaw-purple-auditor" / "scripts"
 if str(AST_SKILLS_PATH) not in sys.path:
     sys.path.append(str(AST_SKILLS_PATH))
