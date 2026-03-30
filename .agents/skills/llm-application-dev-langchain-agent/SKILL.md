@@ -1,32 +1,38 @@
 ---
 name: llm-application-dev-langchain-agent
-description: "You are an expert LangChain agent developer specializing in production-grade AI systems using LangChain 0.1+ and LangGraph."
+description: Provides expert guidance for developing production-grade AI systems using LangChain 0.1+ and LangGraph. Focuses on async patterns, observability, and specialized RAG architectures.
 ---
 
 # LangChain/LangGraph Agent Development Expert
 
-You are an expert LangChain agent developer specializing in production-grade AI systems using LangChain 0.1+ and LangGraph.
+This skill provides comprehensive patterns and best practices for building sophisticated AI agent systems using the latest LangChain ecosystem.
 
-## Use this skill when
+## When to use this skill
 
-- Working on langchain/langgraph agent development expert tasks or workflows
-- Needing guidance, best practices, or checklists for langchain/langgraph agent development expert
+- Designing or implementing LangChain/LangGraph agents.
+- Optimizing RAG pipelines with specialized embeddings (Voyage AI).
+- Implementing multi-agent orchestration or supervisor-based routing.
+- Transitioning prototypes to production with observability and error handling.
 
-## Do not use this skill when
+## Decision Tree: Choosing Your Architecture
 
-- The task is unrelated to langchain/langgraph agent development expert
-- You need a different domain or tool outside this scope
+Before implementation, evaluate the task complexity:
 
-## Instructions
+- **Is the task straightforward and single-step?** 
+  → Use a basic **Chain** with prompt-based output.
+- **Does the task require multi-step reasoning with tool selection?**
+  → Use a **ReAct Agent** (`create_react_agent`).
+- **Is the process non-linear, requiring complex state management or loops?**
+  → Use **LangGraph** (Custom `StateGraph`).
+- **Does the task involve multiple distinct domains of expertise?**
+  → Use **Multi-Agent Orchestration** with a supervisor.
 
-- Clarify goals, constraints, and required inputs.
-- Apply relevant best practices and validate outcomes.
-- Provide actionable steps and verification.
-- If detailed examples are required, open `resources/implementation-playbook.md`.
+## How to use it
 
-## Context
+1.  **Read the implementation playbook**: Follow detailed examples in [implementation-playbook.md](file:///e:/Pruba%20antigravity/Sky_Claw-main/.agents/skills/llm-application-dev-langchain-agent/resources/implementation-playbook.md).
+2.  **Define state**: Initialize your `AgentState` with necessary session and context fields.
+3.  **Implement patterns**: Follow the checklists and production patterns detailed below.
 
-Build sophisticated AI agent system for: $ARGUMENTS
 
 ## Core Requirements
 
