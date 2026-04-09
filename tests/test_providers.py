@@ -19,6 +19,7 @@ from sky_claw.agent.providers import (
     _convert_tools_to_openai,
     _parse_openai_response,
 )
+from sky_claw.security.network_gateway import NetworkGateway
 
 
 # ------------------------------------------------------------------
@@ -193,6 +194,9 @@ class TestDeepSeekProvider:
         session = MagicMock(spec=aiohttp.ClientSession)
         session.post = MagicMock(return_value=mock_response)
 
+        mock_gateway = MagicMock(spec=NetworkGateway)
+        mock_gateway.request = AsyncMock(return_value=mock_response)
+
         messages = [{"role": "user", "content": "Hola"}]
         tools = [
             {
@@ -203,15 +207,15 @@ class TestDeepSeekProvider:
         ]
 
         result = await provider.chat(
-            messages, tools, session, system_prompt="You are helpful"
+            messages, tools, session, gateway=mock_gateway, system_prompt="You are helpful"
         )
 
         assert result["stop_reason"] == "end_turn"
         assert result["content"][0]["text"] == "Hola!"
 
         # Verify the request was made correctly
-        call_args = session.post.call_args
-        assert "api.deepseek.com" in call_args[0][0]
+        call_args = mock_gateway.request.call_args
+        assert "api.deepseek.com" in call_args[0][1]
         body = call_args[1]["json"]
         assert body["model"] == "deepseek-chat"
         assert body["messages"][0]["role"] == "system"
@@ -224,6 +228,7 @@ class TestDeepSeekProvider:
         provider = DeepSeekProvider(api_key="key")
 
         mock_response = MagicMock()
+        mock_response.status = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json = AsyncMock(
             return_value={
@@ -253,8 +258,11 @@ class TestDeepSeekProvider:
         session = MagicMock(spec=aiohttp.ClientSession)
         session.post = MagicMock(return_value=mock_response)
 
+        mock_gateway = MagicMock(spec=NetworkGateway)
+        mock_gateway.request = AsyncMock(return_value=mock_response)
+
         result = await provider.chat(
-            [{"role": "user", "content": "busca USSEP"}], [], session
+            [{"role": "user", "content": "busca USSEP"}], [], session, gateway=mock_gateway
         )
 
         assert result["stop_reason"] == "tool_use"
@@ -273,6 +281,7 @@ class TestOllamaProvider:
         provider = OllamaProvider(base_url="http://localhost:11434")
 
         mock_response = MagicMock()
+        mock_response.status = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json = AsyncMock(
             return_value={
@@ -290,12 +299,15 @@ class TestOllamaProvider:
         session = MagicMock(spec=aiohttp.ClientSession)
         session.post = MagicMock(return_value=mock_response)
 
+        mock_gateway = MagicMock(spec=NetworkGateway)
+        mock_gateway.request = AsyncMock(return_value=mock_response)
+
         result = await provider.chat(
-            [{"role": "user", "content": "test"}], [], session
+            [{"role": "user", "content": "test"}], [], session, gateway=mock_gateway
         )
 
         assert result["stop_reason"] == "end_turn"
-        call_url = session.post.call_args[0][0]
+        call_url = mock_gateway.request.call_args[0][1]
         assert "localhost:11434" in call_url
         assert "/v1/chat/completions" in call_url
 
@@ -304,6 +316,7 @@ class TestOllamaProvider:
         provider = OllamaProvider()
 
         mock_response = MagicMock()
+        mock_response.status = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json = AsyncMock(
             return_value={"choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]}
@@ -314,10 +327,13 @@ class TestOllamaProvider:
         session = MagicMock(spec=aiohttp.ClientSession)
         session.post = MagicMock(return_value=mock_response)
 
-        await provider.chat([{"role": "user", "content": "x"}], [], session)
+        mock_gateway = MagicMock(spec=NetworkGateway)
+        mock_gateway.request = AsyncMock(return_value=mock_response)
+
+        await provider.chat([{"role": "user", "content": "x"}], [], session, gateway=mock_gateway)
 
         # Ollama doesn't send auth headers
-        call_kwargs = session.post.call_args[1]
+        call_kwargs = mock_gateway.request.call_args[1]
         assert "headers" not in call_kwargs
 
 
@@ -332,6 +348,7 @@ class TestAnthropicProvider:
         provider = AnthropicProvider(api_key="sk-test")
 
         mock_response = MagicMock()
+        mock_response.status = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json = AsyncMock(
             return_value={
@@ -345,17 +362,21 @@ class TestAnthropicProvider:
         session = MagicMock(spec=aiohttp.ClientSession)
         session.post = MagicMock(return_value=mock_response)
 
+        mock_gateway = MagicMock(spec=NetworkGateway)
+        mock_gateway.request = AsyncMock(return_value=mock_response)
+
         result = await provider.chat(
             [{"role": "user", "content": "hi"}],
             [],
             session,
+            gateway=mock_gateway,
             system_prompt="test",
         )
 
         assert result["stop_reason"] == "end_turn"
         assert result["content"][0]["text"] == "Done"
 
-        headers = session.post.call_args[1]["headers"]
+        headers = mock_gateway.request.call_args[1]["headers"]
         assert headers["x-api-key"] == "sk-test"
         assert "anthropic-version" in headers
 
