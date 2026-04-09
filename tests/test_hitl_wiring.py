@@ -314,7 +314,7 @@ class TestHITLNotifyFn:
         # Trigger request but immediately respond so it doesn't block.
         async def _respond() -> None:
             await asyncio.sleep(0.01)
-            guard.respond("req-notify-test", approved=True)
+            await guard.respond("req-notify-test", approved=True)
 
         asyncio.create_task(_respond())
         await guard.request_approval("req-notify-test", "Download mod X", detail="file.zip")
@@ -341,7 +341,7 @@ class TestHITLNotifyFn:
 
         async def _respond() -> None:
             await asyncio.sleep(0.01)
-            guard.respond("safe-req", approved=False)
+            await guard.respond("safe-req", approved=False)
 
         asyncio.create_task(_respond())
         decision = await guard.request_approval("safe-req", "test")
@@ -362,7 +362,7 @@ class TestHITLNotifyFn:
 
         async def _respond() -> None:
             await asyncio.sleep(0.01)
-            guard.respond("no-chat-req", approved=True)
+            await guard.respond("no-chat-req", approved=True)
 
         asyncio.create_task(_respond())
         decision = await guard.request_approval("no-chat-req", "test")
@@ -380,7 +380,7 @@ class TestHITLNotifyFn:
 
         async def _respond() -> None:
             await asyncio.sleep(0.05)
-            guard.respond("bad-notify-req", approved=True)
+            await guard.respond("bad-notify-req", approved=True)
 
         asyncio.create_task(_respond())
         # Should propagate the exception from notify_fn — callers wrap it.

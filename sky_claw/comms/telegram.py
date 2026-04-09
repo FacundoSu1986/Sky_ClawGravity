@@ -7,6 +7,7 @@ and processes the message in a background task.
 
 from __future__ import annotations
 
+import os
 import asyncio
 import collections
 import logging
@@ -103,6 +104,7 @@ class TelegramWebhook:
         session: aiohttp.ClientSession,
         hitl: HITLGuard | None = None,
         secret_token: str | None = None,
+        authorized_user_id: int | None = None,
     ) -> None:
         self._router = router
         self._sender = sender
@@ -111,6 +113,54 @@ class TelegramWebhook:
         self._secret_token = secret_token
         self._seen_updates: collections.OrderedDict[int, None] = collections.OrderedDict()
         self._tasks: set[asyncio.Task[None]] = set()
+        # Asignamos directamente desde la inyección de dependencias
+        self._allowed_user_id = authorized_user_id
+
+    def _validate_sender(self, message_or_callback: dict[str, Any]) -> bool:
+        """Valida que el mensaje no sea reenviado y el usuario esté autorizado.
+        
+        Args:
+            message_or_callback: Diccionario con datos del mensaje o callback_query.
+                Para mensajes: debe contener 'from' y opcionalmente 'forward_date'/'forward_from'.
+                Para callbacks: debe contener 'from' y 'message'.
+        
+        Returns:
+            True si el remitente está autorizado y el mensaje no es reenviado.
+        """
+        if self._allowed_user_id is None:
+            logger.warning("TELEGRAM_ALLOWED_USER_ID no configurado - rechazando comando HITL")
+            return False
+        
+        # Obtener usuario del mensaje/callback
+        from_user = message_or_callback.get("from", {})
+        user_id = from_user.get("id")
+        
+        # Verificar que el usuario esté autorizado
+        if user_id != self._allowed_user_id:
+            return False
+        
+        # Verificar que no sea un mensaje reenviado (para callbacks, verificar el mensaje original)
+        if message_or_callback.get("forward_date") is not None:
+            return False
+        if message_or_callback.get("forward_from") is not None:
+            return False
+        
+        # Para callbacks, verificar también el mensaje asociado
+        message = message_or_callback.get("message", {})
+        if message:
+            if message.get("forward_date") is not None:
+                return False
+            if message.get("forward_from") is not None:
+                return False
+
+        # Verificar reply_to_message — un reply a un mensaje reenviado también es sospechoso
+        reply_msg = message_or_callback.get("reply_to_message") or message.get("reply_to_message")
+        if reply_msg:
+            if reply_msg.get("forward_date") is not None or reply_msg.get("forward_from") is not None:
+                logger.warning("Blocked: reply to forwarded message from potentially unauthorized source")
+                return False
+
+        return True
 
     async def handle_update(self, request: web.Request) -> web.Response:
         """Handle an incoming Telegram update.
@@ -173,7 +223,7 @@ class TelegramWebhook:
             if parsed is not None:
                 approved, request_id = parsed
                 task = asyncio.create_task(
-                    self._handle_hitl_command(chat_id, approved, request_id, update_id)
+                    self._handle_hitl_command(chat_id, approved, request_id, update_id, message)
                 )
                 self._tasks.add(task)
                 task.add_done_callback(self._tasks.discard)
@@ -239,6 +289,16 @@ class TelegramWebhook:
 
     async def _handle_callback_query(self, query: dict[str, Any]) -> None:
         """Handle an operator clicking an inline button (Approve/Deny)."""
+        # H-03: Validación anti-spoofing
+        if not self._validate_sender(query):
+            logger.warning("Intento de spoofing HITL detectado y bloqueado en callback_query.")
+            callback_id = query.get("id")
+            if callback_id:
+                # CORRECCIÓN: Garantizar correcta concatenación de la URL
+                url = self._sender._url.rstrip("/") + "/answerCallbackQuery"
+                await self._session.post(url, json={"callback_query_id": callback_id, "text": "Unauthorized", "show_alert": False})
+            return
+        
         data = query.get("data", "")
         chat = query.get("message", {}).get("chat", {})
         chat_id = chat.get("id")
@@ -259,13 +319,14 @@ class TelegramWebhook:
         approved = (action == "approve")
 
         if self._hitl is not None:
-            found = self._hitl.respond(request_id, approved)
+            found = await self._hitl.respond(request_id, approved)
             verb = "Approved" if approved else "Denied"
             
             # Answer callback to remove loading state in Telegram
             callback_id = query.get("id")
             if callback_id:
-                url = self._sender._url + "answerCallbackQuery"
+                # CORRECCIÓN: Garantizar correcta concatenación de la URL
+                url = self._sender._url.rstrip("/") + "/answerCallbackQuery"
                 await self._session.post(url, json={"callback_query_id": callback_id})
 
             if found:
@@ -280,6 +341,7 @@ class TelegramWebhook:
         approved: bool,
         request_id: str,
         update_id: int,
+        message: dict[str, Any] | None = None,
     ) -> None:
         """Deliver an operator HITL decision and confirm via Telegram.
 
@@ -287,8 +349,14 @@ class TelegramWebhook:
         the outcome.  If no pending request exists for *request_id*, a
         "not found" message is sent instead.
         """
+        # H-03: Validación anti-spoofing
+        if message is not None:
+            if not self._validate_sender(message):
+                logger.warning("Intento de spoofing HITL detectado y bloqueado.")
+                return
+        
         assert self._hitl is not None
-        found = self._hitl.respond(request_id, approved)
+        found = await self._hitl.respond(request_id, approved)
         verb = "approved" if approved else "denied"
         try:
             if found:

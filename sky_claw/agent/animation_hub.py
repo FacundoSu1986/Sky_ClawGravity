@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import pathlib
+import sys
 from dataclasses import dataclass
 
 from sky_claw.mo2.vfs import MO2Controller
@@ -42,26 +43,33 @@ class AnimationHub:
         self._config = config
         self._validator = path_validator
 
-    async def run_pandora(self) -> str:
+    async def run_pandora(self) -> dict:
         """Execute Pandora Behavior Engine to update animations.
-        
+
         Pandora replaces Nemesis/FNIS. It reads animation files and generates
         behavior graphs in the MO2 Overwrite folder.
         """
         exe = self._config.pandora_exe
         if not exe or not exe.exists():
-            return "Error: Pandora Behavior Engine executable not found or not configured."
+            return {"status": "error", "message": "Error: Pandora Behavior Engine executable not found or not configured."}
 
         if self._validator:
-            self._validator.validate(exe)
+            try:
+                self._validator.validate(exe)
+            except Exception as exc:
+                return {"status": "error", "message": f"Path validation failed: {exc}"}
 
         logger.info("Executing Pandora Behavior Engine via CLI...")
-        
+
         args = [
             str(exe),
             "--launch",  # Assuming headless/CLI flags for Pandora
             "--headless"
         ]
+
+        kwargs: dict = {}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
 
         try:
             # Note: In a real implementation we would wrap this via MO2's virtual execution
@@ -70,50 +78,74 @@ class AnimationHub:
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                **kwargs,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
         except asyncio.TimeoutError:
             proc.kill()
-            await proc.communicate()
-            return "Error: Pandora timed out after 5 minutes."
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=3.0)
+            except asyncio.TimeoutError:
+                pass
+            return {"status": "error", "message": "Error: Pandora timed out after 5 minutes."}
         except Exception as exc:
-            return f"Error executing Pandora: {exc}"
+            return {"status": "error", "message": f"Error executing Pandora: {exc}"}
 
-        return "Pandora Behavior Engine completed successfully. Behaviors generated."
+        if proc.returncode != 0:
+            err_text = stderr.decode(errors="replace").strip() if stderr else ""
+            logger.error("Pandora exited with code %d: %s", proc.returncode, err_text)
+            return {"status": "error", "message": f"Pandora exited with code {proc.returncode}."}
 
-    async def run_bodyslide_batch(self) -> str:
-        """Execute BodySlide in batch mode to generate meshes based on presets.
-        """
+        return {"status": "success", "message": "Pandora Behavior Engine completed successfully. Behaviors generated."}
+
+    async def run_bodyslide_batch(self) -> dict:
+        """Execute BodySlide in batch mode to generate meshes based on presets."""
         exe = self._config.bodyslide_exe
         if not exe or not exe.exists():
-            return "Error: BodySlide executable not found or not configured."
+            return {"status": "error", "message": "Error: BodySlide executable not found or not configured."}
 
         if self._validator:
-            self._validator.validate(exe)
+            try:
+                self._validator.validate(exe)
+            except Exception as exc:
+                return {"status": "error", "message": f"Path validation failed: {exc}"}
 
         logger.info("Executing BodySlide Batch Build...")
 
         # BodySlide CLI flags typical for headless batch building.
         args = [
             str(exe),
-            "-g", "Build", 
-            "-p", "CBBE Body Physics", # Default preset
+            "-g", "Build",
+            "-p", "CBBE Body Physics",  # Default preset
             "-t", "CBBE",
             # Outpath normally defaults to the overwrite or data folder
         ]
+
+        kwargs: dict = {}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                **kwargs,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
         except asyncio.TimeoutError:
             proc.kill()
-            await proc.communicate()
-            return "Error: BodySlide timed out after 10 minutes."
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=3.0)
+            except asyncio.TimeoutError:
+                pass
+            return {"status": "error", "message": "Error: BodySlide timed out after 10 minutes."}
         except Exception as exc:
-            return f"Error executing BodySlide: {exc}"
+            return {"status": "error", "message": f"Error executing BodySlide: {exc}"}
 
-        return "BodySlide batch build completed successfully."
+        if proc.returncode != 0:
+            err_text = stderr.decode(errors="replace").strip() if stderr else ""
+            logger.error("BodySlide exited with code %d: %s", proc.returncode, err_text)
+            return {"status": "error", "message": f"BodySlide exited with code {proc.returncode}."}
+
+        return {"status": "success", "message": "BodySlide batch build completed successfully."}

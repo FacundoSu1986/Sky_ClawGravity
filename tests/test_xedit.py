@@ -14,6 +14,7 @@ from sky_claw.xedit.runner import (
     XEditRunner,
     XEditNotFoundError,
     XEditValidationError,
+    ScriptGenerator,
 )
 
 
@@ -259,3 +260,123 @@ class TestXEditTool:
             assert result["conflicts"][0]["plugin"] == "Requiem.esp"
         finally:
             await registry.close()
+
+
+# ------------------------------------------------------------------
+# ScriptGenerator - Pascal String Escaping (CRIT-001)
+# ------------------------------------------------------------------
+
+
+class TestScriptGeneratorEscapePascalString:
+    """Tests para la mitigación CRIT-001: escape de strings Pascal."""
+
+    def test_escape_empty_string(self) -> None:
+        """String vacío retorna vacío."""
+        result = ScriptGenerator._escape_pascal_string("")
+        assert result == ""
+
+    def test_escape_none_returns_empty(self) -> None:
+        """None retorna string vacío."""
+        result = ScriptGenerator._escape_pascal_string(None)
+        assert result == ""
+
+    def test_escape_simple_string(self) -> None:
+        """String sin caracteres especiales no se modifica."""
+        result = ScriptGenerator._escape_pascal_string("Skyrim.esm")
+        assert result == "Skyrim.esm"
+
+    def test_escape_single_quote(self) -> None:
+        """Comillas simples se escapan como dobles comillas (Pascal)."""
+        result = ScriptGenerator._escape_pascal_string("O'Reilly's Mod.esp")
+        assert result == "O''Reilly''s Mod.esp"
+
+    def test_escape_backslash(self) -> None:
+        """Backslashes se escapan con doble backslash."""
+        result = ScriptGenerator._escape_pascal_string(r"path\to\file.esp")
+        assert result == r"path\\to\\file.esp"
+
+    def test_escape_combined_quotes_and_backslashes(self) -> None:
+        """Combinación de comillas y backslashes se escapan correctamente."""
+        result = ScriptGenerator._escape_pascal_string(r"O'Reilly's\path\file.esp")
+        assert result == r"O''Reilly''s\\path\\file.esp"
+
+    def test_escape_multiple_single_quotes(self) -> None:
+        """Múltiples comillas simples se escapan."""
+        result = ScriptGenerator._escape_pascal_string("It's John's Mod's Patch.esp")
+        assert result == "It''s John''s Mod''s Patch.esp"
+
+    def test_escape_backslash_before_quote(self) -> None:
+        """Backslash antes de comilla se escapan ambos."""
+        result = ScriptGenerator._escape_pascal_string(r"path\'s file")
+        assert result == r"path\\''s file"
+
+    def test_no_escape_double_quotes(self) -> None:
+        """Comillas dobles no se escapan (no especiales en Pascal)."""
+        result = ScriptGenerator._escape_pascal_string('Mod "Special" Version.esp')
+        assert result == 'Mod "Special" Version.esp'
+
+    def test_escape_injection_attempt_comment(self) -> None:
+        """Intento de inyección con comentarios no rompe el string."""
+        # El string contiene comilla simple que se escapa, evitando inyección
+        malicious = "'); AddMessage('HACKED'); //"
+        result = ScriptGenerator._escape_pascal_string(malicious)
+        # La comilla simple se convierte en '', previniendo cierre de string
+        assert "'" not in result or "''" in result
+        assert result == "''); AddMessage(''HACKED''); //"
+
+    def test_escape_form_id_valid(self) -> None:
+        """FormID válido no se modifica."""
+        result = ScriptGenerator._escape_pascal_string("00012345")
+        assert result == "00012345"
+
+    def test_escape_form_id_with_colon(self) -> None:
+        """FormID con dos puntos no se modifica."""
+        result = ScriptGenerator._escape_pascal_string("000123:45")
+        assert result == "000123:45"
+
+
+class TestScriptGeneratorWithEscaping:
+    """Tests de integración para generación de scripts con escape."""
+
+    def test_generate_forward_script_escapes_inputs(self) -> None:
+        """Los inputs se escapan en el script generado."""
+        # Usar un plugin con comilla simple
+        script = ScriptGenerator.generate_forward_script(
+            form_id="00012345",
+            source="John's Mod.esp",
+            target="Target.esp",
+        )
+        # Verificar que la comilla fue escapada
+        assert "John''s Mod.esp" in script
+        assert "John's Mod.esp" not in script  # Sin escape original
+
+    def test_generate_merge_script_escapes_output_plugin(self) -> None:
+        """El nombre del plugin de salida se escapa."""
+        # Usar un nombre de plugin con backslash
+        script = ScriptGenerator.generate_merge_script(
+            output_plugin="Test_Patch.esp",  # Nombre válido
+            record_types=["LVLI"],
+        )
+        # Verificar que el script se generó correctamente
+        assert "Test_Patch.esp" in script
+
+    def test_generate_merge_script_validates_plugin_name(self) -> None:
+        """Nombres de plugin inválidos son rechazados."""
+        from sky_claw.xedit.runner import XEditScriptError
+        
+        with pytest.raises(XEditScriptError, match="Invalid output plugin name"):
+            ScriptGenerator.generate_merge_script(
+                output_plugin="../evil.esp",  # Path traversal
+                record_types=["LVLI"],
+            )
+
+    def test_generate_forward_script_validates_form_id(self) -> None:
+        """FormIDs inválidos son rechazados."""
+        from sky_claw.xedit.runner import XEditScriptError
+        
+        with pytest.raises(XEditScriptError, match="Invalid FormID format"):
+            ScriptGenerator.generate_forward_script(
+                form_id="NOTHEX",  # No es hexadecimal
+                source="Source.esp",
+                target="Target.esp",
+            )

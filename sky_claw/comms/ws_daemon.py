@@ -96,7 +96,13 @@ class TelegramDaemon:
                 
                 # Command injection for asynchronous processing
                 if data.get("type") == "command":
-                    asyncio.create_task(self._inject_to_router(data))
+                    task = asyncio.create_task(self._inject_to_router(data))
+                    task.add_done_callback(
+                        lambda t: logger.error(
+                            "Error no manejado en _inject_to_router: %s",
+                            t.exception(),
+                        ) if not t.cancelled() and t.exception() is not None else None
+                    )
                 
             except json.JSONDecodeError:
                 logger.error("🚫 Recibido JSON malformado desde el Gateway.")

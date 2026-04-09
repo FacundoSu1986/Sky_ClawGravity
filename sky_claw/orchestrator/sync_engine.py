@@ -6,8 +6,10 @@ mod-metadata fetches to a pool of async workers (consumers) through an
 :class:`AsyncModRegistry`.
 
 Includes a fully automated Update Cycle with controlled concurrency and
-robust exception handling to prevent single-mod failures from crashing
+ robust exception handling to prevent single-mod failures from crashing
 entire batches.
+
+FASE 1.5: Integración with RollbackManager for atomic file operations.
 """
 
 from __future__ import annotations
@@ -16,8 +18,11 @@ import asyncio
 import configparser
 import logging
 import os
+import pathlib
 from dataclasses import dataclass, field
-from typing import Any, Coroutine
+from datetime import datetime
+from typing import Any, Coroutine, Dict, Optional
+from collections import defaultdict
 
 import aiohttp
 from tenacity import (
@@ -27,7 +32,6 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-
 from sky_claw.db.async_registry import AsyncModRegistry
 from sky_claw.config import SystemPaths
 from sky_claw.scraper.masterlist import (
@@ -38,10 +42,17 @@ from sky_claw.scraper.masterlist import (
 from sky_claw.mo2.vfs import MO2Controller
 from sky_claw.scraper.nexus_downloader import NexusDownloader
 from sky_claw.security.hitl import HITLGuard, Decision
+# FASE 1.5: Imports de componentes de rollback
+from sky_claw.db.journal import OperationJournal, OperationStatus, OperationType
+from sky_claw.db.rollback_manager import RollbackManager, RollbackResult
+from sky_claw.db.snapshot_manager import FileSnapshotManager
 
 logger = logging.getLogger(__name__)
 
 _POISON = None
+
+# FASE 1.5: Constante para directorio de staging de backups
+BACKUP_STAGING_DIR = pathlib.Path(".skyclaw_backups/")
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +63,12 @@ class SyncConfig:
     max_retries: int = 5
     api_semaphore_limit: int = 4
     queue_maxsize: int = 200
+    # FASE 1.5: Configuración de rollback
+    enable_rollback: bool = True
+    rollback_max_size_mb: int = 1024  # Default 1GB
+
+
+    max_pruning_age_days: int = 30  # Días para pruning
 
 
 @dataclass
@@ -61,6 +78,10 @@ class SyncResult:
     failed: int = 0
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
+    # FASE 1.5: Campos de rollback
+    rollback_performed: bool = False
+    rollback_success: bool = False
+    rollback_transaction_id: int | None = None
 
 
 @dataclass
@@ -70,10 +91,46 @@ class UpdatePayload:
     updated_mods: list[dict[str, Any]] = field(default_factory=list)
     failed_mods: list[dict[str, Any]] = field(default_factory=list)
     up_to_date_mods: list[str] = field(default_factory=list)
+    # FASE 1.5: Campos de rollback
+    rollback_performed: bool = False
+    rollback_transaction_id: int | None = None
+
+
+# BUG-001 FIX: SyncMetrics refactorizado como dataclass con asyncio.Lock
+@dataclass
+class SyncMetrics:
+    """Métricas asíncronas del SyncEngine."""
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    _error_count: int = field(default=0, init=False)
+    _error_types: Dict[str, int] = field(default_factory=lambda: defaultdict(int), init=False)
+    
+    async def get_error_count(self) -> int:
+        """Retorna el contador de errores."""
+        async with self._lock:
+            return self._error_count
+    
+    async def get_error_types(self) -> Dict[str, int]:
+        """Retorna una copia del diccionario de tipos de errores."""
+        async with self._lock:
+            return dict(self._error_types)
+    
+    async def record_error(self, error: Exception) -> None:
+        """Registra un error de forma asíncrona."""
+        async with self._lock:
+            self._error_count += 1
+            self._error_types[type(error).__name__] += 1
+    
+    async def increment_error_type(self, error_type_name: str) -> None:
+        """Incrementa un tipo de error específico de forma asíncrona."""
+        async with self._lock:
+            self._error_count += 1
+            self._error_types[error_type_name] += 1
 
 
 class SyncEngine:
     """Orchestrator for mod synchronisation and automatic updates.
+    
+    FASE 1.5: Integración con RollbackManager para operaciones at archivos at resiliencia.
 
     Parameters
     ----------
@@ -87,6 +144,8 @@ class SyncEngine:
         Engine tunables (worker count, batch size, retry policy).
     downloader:
         Robust Nexus downloader (Required for automatic updates).
+    rollback_manager:
+        FASE 1.5: Gestor de rollback para operaciones de archivos.
     """
 
     def __init__(
@@ -97,6 +156,7 @@ class SyncEngine:
         config: SyncConfig | None = None,
         downloader: NexusDownloader | None = None,
         hitl: HITLGuard | None = None,
+        rollback_manager: RollbackManager | None = None,  # FASE 1.5
     ) -> None:
         self._mo2 = mo2
         self._masterlist = masterlist
@@ -104,8 +164,13 @@ class SyncEngine:
         self._cfg = config or SyncConfig()
         self._downloader = downloader
         self._hitl = hitl
+        self._rollback_manager = rollback_manager  # FASE 1.5
         self._download_tasks: set[asyncio.Task[Any]] = set()
         self._shutdown_event = asyncio.Event()
+        # H-06: Inicializar métricas
+        self.metrics = SyncMetrics()
+        # FASE 1.5: ID de agente para journal
+        self._agent_id = "sync_engine"
 
     # ------------------------------------------------------------------
     # Lifecycle & Shutdown
@@ -125,6 +190,135 @@ class SyncEngine:
             self._download_tasks.clear()
         
         logger.info("SyncEngine shutdown complete.")
+    
+    # ------------------------------------------------------------------
+    # FASE 1.5: Unit of Work Pattern para File Operations
+    # ------------------------------------------------------------------
+    
+    async def execute_file_operation(
+        self,
+        operation_type: OperationType,
+        target_path: pathlib.Path,
+        operation: Coroutine[Any, Any, Any],
+        description: str = "",
+    ) -> Any:
+        """
+        Ejecuta una operación de archivo con patrón Unit of Work.
+        
+        Flujo:
+        1. Capturar snapshot del archivo original (si existe)
+        2. Registrar operación en journal con estado STARTED
+        3. Ejecutar la operación
+        4. Si éxito: marcar como COMPLETED
+        5. Si fallo: marcar como FAILED y ejecutar rollback automático
+        
+        Args:
+            operation_type: Tipo de operación
+            target_path: Path al archivo afectado
+            operation: Corutina que ejecuta la operación
+            description: Descripción de la operación
+            
+        Returns:
+            Resultado de la operación
+        """
+        if self._rollback_manager is None:
+            # Sin rollback manager, ejecutar sin transaccional
+            return await operation
+        
+        transaction_id: int | None = None
+        entry_id: int | None = None
+        
+        try:
+            # 1. Iniciar transacción
+            transaction_id = await self._rollback_manager._journal.begin_transaction(
+                description=description or f"file_operation: {operation_type.value}",
+                agent_id=self._agent_id
+            )
+            
+            # 2. Capturar snapshot si el archivo existe
+            snapshot_info = None
+            if target_path.exists() and target_path.is_file():
+                snapshot_info = await self._rollback_manager._snapshots.create_snapshot(
+                    target_path,
+                )
+            
+            # 3. Registrar inicio de operación
+            entry_id = await self._rollback_manager._journal.begin_operation(
+                agent_id=self._agent_id,
+                operation_type=operation_type,
+                target_path=str(target_path),
+                transaction_id=transaction_id,
+                snapshot_path=str(snapshot_info.snapshot_path) if snapshot_info else None
+            )
+            
+            # 4. Ejecutar la operación
+            try:
+                result = await operation
+                
+                # 5. Marcar como completada
+                await self._rollback_manager._journal.complete_operation(entry_id)
+                await self._rollback_manager._journal.commit_transaction(transaction_id)
+                
+                return result
+                
+            except Exception as exc:
+                # 6. Error: marcar como fallida y ejecutar rollback
+                logger.error(
+                    "Operación falló, ejecutando rollback automático: %s",
+                    str(exc),
+                    exc_info=True
+                )
+                await self._rollback_manager._journal.fail_operation(
+                    entry_id, 
+                    error=str(exc)
+                )
+                
+                # Ejecutar rollback
+                rollback_result = await self._rollback_manager.undo_last_operation(self._agent_id)
+                rollback_result.success = False
+                
+                raise
+        
+        finally:
+            # FASE 1.5: Pruning pasivo post-ejecución
+            await self._passive_pruning()
+    
+    async def _passive_pruning(self) -> None:
+        """FASE 1.5: Ejecuta pruning pasivo del directorio de backups.
+        
+        Verifica el tamaño del directorio y elimina registros antiguos si excede el límite.
+        """
+        if self._rollback_manager is None:
+            return
+        
+        try:
+            stats = await self._rollback_manager._snapshots.get_stats()
+            max_size = self._get_max_backup_size_bytes()
+            
+            if stats.total_size_bytes > max_size:
+                logger.warning(
+                    "Límite de backups excedido: %d MB > %d MB. Iniciando pruning...",
+                    stats.total_size_bytes // (1024 * 1024),
+                    max_size // (1024 * 1024)
+                )
+                # Limpiar snapshots antiguos
+                result = await self._rollback_manager._snapshots.cleanup_old_snapshots(
+                    days_old=self._cfg.max_pruning_age_days
+                )
+                
+                logger.info(
+                    "Pruning completado: %d snapshots eliminados, %d MB liberados",
+                    result.deleted_count,
+                    result.freed_bytes // (1024 * 1024)
+                )
+        except Exception as e:
+            logger.error("Error durante passive pruning: %s", e)
+    
+    def _get_max_backup_size_bytes(self) -> int:
+        """Obtiene el tamaño máximo de backups desde configuración."""
+        if self._cfg is None:
+            return 1024 * 1024 * 1024  # 1GB default
+        return self._cfg.rollback_max_size_mb * 1024 * 1024
 
     # ------------------------------------------------------------------
     # Automated Update Cycle
@@ -139,7 +333,6 @@ class SyncEngine:
         """
         all_mods = await self._registry.search_mods("")
         tracked_mods = [m for m in all_mods if m.get("installed")]
-
         payload = UpdatePayload(total_checked=len(tracked_mods))
         if not tracked_mods:
             logger.info("No tracked mods found for updates.")
@@ -157,7 +350,6 @@ class SyncEngine:
         
         # Ejecución paralela con contención de fallas
         results = await asyncio.gather(*tasks, return_exceptions=True)
-
         for mod, result in zip(tracked_mods, results):
             if isinstance(result, Exception):
                 logger.error("Error aislando tarea de actualización para %r: %s", mod["name"], result)
@@ -174,7 +366,7 @@ class SyncEngine:
                     payload.up_to_date_mods.append(result["name"])
                 elif status == "error":
                     payload.failed_mods.append(result)
-
+        
         logger.info(
             "Ciclo de actualización completado: %d actualizados, %d al día, %d fallidos.",
             len(payload.updated_mods), len(payload.up_to_date_mods), len(payload.failed_mods)
@@ -198,7 +390,6 @@ class SyncEngine:
             return {"status": "error", "name": mod_name, "nexus_id": nexus_id, "error": "No metadata returned"}
             
         nexus_version = str(info.get("version", ""))
-
         # 2. Comparación de versiones
         if not nexus_version or nexus_version == local_version:
             return {"status": "up_to_date", "name": mod_name}
@@ -253,6 +444,148 @@ class SyncEngine:
             "file_path": str(download_path)
         }
 
+    
+    async def _check_and_update_mod_with_rollback(
+        self,
+        mod: dict[str, Any], 
+        session: aiohttp.ClientSession, 
+        semaphore: asyncio.Semaphore
+    ) -> dict[str, Any]:
+        """FASE 1.5: Worker con soporte de rollback transaccional."""
+        nexus_id = mod["nexus_id"]
+        local_version = mod["version"]
+        mod_name = mod["name"]
+        transaction_id: int | None = None
+        
+        # Usar Unit of Work pattern para operaciones de archivos
+        try:
+            async with self._rollback_manager:
+                # Iniciar transacción
+                transaction_id = await self._rollback_manager._journal.begin_transaction(
+                    description=f"update_{mod_name}",
+                    mod_id=mod.get("nexus_id"),
+                    agent_id=self._agent_id
+                )
+                
+                # Ejecutar actualización con soporte de rollback
+                result = await self._check_and_update_mod_internal(
+                    mod, session, semaphore, transaction_id
+                )
+                
+                # Marcar transacción como committed
+                await self._rollback_manager._journal.commit_transaction(transaction_id)
+                
+                new_version = result.get("new_version", "unknown")
+                return {
+                    "status": "updated",
+                    "name": mod_name,
+                    "nexus_id": nexus_id,
+                    "old_version": local_version,
+                    "new_version": new_version,
+                    "file_path": str(result.get("file_path")),
+                    "rollback_performed": True,
+                    "rollback_transaction_id": transaction_id
+                }
+                
+        except Exception as exc:
+            # Rollback en caso de error
+            logger.error("Error during mod update, executing rollback: %s", exc)
+            try:
+                await self._rollback_manager.undo_last_operation(self._agent_id)
+            except Exception as rollback_exc:
+                logger.critical("Rollback also failed for mod %s: %s", mod_name, str(rollback_exc))
+                return {
+                    "status": "error",
+                    "name": mod_name,
+                    "nexus_id": nexus_id,
+                    "error": f"Update failed, rollback error: {str(rollback_exc)}",
+                    "rollback_performed": True,
+                    "rollback_success": False
+                }
+            return {
+                "status": "error",
+                "name": mod_name,
+                "nexus_id": nexus_id,
+                "error": str(exc),
+                "rollback_performed": True,
+                "rollback_success": True
+            }
+    
+    async def _check_and_update_mod_internal(
+        self,
+        mod: dict[str, Any], 
+        session: aiohttp.ClientSession, 
+        semaphore: asyncio.Semaphore,
+        transaction_id: int
+    ) -> dict[str, Any]:
+        """Implementación interna con soporte de rollback."""
+        nexus_id = mod["nexus_id"]
+        local_version = mod["version"]
+        mod_name = mod["name"]
+        
+        # 1. Fetch metadata con Semáforo y Backoff
+        info = await self._safe_fetch_info(nexus_id, session, semaphore)
+        if not info:
+            return {"status": "error", "name": mod_name, "nexus_id": nexus_id, "error": "No metadata returned"}
+            
+        nexus_version = str(info.get("version", ""))
+        # 2. Comparación de versiones
+        if not nexus_version or nexus_version == local_version:
+            return {"status": "up_to_date", "name": mod_name}
+
+        if self._downloader is None:
+            return {"status": "error", "name": mod_name, "nexus_id": nexus_id, "error": "Downloader not configured"}
+
+        logger.info("Actualización disponible para %s: %s -> %s", mod_name, local_version, nexus_version)
+        # 3. Descarga Robusta (Aplica backoff interno y validación MD5 en NexusDownloader)
+        file_info = await self._downloader.get_file_info(nexus_id, None, session)
+        if self._hitl:
+            desc = f"Update for {mod_name} ({local_version} -> {nexus_version})"
+            decision = await self._hitl.request_approval(
+                request_id=f"update_{nexus_id}",
+                reason="Automatic Mod Update",
+                url=file_info.download_url,
+                detail=desc,
+            )
+            if decision != Decision.APPROVED:
+                logger.warning("Descarga abortada por HITL para %s", mod_name)
+                return {
+                    "status": "error",
+                    "name": mod_name,
+                    "nexus_id": nexus_id,
+                    "error": "Descarga abortada por HITL"
+                }
+
+        download_path = await self._downloader.download(file_info, session)
+
+        # 4. Actualización Atómica en Base de Datos
+        await self._registry.upsert_mod(
+            nexus_id=nexus_id,
+            name=info.get("name", mod_name),
+            version=nexus_version,
+            author=str(info.get("author", "")),
+            category=str(info.get("category_id", "")),
+            download_url=file_info.download_url
+        )
+        
+        await self._registry.log_tasks_batch([(
+            None, "update_mod", "success", f"{mod_name}: {local_version} -> {nexus_version}"
+        )])
+
+        return {
+            "status": "updated",
+            "name": mod_name,
+            "nexus_id": nexus_id,
+            "old_version": local_version,
+            "new_version": nexus_version,
+            "file_path": str(download_path)
+        }
+
+    
+    # ------------------------------------------------------------------
+    # Legacy Update Cycle (without rollback)
+    # ------------------------------------------------------------------
+
     @retry(
         retry=retry_if_exception_type((aiohttp.ClientError, MasterlistFetchError)),
         stop=stop_after_attempt(5),
@@ -284,7 +617,8 @@ class SyncEngine:
         finally:
             for _ in workers:
                 await queue.put(_POISON)
-        await asyncio.gather(*workers)
+        # H-01: return_exceptions=True para prevenir crashes del orquestador
+        await asyncio.gather(*workers, return_exceptions=True)
 
         logger.info("Sync complete: processed=%d failed=%d skipped=%d", result.processed, result.failed, result.skipped)
         return result
@@ -296,13 +630,23 @@ class SyncEngine:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.error("Download task failed with exception: %s", exc, exc_info=exc)
+                # H-02: Logging estructurado para debugging
+                logger.error("worker_download_failed", extra={
+                    "context": context,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
                 detail = f"{context} failed: {exc}"
                 try:
+                    # H-06: Actualizar estado de tarea a "failed" en SQLite
                     await self._registry.log_tasks_batch([(None, "download_mod", "failed", detail)])
                 except Exception as comp_exc:
                     logger.error("Failed to log compensation task: %s", comp_exc)
-                    
+                finally:
+                    # BUG-001 FIX: Usar método thread-safe para registrar errores
+                    await self.metrics.increment_error_type(type(exc).__name__)
+
         task: asyncio.Task[Any] = asyncio.create_task(_download_wrapper())
         self._download_tasks.add(task)
         task.add_done_callback(self._download_tasks.discard)
@@ -329,8 +673,16 @@ class SyncEngine:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.exception("Unexpected error processing batch: %s", exc)
+                # H-02: Logging estructurado para debugging
+                logger.error("batch_processing_failed", extra={
+                    "batch_size": len(batch),
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
                 result.failed += len(batch)
+                # BUG-001 FIX: Usar método loop-safe para registrar errores
+                await self.metrics.increment_error_type(type(exc).__name__)
             finally:
                 queue.task_done()
 

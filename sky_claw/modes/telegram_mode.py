@@ -1,0 +1,31 @@
+from __future__ import annotations
+import asyncio
+
+from sky_claw.comms.telegram import TelegramWebhook
+from sky_claw.comms.telegram_polling import TelegramPolling
+from sky_claw.app_context import AppContext
+
+
+async def _run_telegram(ctx: AppContext, host: str, port: int) -> None:
+    assert ctx.router and ctx.session and ctx.gateway
+    if ctx.sender is None:
+        print("Error: TELEGRAM_BOT_TOKEN required.", file=__import__('sys').stderr)
+        __import__('sys').exit(1)
+    webhook_handler = TelegramWebhook(
+        router=ctx.router, sender=ctx.sender, session=ctx.session, hitl=ctx.hitl
+    )
+    polling = TelegramPolling(
+        token=ctx.sender._token,
+        webhook_handler=webhook_handler,
+        gateway=ctx.gateway,
+        session=ctx.session,
+        authorized_chat_id=ctx._args.operator_chat_id,
+    )
+    await polling.start()
+    print("Telegram polling started. Press Ctrl+C to stop.")
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await polling.stop()

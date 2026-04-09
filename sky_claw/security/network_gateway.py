@@ -12,13 +12,15 @@ Every outbound request made by Sky-Claw **must** pass through
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import ipaddress
 import logging
 import socket
+import ssl
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import aiohttp
 
@@ -35,6 +37,10 @@ class EgressViolation(Exception):
     """Raised when a request violates egress policy."""
 
 
+class NetworkGatewayTimeout(Exception):
+    """Raised when an egress request exceeds the safe timeout bounds."""
+
+
 @dataclass(frozen=True, slots=True)
 class EgressPolicy:
     """Immutable snapshot of the egress rules the gateway evaluates."""
@@ -45,6 +51,55 @@ class EgressPolicy:
     )
     telegram_path_prefix: str = TELEGRAM_PATH_PREFIX
     block_private_ips: bool = True
+
+
+class GatewayTCPConnector(aiohttp.TCPConnector):
+    """Custom TCPConnector that enforces strict SSL and uses a safe resolver to prevent SSRF."""
+    def __init__(self, gateway: NetworkGateway, **kwargs):
+        resolver = SafeResolver(gateway._policy)
+        if "ssl" not in kwargs:
+            kwargs["ssl"] = ssl.create_default_context()
+        super().__init__(resolver=resolver, **kwargs)
+
+class SafeResolver(aiohttp.abc.AbstractResolver):
+    def __init__(self, policy: EgressPolicy):
+        self._policy = policy
+
+    async def resolve(self, host: str, port: int, family: int) -> list[dict[str, Any]]:
+        loop = asyncio.get_running_loop()
+        try:
+            infos = await loop.getaddrinfo(
+                host, port, family=family, type=socket.SOCK_STREAM
+            )
+        except (socket.gaierror, OSError) as e:
+            raise OSError(f"DNS resolution failed for '{host}': {e}")
+            
+        if not infos:
+            raise OSError(f"DNS resolution failed for '{host}'")
+
+        result = []
+        for info in infos:
+            ip_str = info[4][0]
+            try:
+                addr = ipaddress.ip_address(ip_str)
+                if self._policy.block_private_ips and (addr.is_private or addr.is_loopback or addr.is_link_local):
+                    raise EgressViolation(f"Resolved address {addr} for '{host}' is private/loopback (SSRF block)")
+            except ValueError:
+                pass
+            
+            result.append({
+                "hostname": host,
+                "host": ip_str,
+                "port": info[4][1],
+                "family": info[0],
+                "proto": info[2],
+                "flags": socket.AI_NUMERICHOST,
+            })
+            
+        return result
+        
+    async def close(self) -> None:
+        pass
 
 
 class NetworkGateway:
@@ -63,7 +118,7 @@ class NetworkGateway:
     # Public API
     # ------------------------------------------------------------------
 
-    def authorize(self, method: str, url: str) -> None:
+    async def authorize(self, method: str, url: str) -> None:
         """Validate *method* + *url* against the egress policy.
 
         Raises :class:`EgressViolation` when the request is not permitted.
@@ -75,11 +130,13 @@ class NetworkGateway:
         if not hostname:
             raise EgressViolation(f"URL has no hostname: {url}")
 
-        # Private-IP check runs first so that literal IPs (e.g. 127.0.0.1)
-        # are rejected with a clear "private/loopback" message rather than
-        # the generic "not in the allow-list" error.
-        if self._policy.block_private_ips:
-            self._check_not_private_ip(hostname)
+        # Check raw literal IPs just in case
+        try:
+            addr = ipaddress.ip_address(hostname)
+            if self._policy.block_private_ips and (addr.is_private or addr.is_loopback or addr.is_link_local):
+                 raise EgressViolation(f"Literal address {addr} is a private/loopback IP")
+        except ValueError:
+            pass
 
         self._check_host_allowed(hostname)
         self._check_method_allowed(method, hostname)
@@ -93,47 +150,57 @@ class NetworkGateway:
         max_redirects: int = 5,
         **kwargs: Any,
     ) -> aiohttp.ClientResponse:
-        """Authorize and execute an HTTP request with manual redirect validation.
-
-        Enforces 'allow_redirects=False' and manually follows redirects to 
-        validate each hop against the egress policy and security constraints.
-        """
-        # Ensure we don't let aiohttp handle redirects automatically
-        kwargs["allow_redirects"] = False
+        """Authorize and execute an HTTP request with redirect validation.
         
+        DNS Pinning is handled automatically by GatewayTCPConnector.
+        Redirect validation (H4): ``allow_redirects=False`` is enforced. Each redirect
+        Location is re-authorized through the full egress policy before being followed.
+        """
+        kwargs["allow_redirects"] = False
+
         current_url = url
         for hop in range(max_redirects + 1):
-            self.authorize(method, current_url)
-            
-            # Additional scheme and IP validation for every hop
+            await self.authorize(method, current_url)
+
             parsed = urlparse(current_url)
             if parsed.scheme != "https":
-                raise EgressViolation(f"Insecure scheme '{parsed.scheme}' blocked in redirection chain: {current_url}")
-            
-            response = await session.request(method, current_url, **kwargs)
-            
+                raise EgressViolation(
+                    f"Insecure scheme '{parsed.scheme}' blocked: {current_url}"
+                )
+
+            hop_kwargs = dict(kwargs)
+            safe_timeout = aiohttp.ClientTimeout(total=45, connect=10)
+            if 'timeout' not in hop_kwargs:
+                hop_kwargs['timeout'] = safe_timeout
+
+            try:
+                response = await session.request(method, current_url, **hop_kwargs)
+            except asyncio.TimeoutError as _exc:
+                logger.error(f"Timeout al contactar {current_url}")
+                raise NetworkGatewayTimeout(f"La petición a {current_url} excedió el tiempo límite.") from _exc
+
             if response.status in (301, 302, 303, 307, 308):
                 redirect_url = response.headers.get("Location")
                 if not redirect_url:
                     return response
-                
-                # Resolve relative URLs
+                # Resolve relative URLs before the next authorize() call
                 if not urlparse(redirect_url).netloc:
                     base = urlparse(current_url)
                     redirect_url = f"{base.scheme}://{base.netloc}{redirect_url}"
-                
                 current_url = redirect_url
                 logger.debug("Following redirect hop %d: %s", hop + 1, current_url)
                 continue
-            
-            return response
-            
-        raise EgressViolation(f"Maximum redirect limit ({max_redirects}) exceeded for URL: {url}")
 
-    def validate_redirection_chain(self, url: str, history: list[str]) -> None:
+            return response
+
+        raise EgressViolation(
+            f"Maximum redirect limit ({max_redirects}) exceeded for URL: {url}"
+        )
+
+    async def validate_redirection_chain(self, url: str, history: list[str]) -> None:
         """Explicit validation for a chain of URLs (SSRF Protection)."""
         for hop_url in history:
-            self.authorize("GET", hop_url)
+            await self.authorize("GET", hop_url)
             parsed = urlparse(hop_url)
             if parsed.scheme != "https":
                  raise EgressViolation(f"Non-HTTPS hop detected: {hop_url}")
@@ -174,23 +241,4 @@ class NetworkGateway:
                     f"'{self._policy.telegram_path_prefix}'"
                 )
 
-    def _check_not_private_ip(self, hostname: str) -> None:
-        """Block requests to private / loopback / link-local IPs."""
-        try:
-            # Try direct parse first (covers literal IPs in URLs).
-            addr = ipaddress.ip_address(hostname)
-        except ValueError:
-            # hostname is a DNS name – resolve it.
-            try:
-                infos: list[Any] = socket.getaddrinfo(
-                    hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM
-                )
-                addr = ipaddress.ip_address(infos[0][4][0])
-            except (socket.gaierror, IndexError, ValueError):
-                # Cannot resolve → allow (the actual HTTP client will fail).
-                return
 
-        if addr.is_private or addr.is_loopback or addr.is_link_local:
-            raise EgressViolation(
-                f"Resolved address {addr} for '{hostname}' is a private/loopback IP"
-            )

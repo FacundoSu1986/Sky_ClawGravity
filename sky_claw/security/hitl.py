@@ -12,6 +12,7 @@ import asyncio
 import enum
 import fnmatch
 import logging
+import uuid
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 from urllib.parse import urlparse
@@ -66,6 +67,7 @@ class HITLGuard:
         self._timeout = timeout
         self._hosts = out_of_scope_hosts or OUT_OF_SCOPE_HOSTS
         self._pending: dict[str, HITLRequest] = {}
+        self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Detection
@@ -85,26 +87,41 @@ class HITLGuard:
 
     async def request_approval(
         self,
-        request_id: str,
         reason: str,
         url: str | None = None,
         detail: str = "",
+        request_id: str | None = None,
     ) -> Decision:
         """Pause execution and wait for operator authorisation.
+
+        The *request_id* is generated internally for security; callers
+        should not provide their own.
 
         Returns the :class:`Decision` made by the operator, or
         ``Decision.TIMEOUT`` if no response arrives in time.
         """
+        if request_id is None:
+            request_id = str(uuid.uuid4())
         req = HITLRequest(
             request_id=request_id,
             reason=reason,
             url=url,
             detail=detail,
         )
-        self._pending[request_id] = req
+        async with self._lock:
+            if request_id in self._pending:
+                logger.warning("HITL: duplicate request_id %s rejected", request_id)
+                return Decision.DENIED
+            self._pending[request_id] = req
 
-        if self._notify is not None:
-            await self._notify(req)
+        try:
+            if self._notify is not None:
+                await self._notify(req)
+        except Exception as exc:
+            logger.error("HITL: notify_fn failed: %s", exc)
+            async with self._lock:
+                self._pending.pop(request_id, None)
+            return Decision.TIMEOUT
 
         logger.info("HITL: awaiting operator decision for %s", request_id)
 
@@ -114,19 +131,21 @@ class HITLGuard:
             req.decision = Decision.TIMEOUT
             logger.warning("HITL: timeout for %s", request_id)
         finally:
-            self._pending.pop(request_id, None)
+            async with self._lock:
+                self._pending.pop(request_id, None)
 
         return req.decision
 
-    def respond(self, request_id: str, approved: bool) -> bool:
+    async def respond(self, request_id: str, approved: bool) -> bool:
         """Deliver the operator's decision for *request_id*.
 
         Returns ``True`` if the request was still pending, ``False``
         otherwise.
         """
-        req = self._pending.get(request_id)
-        if req is None:
-            return False
-        req.decision = Decision.APPROVED if approved else Decision.DENIED
-        req._event.set()
-        return True
+        async with self._lock:
+            req = self._pending.get(request_id)
+            if req is None:
+                return False
+            req.decision = Decision.APPROVED if approved else Decision.DENIED
+            req._event.set()
+            return True

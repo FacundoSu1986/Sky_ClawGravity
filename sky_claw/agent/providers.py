@@ -60,6 +60,7 @@ class LLMProvider(ABC):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         session: aiohttp.ClientSession,
+        gateway: Any,  # NetworkGateway
         *,
         system_prompt: str = "",
         model: str = "",
@@ -83,6 +84,7 @@ class AnthropicProvider(LLMProvider):
     DEFAULT_MODEL = "claude-3-5-sonnet-20240620"
 
     def __init__(self, api_key: str) -> None:
+        # Eliminamos la dependencia del entorno. Guardamos la llave inyectada.
         self._api_key = api_key
 
     @retry(
@@ -95,6 +97,7 @@ class AnthropicProvider(LLMProvider):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         session: aiohttp.ClientSession,
+        gateway: Any,
         *,
         system_prompt: str = "",
         model: str = "",
@@ -114,9 +117,12 @@ class AnthropicProvider(LLMProvider):
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
-        async with session.post(
-            self.API_URL, json=body, headers=headers
+        async with await gateway.request(
+            "POST", self.API_URL, session, json=body, headers=headers
         ) as resp:
+            if resp.status >= 400:
+                text = await resp.text()
+                logger.error("Anthropic error %d: %s", resp.status, text)
             resp.raise_for_status()
             data: dict[str, Any] = await resp.json()
 
@@ -185,7 +191,7 @@ def _convert_messages_to_openai(messages: list[dict[str, Any]]) -> list[dict[str
                         })
                 msg_dict: dict[str, Any] = {
                     "role": role,
-                    "content": "\n".join(text_parts) if text_parts else None,
+                    "content": "\n".join(text_parts) if text_parts else ("..." if not tool_calls else None),
                 }
                 if tool_calls:
                     msg_dict["tool_calls"] = tool_calls
@@ -235,6 +241,7 @@ class DeepSeekProvider(LLMProvider):
     DEFAULT_MODEL = "deepseek-chat"
 
     def __init__(self, api_key: str) -> None:
+        # Eliminamos la dependencia del entorno. Guardamos la llave inyectada.
         self._api_key = api_key
 
     @retry(
@@ -242,7 +249,7 @@ class DeepSeekProvider(LLMProvider):
         stop=stop_after_attempt(5),
         retry=retry_if_exception(_should_retry),
     )
-    async def chat(self, messages, tools, session, *, system_prompt="", model=""):
+    async def chat(self, messages, tools, session, gateway, *, system_prompt="", model=""):
         model = model or self.DEFAULT_MODEL
         oai_messages = _convert_messages_to_openai(messages)
         if system_prompt:
@@ -252,7 +259,10 @@ class DeepSeekProvider(LLMProvider):
         if oai_tools:
             body["tools"] = oai_tools
         headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
-        async with session.post(self.API_URL, json=body, headers=headers) as resp:
+        async with await gateway.request("POST", self.API_URL, session, json=body, headers=headers) as resp:
+            if resp.status >= 400:
+                text = await resp.text()
+                logger.error("DeepSeek error %d: %s. Body: %s", resp.status, text, json.dumps(body)[:500])
             resp.raise_for_status()
             data = await resp.json()
         return _parse_openai_response(data)
@@ -267,7 +277,7 @@ class OllamaProvider(LLMProvider):
         stop=stop_after_attempt(5),
         retry=retry_if_exception(_should_retry),
     )
-    async def chat(self, messages, tools, session, *, system_prompt="", model=""):
+    async def chat(self, messages, tools, session, gateway, *, system_prompt="", model=""):
         model = model or self.DEFAULT_MODEL
         oai_messages = _convert_messages_to_openai(messages)
         if system_prompt:
@@ -277,7 +287,10 @@ class OllamaProvider(LLMProvider):
         if oai_tools:
             body["tools"] = oai_tools
         url = f"{self._base_url}/v1/chat/completions"
-        async with session.post(url, json=body) as resp:
+        async with await gateway.request("POST", url, session, json=body) as resp:
+            if resp.status >= 400:
+                text = await resp.text()
+                logger.error("Ollama error %d: %s", resp.status, text)
             resp.raise_for_status()
             return _parse_openai_response(await resp.json())
 
@@ -287,8 +300,9 @@ class ProviderConfigError(RuntimeError):
 def create_provider(*, provider_name=None, api_key=None, model=None):
     """Factory for LLM providers with auto-detection fallback chain.
 
-    Explicit provider_name takes precedence.  When omitted, the first
-    available API key in the environment is used.  Final fallback is Ollama.
+    Explicit provider_name and api_key take precedence. Following security 
+    hardening (April 2026), this factory does NOT mutate os.environ.
+    Final fallback is Ollama.
     """
     if provider_name:
         name = provider_name.lower()
@@ -309,7 +323,7 @@ def create_provider(*, provider_name=None, api_key=None, model=None):
             return OllamaProvider()
         raise ProviderConfigError(f"Unknown provider: {name}")
 
-    # Auto-detect from environment (api_key ignored without provider_name)
+    # Auto-detect from environment
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if anthropic_key:
         logger.info("Auto-detected Anthropic provider")

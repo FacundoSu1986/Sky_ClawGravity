@@ -321,7 +321,7 @@ class AsyncModRegistry:
 
     async def upsert_mods_batch(
         self,
-        rows: Sequence[tuple[int, str, str, str, str, str]],
+        rows: Sequence[tuple[int, str, str, str, str, str, bool, bool]],
     ) -> None:
         """Batch-upsert mod rows using ``executemany``.
 

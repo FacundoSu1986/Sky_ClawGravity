@@ -7,11 +7,11 @@ correlation.
 from __future__ import annotations
 
 import pathlib
-import sqlite3
-import threading
 import logging
-from contextlib import contextmanager
-from typing import Generator
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+import aiosqlite
 
 from sky_claw.config import DB_PATH
 
@@ -66,63 +66,53 @@ class ModRegistry:
 
     def __init__(self, db_path: pathlib.Path | str | None = None) -> None:
         self._db_path = str(db_path or DB_PATH)
-        self._local = threading.local()
-
-    @property
-    def _conn(self) -> sqlite3.Connection | None:
-        return getattr(self._local, "conn", None)
-
-    @_conn.setter
-    def _conn(self, value: sqlite3.Connection | None) -> None:
-        self._local.conn = value
+        self._conn: aiosqlite.Connection | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
-    def open(self) -> None:
-        """Open (or create) the database and ensure the schema exists.
-
-        Runs a quick integrity check on open.  If the database is corrupt,
-        the connection is closed and :class:`RuntimeError` is raised so the
-        caller can decide whether to delete the file and start fresh.
-        """
-        self._conn = sqlite3.connect(self._db_path)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        row = self._conn.execute("PRAGMA quick_check").fetchone()
-        if row is None or str(row[0]).lower() != "ok":
-            self._conn.close()
-            self._conn = None
-            raise RuntimeError(
-                f"SQLite integrity check failed for {self._db_path}"
-            )
-        self._conn.executescript(_SCHEMA_SQL)
-
-    def close(self) -> None:
+    async def open(self) -> None:
+        """Open (or create) the database and ensure the schema exists."""
         if self._conn is not None:
-            self._conn.close()
+            return
+        self._conn = await aiosqlite.connect(self._db_path)
+        self._conn.row_factory = aiosqlite.Row
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA foreign_keys=ON")
+        async with self._conn.execute("PRAGMA quick_check") as cur:
+            row = await cur.fetchone()
+            if row is None or str(row[0]).lower() != "ok":
+                await self._conn.close()
+                self._conn = None
+                raise RuntimeError(
+                    f"SQLite integrity check failed for {self._db_path}"
+                )
+        await self._conn.executescript(_SCHEMA_SQL)
+
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
             self._conn = None
 
-    @contextmanager
-    def transaction(self) -> Generator[sqlite3.Cursor, None, None]:
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[aiosqlite.Cursor, None]:
         """Context manager for an atomic transaction."""
         assert self._conn is not None, "Database is not open"
-        cur = self._conn.cursor()
-        try:
-            yield cur
-            self._conn.commit()
-        except Exception as exc:
-            self._conn.rollback()
-            logger.error("Transaction failed, rolling back: %s", exc)
-            raise
+        async with self._conn.cursor() as cur:
+            try:
+                yield cur
+                await self._conn.commit()
+            except Exception as exc:
+                await self._conn.rollback()
+                logger.error("Transaction failed, rolling back: %s", exc)
+                raise
 
     # ------------------------------------------------------------------
     # Mod CRUD
     # ------------------------------------------------------------------
 
-    def upsert_mod(
+    async def upsert_mod(
         self,
         nexus_id: int,
         name: str,
@@ -132,8 +122,8 @@ class ModRegistry:
         download_url: str = "",
     ) -> int:
         """Insert or update a mod record.  Returns the ``mod_id``."""
-        with self.transaction() as cur:
-            cur.execute(
+        async with self.transaction() as cur:
+            await cur.execute(
                 """
                 INSERT INTO mods (nexus_id, name, version, author, category, download_url)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -147,27 +137,27 @@ class ModRegistry:
                 """,
                 (nexus_id, name, version, author, category, download_url),
             )
-            cur.execute(
+            await cur.execute(
                 "SELECT mod_id FROM mods WHERE nexus_id = ?", (nexus_id,)
             )
-            row = cur.fetchone()
+            row = await cur.fetchone()
             assert row is not None
             return int(row["mod_id"])
 
-    def get_mod(self, nexus_id: int) -> sqlite3.Row | None:
+    async def get_mod(self, nexus_id: int) -> aiosqlite.Row | None:
         """Return the mod row for *nexus_id*, or ``None``."""
         assert self._conn is not None, "Database is not open"
-        cur = self._conn.execute(
+        async with self._conn.execute(
             "SELECT * FROM mods WHERE nexus_id = ?", (nexus_id,)
-        )
-        return cur.fetchone()
+        ) as cur:
+            return await cur.fetchone()
 
-    def set_vfs_status(
+    async def set_vfs_status(
         self, nexus_id: int, *, installed: bool, enabled: bool
     ) -> None:
         """Update VFS flags for a mod."""
-        with self.transaction() as cur:
-            cur.execute(
+        async with self.transaction() as cur:
+            await cur.execute(
                 """
                 UPDATE mods
                    SET installed = ?, enabled_in_vfs = ?, updated_at = datetime('now')
@@ -180,15 +170,15 @@ class ModRegistry:
     # Dependencies
     # ------------------------------------------------------------------
 
-    def add_dependency(
+    async def add_dependency(
         self,
         mod_id: int,
         depends_on_nexus_id: int,
         dep_name: str = "",
     ) -> None:
         """Record that *mod_id* depends on *depends_on_nexus_id*."""
-        with self.transaction() as cur:
-            cur.execute(
+        async with self.transaction() as cur:
+            await cur.execute(
                 """
                 INSERT OR IGNORE INTO dependencies
                     (mod_id, depends_on_nexus_id, dep_name)
@@ -197,19 +187,19 @@ class ModRegistry:
                 (mod_id, depends_on_nexus_id, dep_name),
             )
 
-    def get_dependencies(self, mod_id: int) -> list[sqlite3.Row]:
+    async def get_dependencies(self, mod_id: int) -> list[aiosqlite.Row]:
         """Return all dependency rows for *mod_id*."""
         assert self._conn is not None, "Database is not open"
-        cur = self._conn.execute(
+        async with self._conn.execute(
             "SELECT * FROM dependencies WHERE mod_id = ?", (mod_id,)
-        )
-        return cur.fetchall()
+        ) as cur:
+            return await cur.fetchall()
 
     # ------------------------------------------------------------------
     # Task log
     # ------------------------------------------------------------------
 
-    def log_task(
+    async def log_task(
         self,
         action: str,
         mod_id: int | None = None,
@@ -217,8 +207,8 @@ class ModRegistry:
         detail: str = "",
     ) -> int:
         """Append an entry to the task log.  Returns the ``log_id``."""
-        with self.transaction() as cur:
-            cur.execute(
+        async with self.transaction() as cur:
+            await cur.execute(
                 """
                 INSERT INTO task_log (mod_id, action, status, detail)
                 VALUES (?, ?, ?, ?)

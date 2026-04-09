@@ -87,9 +87,11 @@ class LocalConfig:
             keyring.set_password("sky_claw", "api_key", key)
             self.api_key_b64 = None  # Clear legacy
         except Exception as exc:
-            logger.error("Failed to securely store API key: %s", exc)
-            # Fallback to base64
-            self.api_key_b64 = base64.b64encode(key.encode()).decode()
+            logger.warning(
+                "Could not store API key in keyring (%s). "
+                "Secret will NOT be persisted — configure a keyring backend.",
+                type(exc).__name__,
+            )
 
     def get_nexus_api_key(self) -> str | None:
         """Return the Nexus Mods API key from secure storage."""
@@ -101,8 +103,11 @@ class LocalConfig:
             keyring.set_password("sky_claw", "nexus_api_key", key)
             self.nexus_api_key_b64 = None
         except Exception as exc:
-            logger.error("Failed to securely store Nexus API key: %s", exc)
-            self.nexus_api_key_b64 = base64.b64encode(key.encode()).decode()
+            logger.warning(
+                "Could not store Nexus API key in keyring (%s). "
+                "Secret will NOT be persisted — configure a keyring backend.",
+                type(exc).__name__,
+            )
 
     def get_telegram_bot_token(self) -> str | None:
         """Return the Telegram Bot Token from secure storage."""
@@ -114,8 +119,11 @@ class LocalConfig:
             keyring.set_password("sky_claw", "telegram_bot_token", token)
             self.telegram_bot_token_b64 = None
         except Exception as exc:
-            logger.error("Failed to securely store Telegram token: %s", exc)
-            self.telegram_bot_token_b64 = base64.b64encode(token.encode()).decode()
+            logger.warning(
+                "Could not store Telegram token in keyring (%s). "
+                "Secret will NOT be persisted — configure a keyring backend.",
+                type(exc).__name__,
+            )
 
 
 def load(path: pathlib.Path = _DEFAULT_PATH) -> LocalConfig:

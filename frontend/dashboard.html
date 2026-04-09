@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKY-CLAW | Mod Operations Dashboard</title>
+    <meta name="description" content="SKY-CLAW Dark Fantasy Modding Dashboard — Monitor plugin topology, load order analysis, resource utilization, and xEdit/LOOT output streams for Skyrim mod management.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=MedievalSharp&family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        /* ═══════════════════════════════════════════════════════════
+           RESET & ROOT TOKENS
+           ═══════════════════════════════════════════════════════════ */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* Stone & Metal */
+            --bg-deep:        #0a0a0a;
+            --bg-stone:       #121212;
+            --bg-stone-alt:   #1a1a1a;
+            --bg-card:        rgba(20, 20, 20, 0.85);
+            --bg-card-hover:  rgba(30, 30, 30, 0.90);
+            --bg-sidebar:     #0d0d0d;
+            --bg-row-even:    #151515;
+            --bg-row-odd:     #1a1a1a;
+
+            /* Gold & Silver */
+            --gold:           #C0A062;
+            --gold-dim:       rgba(192, 160, 98, 0.3);
+            --gold-glow:      rgba(192, 160, 98, 0.15);
+            --silver:         #8A8A8A;
+            --silver-bright:  #B0B0B0;
+
+            /* Text */
+            --text-primary:   #E0E0E0;
+            --text-secondary: #888888;
+            --text-muted:     #666666;
+            --text-dim:       #555555;
+
+            /* Borders & Lines */
+            --border-dark:    #333333;
+            --border-subtle:  #2a2a2a;
+
+            /* Status */
+            --status-active:  #4CAF50;
+            --status-error:   #C0392B;
+            --status-warn:    #E67E22;
+            --status-info:    #4A90E2;
+
+            /* Mystic Accents */
+            --mystic-blue:    #4A90E2;
+            --mystic-cyan:    #5DADE2;
+
+            /* Fonts */
+            --font-display:   'Cinzel', 'MedievalSharp', serif;
+            --font-mono:      'JetBrains Mono', 'Roboto Mono', monospace;
+            --font-body:      'Inter', -apple-system, sans-serif;
+
+            /* Layout */
+            --sidebar-width:  220px;
+            --header-height:  52px;
+            --radius:         3px;
+        }
+
+        html {
+            font-size: 14px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: var(--font-body);
+            color: var(--text-primary);
+            background-color: var(--bg-stone);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           STONE TEXTURE OVERLAY  (CSS noise pattern)
+           ═══════════════════════════════════════════════════════════ */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            opacity: 0.04;
+            pointer-events: none;
+            z-index: 0;
+            background-image:
+                repeating-conic-gradient(#2a2a2a 0% 25%, transparent 0% 50%) 0 0 / 4px 4px,
+                repeating-conic-gradient(#1a1a1a 0% 25%, transparent 0% 50%) 2px 2px / 4px 4px;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            opacity: 0.02;
+            pointer-events: none;
+            z-index: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch"/></filter><rect width="256" height="256" filter="url(%23n)" opacity="0.5"/></svg>');
+            background-size: 256px 256px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           DASHBOARD LAYOUT (Grid)
+           ═══════════════════════════════════════════════════════════ */
+        .dashboard-shell {
+            display: grid;
+            grid-template-columns: var(--sidebar-width) 1fr;
+            grid-template-rows: var(--header-height) 1fr;
+            grid-template-areas:
+                "sidebar header"
+                "sidebar main";
+            height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           SIDEBAR
+           ═══════════════════════════════════════════════════════════ */
+        .sidebar {
+            grid-area: sidebar;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--gold-dim);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Sidebar brand */
+        .sidebar-brand {
+            padding: 24px 20px 20px;
+            border-bottom: 1px solid var(--border-dark);
+        }
+
+        .sidebar-brand h1 {
+            font-family: var(--font-display);
+            font-weight: 900;
+            font-size: 1.35rem;
+            color: var(--gold);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sidebar-brand .brand-rune {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--gold-dim);
+            border-radius: 2px;
+            font-size: 14px;
+            color: var(--gold);
+            background: rgba(192, 160, 98, 0.05);
+        }
+
+        .sidebar-brand .brand-version {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 400;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            margin-top: 4px;
+        }
+
+        /* Sidebar navigation */
+        .sidebar-nav {
+            list-style: none;
+            padding: 16px 0;
+            flex: 1;
+        }
+
+        .sidebar-nav .nav-section {
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            padding: 20px 20px 8px;
+        }
+
+        .sidebar-nav li a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 20px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 400;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            text-decoration: none;
+            border-left: 3px solid transparent;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .sidebar-nav li a:hover {
+            color: var(--text-secondary);
+            background: rgba(192, 160, 98, 0.03);
+        }
+
+        .sidebar-nav li a.active {
+            color: var(--gold);
+            border-left-color: var(--gold);
+            background: rgba(192, 160, 98, 0.06);
+        }
+
+        .sidebar-nav li a .nav-icon {
+            font-size: 0.85rem;
+            width: 18px;
+            text-align: center;
+            opacity: 0.7;
+        }
+
+        .sidebar-nav li a.active .nav-icon {
+            opacity: 1;
+        }
+
+        .sidebar-nav li a .nav-badge {
+            margin-left: auto;
+            font-size: 0.6rem;
+            padding: 2px 6px;
+            border-radius: 2px;
+            background: rgba(192, 160, 98, 0.12);
+            color: var(--gold);
+            font-weight: 600;
+        }
+
+        /* Sidebar footer */
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-dark);
+        }
+
+        .sidebar-footer .sys-info {
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+            line-height: 1.6;
+        }
+
+        .sidebar-footer .sys-info .info-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 6px;
+            background: var(--status-active);
+            box-shadow: 0 0 6px rgba(76, 175, 80, 0.4);
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           HEADER
+           ═══════════════════════════════════════════════════════════ */
+        .top-header {
+            grid-area: header;
+            background: var(--bg-deep);
+            border-bottom: 1px solid var(--border-dark);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header-title {
+            font-family: var(--font-display);
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .header-separator {
+            width: 1px;
+            height: 20px;
+            background: var(--border-dark);
+        }
+
+        .header-subtitle {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .telemetry-hud {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .telemetry-hud .tel-value {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .telemetry-hud .tel-sep {
+            color: var(--border-dark);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 14px;
+            border: 1px solid rgba(76, 175, 80, 0.25);
+            border-radius: var(--radius);
+            background: rgba(76, 175, 80, 0.06);
+        }
+
+        .status-indicator .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--status-active);
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        .status-indicator .status-label {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 500;
+            color: var(--status-active);
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(76, 175, 80, 0.5); }
+            50% { opacity: 0.6; box-shadow: 0 0 4px rgba(76, 175, 80, 0.2); }
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           MAIN CONTENT AREA
+           ═══════════════════════════════════════════════════════════ */
+        .main-content {
+            grid-area: main;
+            overflow-y: auto;
+            padding: 20px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-dark) transparent;
+        }
+
+        .main-content::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .main-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .main-content::-webkit-scrollbar-thumb {
+            background: var(--border-dark);
+            border-radius: 2px;
+        }
+
+        /* Content Grid */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 16px;
+        }
+
+        .content-grid .span-full {
+            grid-column: 1 / -1;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           CARDS / WIDGETS
+           ═══════════════════════════════════════════════════════════ */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dark);
+            border-top: 1px solid rgba(192, 160, 98, 0.2);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-top-color: rgba(192, 160, 98, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border-dark);
+        }
+
+        .card-header .card-title {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--gold);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .card-header .card-badge {
+            font-family: var(--font-mono);
+            font-size: 0.55rem;
+            padding: 3px 8px;
+            border: 1px solid var(--border-dark);
+            border-radius: 2px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .card-body {
+            padding: 18px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           KPI ROW (Top Stats)
+           ═══════════════════════════════════════════════════════════ */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .kpi-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dark);
+            border-top: 1px solid rgba(192, 160, 98, 0.15);
+            border-radius: var(--radius);
+            padding: 18px;
+            transition: all 0.25s ease;
+        }
+
+        .kpi-item:hover {
+            border-top-color: var(--gold-dim);
+            transform: translateY(-1px);
+        }
+
+        .kpi-item .kpi-label {
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .kpi-item .kpi-value {
+            font-family: var(--font-display);
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+
+        .kpi-item .kpi-value .kpi-unit {
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            font-weight: 400;
+            color: var(--text-dim);
+            margin-left: 4px;
+            letter-spacing: 1px;
+        }
+
+        .kpi-item .kpi-delta {
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            color: var(--status-active);
+            margin-top: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .kpi-item .kpi-delta.negative {
+            color: var(--status-error);
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           A. MOD STATUS TABLE (Plugin Topology)
+           ═══════════════════════════════════════════════════════════ */
+        .mod-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .mod-table thead th {
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-align: left;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-dark);
+        }
+
+        .mod-table thead th:last-child {
+            text-align: right;
+        }
+
+        .mod-table tbody tr {
+            transition: background 0.15s ease;
+        }
+
+        .mod-table tbody tr:nth-child(even) {
+            background: var(--bg-row-even);
+        }
+
+        .mod-table tbody tr:nth-child(odd) {
+            background: var(--bg-row-odd);
+        }
+
+        .mod-table tbody tr:hover {
+            background: rgba(192, 160, 98, 0.04);
+        }
+
+        .mod-table tbody td {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--text-primary);
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(51, 51, 51, 0.5);
+        }
+
+        .mod-table tbody td:last-child {
+            text-align: right;
+            color: var(--text-secondary);
+        }
+
+        .mod-table .status-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .mod-table .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .mod-table .status-dot.active {
+            background: var(--status-active);
+            box-shadow: 0 0 6px rgba(76, 175, 80, 0.45);
+        }
+
+        .mod-table .status-dot.error {
+            background: var(--status-error);
+            box-shadow: 0 0 6px rgba(192, 57, 43, 0.45);
+        }
+
+        .mod-table .status-dot.warn {
+            background: var(--status-warn);
+            box-shadow: 0 0 6px rgba(230, 126, 34, 0.4);
+        }
+
+        .mod-table .mod-name {
+            color: var(--text-primary);
+        }
+
+        .mod-table .mod-type {
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            letter-spacing: 0.5px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           B. LINE CHART (Load Order Analysis) — SVG
+           ═══════════════════════════════════════════════════════════ */
+        .chart-area {
+            position: relative;
+            width: 100%;
+            height: 200px;
+        }
+
+        .chart-area svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-grid-line {
+            stroke: var(--border-subtle);
+            stroke-width: 0.5;
+        }
+
+        .chart-data-line {
+            fill: none;
+            stroke: var(--mystic-blue);
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .chart-data-fill {
+            fill: url(#chartGrad);
+            opacity: 0.3;
+        }
+
+        .chart-label {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            fill: var(--text-dim);
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 20px;
+            padding: 12px 0 0;
+        }
+
+        .chart-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            color: var(--text-secondary);
+        }
+
+        .chart-legend-item .legend-color {
+            width: 10px;
+            height: 3px;
+            border-radius: 1px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           C. RING GAUGE (Resource Utilization)
+           ═══════════════════════════════════════════════════════════ */
+        .ring-container {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            padding: 10px 0;
+        }
+
+        .ring-chart {
+            position: relative;
+            width: 130px;
+            height: 130px;
+            flex-shrink: 0;
+        }
+
+        .ring-chart svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .ring-bg {
+            fill: none;
+            stroke: var(--border-dark);
+            stroke-width: 12;
+        }
+
+        .ring-value {
+            fill: none;
+            stroke: var(--gold);
+            stroke-width: 12;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.8s ease;
+        }
+
+        .ring-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ring-text .ring-percent {
+            font-family: var(--font-display);
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+
+        .ring-text .ring-label {
+            font-family: var(--font-mono);
+            font-size: 0.55rem;
+            color: var(--text-dim);
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        .ring-stats {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .ring-stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(51, 51, 51, 0.5);
+        }
+
+        .ring-stat-item:last-child {
+            border-bottom: none;
+        }
+
+        .ring-stat-item .stat-name {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+        }
+
+        .ring-stat-item .stat-bar {
+            flex: 1;
+            height: 4px;
+            background: var(--border-dark);
+            border-radius: 2px;
+            margin: 0 14px;
+            overflow: hidden;
+        }
+
+        .ring-stat-item .stat-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: var(--gold);
+            transition: width 0.6s ease;
+        }
+
+        .ring-stat-item .stat-val {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            min-width: 40px;
+            text-align: right;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           D. LOG FEED (xEdit / LOOT Output Stream)
+           ═══════════════════════════════════════════════════════════ */
+        .log-feed {
+            max-height: 260px;
+            overflow-y: auto;
+            scrollbar-width: none;
+            padding: 4px 0;
+        }
+
+        .log-feed::-webkit-scrollbar {
+            display: none;
+        }
+
+        .log-entry {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 6px 14px;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            line-height: 1.5;
+            border-bottom: 1px solid rgba(42, 42, 42, 0.4);
+            transition: background 0.1s ease;
+        }
+
+        .log-entry:hover {
+            background: rgba(192, 160, 98, 0.02);
+        }
+
+        .log-entry .log-time {
+            color: var(--text-dim);
+            white-space: nowrap;
+            flex-shrink: 0;
+            min-width: 72px;
+        }
+
+        .log-entry .log-tag {
+            padding: 1px 6px;
+            border-radius: 2px;
+            font-size: 0.58rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .log-entry .log-tag.info {
+            background: rgba(74, 144, 226, 0.12);
+            color: var(--mystic-blue);
+        }
+
+        .log-entry .log-tag.warn {
+            background: rgba(230, 126, 34, 0.12);
+            color: var(--status-warn);
+        }
+
+        .log-entry .log-tag.ok {
+            background: rgba(76, 175, 80, 0.12);
+            color: var(--status-active);
+        }
+
+        .log-entry .log-tag.error {
+            background: rgba(192, 57, 43, 0.12);
+            color: var(--status-error);
+        }
+
+        .log-entry .log-tag.loot {
+            background: rgba(192, 160, 98, 0.12);
+            color: var(--gold);
+        }
+
+        .log-entry .log-msg {
+            color: var(--text-primary);
+            word-break: break-word;
+        }
+
+        .log-entry .log-msg .highlight {
+            color: var(--gold);
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           ORNAMENTAL DIVIDERS
+           ═══════════════════════════════════════════════════════════ */
+        .ornament-divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 6px 0;
+            color: var(--text-dim);
+            font-size: 0.6rem;
+        }
+
+        .ornament-divider::before,
+        .ornament-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(
+                to right,
+                transparent,
+                var(--border-dark),
+                transparent
+            );
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           FOOTER
+           ═══════════════════════════════════════════════════════════ */
+        .app-footer {
+            padding: 10px 18px;
+            border-top: 1px solid var(--border-dark);
+            background: rgba(10, 10, 10, 0.6);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 0.58rem;
+            color: var(--text-dim);
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           MICRO-ANIMATIONS
+           ═══════════════════════════════════════════════════════════ */
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card {
+            animation: fade-in 0.4s ease both;
+        }
+
+        .content-grid .card:nth-child(1) { animation-delay: 0.05s; }
+        .content-grid .card:nth-child(2) { animation-delay: 0.10s; }
+        .content-grid .card:nth-child(3) { animation-delay: 0.15s; }
+        .content-grid .card:nth-child(4) { animation-delay: 0.20s; }
+        .content-grid .card:nth-child(5) { animation-delay: 0.25s; }
+        .content-grid .card:nth-child(6) { animation-delay: 0.30s; }
+
+        .kpi-row .kpi-item:nth-child(1) { animation: fade-in 0.4s 0.0s ease both; }
+        .kpi-row .kpi-item:nth-child(2) { animation: fade-in 0.4s 0.06s ease both; }
+        .kpi-row .kpi-item:nth-child(3) { animation: fade-in 0.4s 0.12s ease both; }
+        .kpi-row .kpi-item:nth-child(4) { animation: fade-in 0.4s 0.18s ease both; }
+
+        /* Glow on gold accent elements */
+        .card:hover .card-title {
+            text-shadow: 0 0 12px rgba(192, 160, 98, 0.2);
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           RESPONSIVE (graceful degradation)
+           ═══════════════════════════════════════════════════════════ */
+        @media (max-width: 1200px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+            .kpi-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            :root {
+                --sidebar-width: 0px;
+            }
+            .sidebar {
+                display: none;
+            }
+            .kpi-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-shell">
+
+        <!-- ═══════════════════════════════════════════════════════
+             SIDEBAR
+             ═══════════════════════════════════════════════════════ -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <h1>
+                    <span class="brand-rune">⚔</span>SKY-CLAW
+                </h1>
+                <span class="brand-version">v1.4.26 · MODDING OPS</span>
+            </div>
+
+            <ul class="sidebar-nav">
+                <li class="nav-section">Operations</li>
+                <li><a href="#" class="active" id="nav-overview">
+                    <span class="nav-icon">◈</span> RESUMEN
+                </a></li>
+                <li><a href="#" id="nav-plugins">
+                    <span class="nav-icon">⛓</span> PLUGINS
+                    <span class="nav-badge">247</span>
+                </a></li>
+                <li><a href="#" id="nav-loadorder">
+                    <span class="nav-icon">☰</span> LOAD ORDER
+                </a></li>
+                <li><a href="#" id="nav-conflicts">
+                    <span class="nav-icon">⚠</span> CONFLICTOS
+                </a></li>
+
+                <li class="nav-section">Herramientas</li>
+                <li><a href="#" id="nav-xedit">
+                    <span class="nav-icon">⚙</span> xEDIT
+                </a></li>
+                <li><a href="#" id="nav-loot">
+                    <span class="nav-icon">⟳</span> LOOT
+                </a></li>
+                <li><a href="#" id="nav-bodyslide">
+                    <span class="nav-icon">◇</span> BODYSLIDE
+                </a></li>
+
+                <li class="nav-section">Sistema</li>
+                <li><a href="#" id="nav-logs">
+                    <span class="nav-icon">▤</span> LOGS
+                </a></li>
+                <li><a href="#" id="nav-telegram">
+                    <span class="nav-icon">✈</span> TELEGRAM
+                </a></li>
+                <li><a href="#" id="nav-settings">
+                    <span class="nav-icon">⛭</span> AJUSTES
+                </a></li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <div class="sys-info">
+                    <span class="info-dot"></span> Skyrim SE 1.6.1170<br>
+                    MO2 Portable · SKSE64 2.2.6
+                </div>
+            </div>
+        </aside>
+
+        <!-- ═══════════════════════════════════════════════════════
+             TOP HEADER
+             ═══════════════════════════════════════════════════════ -->
+        <header class="top-header" id="top-header">
+            <div class="header-left">
+                <span class="header-title">Mod Operations</span>
+                <div class="header-separator"></div>
+                <span class="header-subtitle">WHITERUN NEXUS · PROFILE ALPHA</span>
+            </div>
+            <div class="header-right">
+                <div class="telemetry-hud" id="telemetry-hud">
+                    <span>CPU: <span class="tel-value">23%</span></span>
+                    <span class="tel-sep">│</span>
+                    <span>RAM: <span class="tel-value">4.2 GB</span></span>
+                    <span class="tel-sep">│</span>
+                    <span>VRAM: <span class="tel-value">6.1 GB</span></span>
+                </div>
+                <div class="status-indicator" id="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-label">OPERATIVO</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ═══════════════════════════════════════════════════════
+             MAIN CONTENT
+             ═══════════════════════════════════════════════════════ -->
+        <main class="main-content" id="main-content">
+
+            <!-- KPI ROW -->
+            <div class="kpi-row" style="margin-bottom: 16px;">
+                <div class="kpi-item">
+                    <div class="kpi-label">PLUGINS ACTIVOS</div>
+                    <div class="kpi-value">247 <span class="kpi-unit">/ 254 ESP</span></div>
+                    <div class="kpi-delta">↑ 3 desde último sort</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-label">CONFLICTOS</div>
+                    <div class="kpi-value">12 <span class="kpi-unit">RECORDS</span></div>
+                    <div class="kpi-delta negative">↑ 2 requieren parche</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-label">ÚLTIMO LOOT</div>
+                    <div class="kpi-value">00:42 <span class="kpi-unit">AGO</span></div>
+                    <div class="kpi-delta">Limpio · 0 warnings</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-label">ESTABILIDAD</div>
+                    <div class="kpi-value">98.7 <span class="kpi-unit">%</span></div>
+                    <div class="kpi-delta">CTD Score: Excellent</div>
+                </div>
+            </div>
+
+            <!-- CONTENT GRID -->
+            <div class="content-grid">
+
+                <!-- ─── A. PLUGIN TOPOLOGY TABLE ─── -->
+                <div class="card" id="card-plugin-topology">
+                    <div class="card-header">
+                        <span class="card-title">⛓ Plugin Topology</span>
+                        <span class="card-badge">LIVE · 247 ESP</span>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <table class="mod-table">
+                            <thead>
+                                <tr>
+                                    <th>Plugin</th>
+                                    <th>Tipo</th>
+                                    <th>Version</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <div class="status-cell">
+                                            <span class="status-dot active"></span>
+                                            <span class="mod-name">Unofficial Skyrim Special Edition Patch.esp</span>
+                                        </div>
+                                    </td>
+                                    <td class="mod-type">ESP</td>
+                                    <td>4.3.0a</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="status-cell">
+                                            <span class="status-dot active"></span>
+                                            <span class="mod-name">SkyUI_SE.esp</span>
+                                        </div>
+                                    </td>
+                                    <td class="mod-type">ESP</td>
+                                    <td>5.2 SE</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="status-cell">
+                                            <span class="status-dot warn"></span>
+                                            <span class="mod-name">RaceMenu.esp</span>
+                                        </div>
+                                    </td>
+                                    <td class="mod-type">ESP</td>
+                                    <td>0.4.19.14</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="status-cell">
+                                            <span class="status-dot active"></span>
+                                            <span class="mod-name">CBBE.esp</span>
+                                        </div>
+                                    </td>
+                                    <td class="mod-type">ESP</td>
+                                    <td>1.6.2</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="status-cell">
+                                            <span class="status-dot error"></span>
+                                            <span class="mod-name">3DNPC.esp</span>
+                                        </div>
+                                    </td>
+                                    <td class="mod-type">ESP</td>
+                                    <td>4.5.2</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="status-cell">
+                                            <span class="status-dot active"></span>
+                                            <span class="mod-name">EnhancedLightsandFX.esp</span>
+                                        </div>
+                                    </td>
+                                    <td class="mod-type">ESP</td>
+                                    <td>3.06</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="status-cell">
+                                            <span class="status-dot active"></span>
+                                            <span class="mod-name">JK's Skyrim.esp</span>
+                                        </div>
+                                    </td>
+                                    <td class="mod-type">ESM</td>
+                                    <td>1.8</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="status-cell">
+                                            <span class="status-dot warn"></span>
+                                            <span class="mod-name">Ordinator - Perks of Skyrim.esp</span>
+                                        </div>
+                                    </td>
+                                    <td class="mod-type">ESP</td>
+                                    <td>9.31.6</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ─── C. RESOURCE UTILIZATION RING ─── -->
+                <div class="card" id="card-resource-util">
+                    <div class="card-header">
+                        <span class="card-title">◎ Resource Utilization</span>
+                        <span class="card-badge">REAL-TIME</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="ring-container">
+                            <!-- Ring Chart via SVG -->
+                            <div class="ring-chart">
+                                <svg viewBox="0 0 120 120">
+                                    <circle class="ring-bg" cx="60" cy="60" r="50"></circle>
+                                    <!-- 73% fill: circumference = 2 * PI * 50 ≈ 314.16; dash = 314.16 * 0.73 ≈ 229.34 -->
+                                    <circle class="ring-value" cx="60" cy="60" r="50"
+                                        stroke-dasharray="229.34 314.16"
+                                    ></circle>
+                                </svg>
+                                <div class="ring-text">
+                                    <span class="ring-percent">73%</span>
+                                    <span class="ring-label">USED</span>
+                                </div>
+                            </div>
+
+                            <div class="ring-stats">
+                                <div class="ring-stat-item">
+                                    <span class="stat-name">ESP Slots</span>
+                                    <div class="stat-bar">
+                                        <div class="stat-bar-fill" style="width: 97%; background: var(--status-error);"></div>
+                                    </div>
+                                    <span class="stat-val">247/254</span>
+                                </div>
+                                <div class="ring-stat-item">
+                                    <span class="stat-name">VRAM</span>
+                                    <div class="stat-bar">
+                                        <div class="stat-bar-fill" style="width: 76%;"></div>
+                                    </div>
+                                    <span class="stat-val">6.1 GB</span>
+                                </div>
+                                <div class="ring-stat-item">
+                                    <span class="stat-name">Textures</span>
+                                    <div class="stat-bar">
+                                        <div class="stat-bar-fill" style="width: 62%;"></div>
+                                    </div>
+                                    <span class="stat-val">18.4 GB</span>
+                                </div>
+                                <div class="ring-stat-item">
+                                    <span class="stat-name">Scripts</span>
+                                    <div class="stat-bar">
+                                        <div class="stat-bar-fill" style="width: 34%; background: var(--status-active);"></div>
+                                    </div>
+                                    <span class="stat-val">1,247</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── B. LINE CHART — CONFLICT HISTORY ─── -->
+                <div class="card span-full" id="card-conflict-history">
+                    <div class="card-header">
+                        <span class="card-title">⊿ Conflict History · Load Order Analysis</span>
+                        <span class="card-badge">LAST 30 DAYS</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-area">
+                            <svg viewBox="0 0 700 180" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#4A90E2" stop-opacity="0.25"/>
+                                        <stop offset="100%" stop-color="#4A90E2" stop-opacity="0"/>
+                                    </linearGradient>
+                                    <linearGradient id="chartGrad2" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#C0A062" stop-opacity="0.15"/>
+                                        <stop offset="100%" stop-color="#C0A062" stop-opacity="0"/>
+                                    </linearGradient>
+                                </defs>
+
+                                <!-- Grid Lines -->
+                                <line x1="0" y1="36" x2="700" y2="36" class="chart-grid-line"/>
+                                <line x1="0" y1="72" x2="700" y2="72" class="chart-grid-line"/>
+                                <line x1="0" y1="108" x2="700" y2="108" class="chart-grid-line"/>
+                                <line x1="0" y1="144" x2="700" y2="144" class="chart-grid-line"/>
+
+                                <!-- Y-axis labels -->
+                                <text x="4" y="34" class="chart-label">40</text>
+                                <text x="4" y="70" class="chart-label">30</text>
+                                <text x="4" y="106" class="chart-label">20</text>
+                                <text x="4" y="142" class="chart-label">10</text>
+                                <text x="4" y="176" class="chart-label">0</text>
+
+                                <!-- X-axis labels -->
+                                <text x="60" y="176" class="chart-label">MAR 01</text>
+                                <text x="185" y="176" class="chart-label">MAR 08</text>
+                                <text x="310" y="176" class="chart-label">MAR 15</text>
+                                <text x="435" y="176" class="chart-label">MAR 22</text>
+                                <text x="570" y="176" class="chart-label">MAR 29</text>
+
+                                <!-- Conflicts line (blue) -->
+                                <polygon class="chart-data-fill"
+                                    points="30,140 80,128 140,132 200,118 260,105 320,110 380,95 440,88 500,96 560,80 620,72 680,68 680,162 30,162"/>
+                                <polyline class="chart-data-line"
+                                    points="30,140 80,128 140,132 200,118 260,105 320,110 380,95 440,88 500,96 560,80 620,72 680,68"/>
+
+                                <!-- Warnings line (gold) -->
+                                <polygon style="fill: url(#chartGrad2); opacity: 0.3;"
+                                    points="30,152 80,148 140,150 200,142 260,138 320,140 380,134 440,130 500,136 560,128 620,125 680,120 680,162 30,162"/>
+                                <polyline style="fill:none; stroke: var(--gold); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.6;"
+                                    points="30,152 80,148 140,150 200,142 260,138 320,140 380,134 440,130 500,136 560,128 620,125 680,120"/>
+                            </svg>
+                        </div>
+                        <div class="chart-legend">
+                            <div class="chart-legend-item">
+                                <span class="legend-color" style="background: var(--mystic-blue);"></span>
+                                Record Conflicts
+                            </div>
+                            <div class="chart-legend-item">
+                                <span class="legend-color" style="background: var(--gold); opacity: 0.6;"></span>
+                                LOOT Warnings
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── D. LOG FEED — xEdit / LOOT Output ─── -->
+                <div class="card span-full" id="card-log-feed">
+                    <div class="card-header">
+                        <span class="card-title">▤ xEdit / LOOT Output Stream</span>
+                        <span class="card-badge">STREAMING</span>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <div class="log-feed" id="log-feed">
+                            <div class="log-entry">
+                                <span class="log-time">20:41:03</span>
+                                <span class="log-tag loot">LOOT</span>
+                                <span class="log-msg">Sorting load order for <span class="highlight">247 active plugins</span>...</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:04</span>
+                                <span class="log-tag ok">OK</span>
+                                <span class="log-msg">Master file validation passed · Skyrim.esm → Update.esm → Dawnguard.esm</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:05</span>
+                                <span class="log-tag info">xEdit</span>
+                                <span class="log-msg">Loading <span class="highlight">Unofficial Skyrim Special Edition Patch.esp</span> — 14,283 records</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:06</span>
+                                <span class="log-tag warn">WARN</span>
+                                <span class="log-msg">RaceMenu.esp: Missing master dependency — <span class="highlight">skse64_steam_loader.dll</span> not in expected path</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:07</span>
+                                <span class="log-tag info">xEdit</span>
+                                <span class="log-msg">Checking ITM records in SkyUI_SE.esp... 0 identical to master found</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:08</span>
+                                <span class="log-tag error">ERROR</span>
+                                <span class="log-msg">3DNPC.esp: FormID [0x000DA7] conflict with <span class="highlight">JK's Skyrim.esp</span> — NavMesh overlap in WhiterunWorld</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:09</span>
+                                <span class="log-tag ok">OK</span>
+                                <span class="log-msg">EnhancedLightsandFX.esp validated — 0 conflicts, 0 ITMs, 0 deleted references</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:10</span>
+                                <span class="log-tag loot">LOOT</span>
+                                <span class="log-msg">Applying metadata for <span class="highlight">Ordinator - Perks of Skyrim.esp</span> — group: late-loaders</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:11</span>
+                                <span class="log-tag info">xEdit</span>
+                                <span class="log-msg">Building reference map for CBBE.esp... 892 ARMO, 1,204 ARMA records indexed</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:12</span>
+                                <span class="log-tag warn">WARN</span>
+                                <span class="log-msg">Ordinator.esp: Bash Tag suggestion — <span class="highlight">{{BASH: Delev, Relev}}</span> recommended for perk tree overhaul</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:13</span>
+                                <span class="log-tag ok">OK</span>
+                                <span class="log-msg">LOOT sort complete — 0 cyclic dependencies · Proposed changes: 4 plugin moves</span>
+                            </div>
+                            <div class="log-entry">
+                                <span class="log-time">20:41:14</span>
+                                <span class="log-tag loot">LOOT</span>
+                                <span class="log-msg">Writing sorted loadorder.txt → <span class="highlight">MO2/profiles/Alpha/loadorder.txt</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /content-grid -->
+
+            <!-- Footer -->
+            <div class="app-footer" style="margin-top: 16px;">
+                <span>© 2026 SKY-CLAW · Dark Fantasy Modding Operations · All Rights Reserved</span>
+                <span>BUILD 1.4.26.16.32 · ENGINE: PAPYRUS RUNTIME 5.7</span>
+            </div>
+
+        </main>
+
+    </div><!-- /dashboard-shell -->
+
+</body>
+</html>

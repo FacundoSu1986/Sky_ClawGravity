@@ -12,16 +12,6 @@ class WSLInteropError(Exception):
     """Error al intentar ejecutar un binario de Windows desde Linux."""
     pass
 
-class ModMetadataQuery(BaseModel):
-    """Input para consultar metadatos de un mod (API o Stealth)."""
-    model_config = {"strict": True}
-    
-    nexus_id: int = Field(..., gt=0, description="ID numérico del mod en Nexus.")
-    force_stealth: bool = Field(False, description="Forzar scraping por Playwright omitiendo la API.")
-    target_data: Literal["dependencies", "files", "changelog", "forum_known_issues"] = Field(
-        ..., description="Tipo de información a extraer."
-    )
-
 class StealthScrapeAction(BaseModel):
     """Input para scraping profundo en Reddit o foros de Nexus buscando incompatibilidades."""
     model_config = {"strict": True}

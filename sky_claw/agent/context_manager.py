@@ -24,9 +24,11 @@ class ContextManager:
         Synthesizes loadorder status and mod registry metadata into a coherent pre-prompt.
         """
         # Concurrent non-blocking data retrieval
+        # H-01: return_exceptions=True para prevenir crashes del orquestador
         mod_results, lo_info = await asyncio.gather(
             self._get_mod_metadata(target_mods or []),
-            self._get_load_order()
+            self._get_load_order(),
+            return_exceptions=True
         )
         
         context_block: str = "### LOCAL MODDING TOPOLOGY (Zero Trust Edge 2026)\n"

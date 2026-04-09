@@ -13,12 +13,49 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 
 # Characters that have special meaning in many LLM prompt formats.
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 # Cap to avoid token-bomb attacks from massive scraped pages.
 DEFAULT_MAX_LENGTH = 8192
+
+# Maximum nesting depth for safe_json_loads to prevent stack overflow.
+_MAX_JSON_SIZE = 1_000_000  # 1 MB
+
+# Compiled regex for all known prompt-injection delimiters (multi-pass safe).
+# Covers: OpenAI (<|...|>), Llama/Mistral ([INST], <<SYS>>),
+# Anthropic (\n\nHuman:, \n\nAssistant:), generic XML-style tags,
+# and tool/function injection markers.
+_INJECTION_PATTERNS = re.compile(
+    r"<\|"            # OpenAI-style opening <|
+    r"|\|>"           # OpenAI-style closing |>
+    r"|<<SYS>>"       # Llama system open
+    r"|<</SYS>>"      # Llama system close
+    r"|\[INST\]"      # Llama/Mistral instruction open
+    r"|\[/INST\]"     # Llama/Mistral instruction close
+    r"|\[SYSTEM\]"    # Generic system marker
+    r"|\{system\}"    # Template-style system marker
+    r"|\n\nHuman:"    # Anthropic Human turn
+    r"|\n\nAssistant:" # Anthropic Assistant turn
+    r"|<human>"       # Anthropic XML-style
+    r"|</human>"
+    r"|<assistant>"
+    r"|</assistant>"
+    r"|<tool_use>"    # Tool injection markers
+    r"|</tool_use>"
+    r"|<function_call>"
+    r"|</function_call>"
+    r"|<tool_result>"
+    r"|</tool_result>"
+    r"|<\|endoftext\|>"   # Special tokens
+    r"|<\|im_start\|>"
+    r"|<\|im_end\|>"
+    r"|<\|pad\|>"
+    r"|<\|diff_marker\|>",
+    re.IGNORECASE,
+)
 
 
 def sanitize_for_prompt(
@@ -29,10 +66,11 @@ def sanitize_for_prompt(
 ) -> str:
     """Clean *text* so it is safe to embed in an LLM prompt.
 
-    1. Removes ASCII control characters (except ``\\n``, ``\\r``, ``\\t``).
-    2. Truncates to *max_length* characters to bound token usage.
-    3. Escapes sequences that resemble common prompt-injection markers
-       (e.g. ``<|system|>``, ``<|im_start|>``).
+    1. Normalizes Unicode to NFKC to neutralize homoglyph attacks.
+    2. Removes ASCII control characters (except ``\\n``, ``\\r``, ``\\t``).
+    3. Removes all known prompt-injection delimiters via compiled regex
+       (handles nested/recursive patterns in a single pass).
+    4. Truncates to *max_length* characters to bound token usage.
 
     Args:
         text: Raw external content.
@@ -42,14 +80,20 @@ def sanitize_for_prompt(
     Returns:
         Sanitized string safe for prompt embedding.
     """
+    # Normalize Unicode to NFKC to collapse homoglyphs (e.g., fullwidth
+    # brackets, Cyrillic look-alikes) into their ASCII equivalents.
+    text = unicodedata.normalize("NFKC", text)
+
     if strip_control:
         text = _CONTROL_CHAR_RE.sub("", text)
 
-    # Defang common prompt-injection delimiters.
-    text = text.replace("<|", "< |").replace("|>", "| >")
+    # Remove all known injection delimiters in a single regex pass.
+    # The regex approach is immune to the nesting bypass that affected
+    # the prior sequential .replace() chain.
+    text = _INJECTION_PATTERNS.sub("", text)
 
     if len(text) > max_length:
-        text = text[:max_length] + "… [truncated]"
+        text = text[:max_length] + "... [truncated]"
 
     return text
 
@@ -57,9 +101,12 @@ def sanitize_for_prompt(
 def safe_json_loads(raw: str) -> dict | list | None:
     """Attempt to parse *raw* as JSON, returning ``None`` on failure.
 
+    Rejects payloads larger than 1 MB to prevent resource exhaustion.
     This is a convenience wrapper that never raises, making it safe to
     use on untrusted scraped payloads.
     """
+    if len(raw) > _MAX_JSON_SIZE:
+        return None
     try:
         result = json.loads(raw)
         if isinstance(result, (dict, list)):

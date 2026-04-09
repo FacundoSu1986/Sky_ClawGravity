@@ -38,11 +38,15 @@ class TelegramPolling:
         self,
         token: str,
         webhook_handler: UpdateHandler,
+        gateway: Any,  # NetworkGateway
+        session: aiohttp.ClientSession | None = None,
         interval: float = 1.0,
         authorized_chat_id: str | int | None = None,
     ) -> None:
         self._token = token
         self._handler = webhook_handler
+        self._gateway = gateway
+        self._session = session
         self._interval = interval
         self._authorized_chat_id = authorized_chat_id
         self._last_update_id = 0
@@ -69,26 +73,23 @@ class TelegramPolling:
 
     async def _run_loop(self) -> None:
         """Internal polling loop."""
-        self._session = aiohttp.ClientSession()
+        own_session = False
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+            own_session = True
         try:
             while self._running:
                 try:
                     await self._poll_once()
                 except asyncio.CancelledError:
-                    logger.info("Telegram polling cancelled.")
                     break
                 except Exception as exc:
                     logger.exception("Error in Telegram polling loop: %s", exc)
                 
-                try:
-                    await asyncio.sleep(self._interval)
-                except asyncio.CancelledError:
-                    break
-        except asyncio.CancelledError:
-            logger.info("Telegram polling task cancelled.")
+                await asyncio.sleep(self._interval)
         finally:
             self._running = False
-            if self._session and not self._session.closed:
+            if own_session and self._session and not self._session.closed:
                 await self._session.close()
                 self._session = None
 
@@ -99,9 +100,9 @@ class TelegramPolling:
 
         params = {
             "offset": self._last_update_id + 1,
-            "timeout": 30,  # Long polling timeout in seconds
+            "timeout": 30,
         }
-        async with self._session.get(self._url, params=params) as resp:
+        async with await self._gateway.request("GET", self._url, self._session, params=params) as resp:
             if resp.status != 200:
                 logger.warning("Telegram getUpdates returned %d", resp.status)
                 return
