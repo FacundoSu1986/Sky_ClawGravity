@@ -207,7 +207,7 @@ class TestEnsureLoot:
         # Auto-approve HITL.
         async def _auto_approve() -> None:
             await asyncio.sleep(0.01)
-            installer._hitl.respond("install-loot-0.22.4", approved=True)
+            await installer._hitl.respond("install-loot-0.22.4", approved=True)
 
         asyncio.create_task(_auto_approve())
 
@@ -239,7 +239,7 @@ class TestEnsureLoot:
 
         async def _auto_deny() -> None:
             await asyncio.sleep(0.01)
-            installer._hitl.respond("install-loot-0.22.4", approved=False)
+            await installer._hitl.respond("install-loot-0.22.4", approved=False)
 
         asyncio.create_task(_auto_deny())
 
@@ -336,7 +336,7 @@ class TestEnsureXedit:
 
         async def _auto_approve() -> None:
             await asyncio.sleep(0.01)
-            installer._hitl.respond("install-xedit-4.1.5", approved=True)
+            await installer._hitl.respond("install-xedit-4.1.5", approved=True)
 
         asyncio.create_task(_auto_approve())
 
@@ -366,7 +366,7 @@ class TestEnsureXedit:
 
         async def _auto_deny() -> None:
             await asyncio.sleep(0.01)
-            installer._hitl.respond("install-xedit-4.1.5", approved=False)
+            await installer._hitl.respond("install-xedit-4.1.5", approved=False)
 
         asyncio.create_task(_auto_deny())
 

@@ -1,9 +1,12 @@
+import logging
 import os
 import pathlib
 import tomllib
 import keyring
 from typing import Any, Optional
 import sys
+
+logger = logging.getLogger(__name__)
 
 class SystemPaths:
     """Dynamic path resolution for Windows and WSL2 environments."""
@@ -59,8 +62,9 @@ class Config:
 
     def _load_from_keyring(self):
         sensitive_keys = [
-            "llm_api_key", "openai_api_key", "anthropic_api_key", 
-            "deepseek_api_key", "nexus_api_key", "telegram_bot_token"
+            "llm_api_key", "openai_api_key", "anthropic_api_key",
+            "deepseek_api_key", "nexus_api_key", "telegram_bot_token",
+            "ws_auth_token",
         ]
         migrated = False
         for key in sensitive_keys:
@@ -171,9 +175,13 @@ class Config:
             if val:
                 try:
                     keyring.set_password("sky_claw", key, str(val))
-                except Exception:
-                    # Fallback to plain text if secure store is unavailable
-                    save_data[key] = val
+                except Exception as exc:
+                    logger.warning(
+                        "Could not store '%s' in keyring: %s. "
+                        "Secret will NOT be persisted — configure a keyring backend.",
+                        key, type(exc).__name__,
+                    )
+                    # Fail-closed: do NOT fall back to plaintext in config file
 
         with open(self._config_path, "wb") as f:
             tomli_w.dump(save_data, f)
@@ -187,9 +195,22 @@ class Config:
 # These constants are used by legacy modules and tests.
 # In the future, they should move to the Config class or TOML.
 
-_global_cfg = Config()
+_global_cfg: Config | None = None
 
-DB_PATH = pathlib.Path(_global_cfg.mo2_root) / "mod_registry.db" if _global_cfg.mo2_root else pathlib.Path("mod_registry.db")
+
+def _get_config() -> Config:
+    global _global_cfg
+    if _global_cfg is None:
+        _global_cfg = Config()
+    return _global_cfg
+
+
+def _get_db_path() -> pathlib.Path:
+    cfg = _get_config()
+    return pathlib.Path(cfg.mo2_root) / "mod_registry.db" if cfg.mo2_root else pathlib.Path("mod_registry.db")
+
+
+DB_PATH = _get_db_path()
 ALLOWED_HOSTS = frozenset([
     "api.deepseek.com",
     "api.openai.com",

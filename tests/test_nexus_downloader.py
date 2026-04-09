@@ -21,8 +21,10 @@ from sky_claw.scraper.nexus_downloader import (
     DownloadError,
     DownloadProgress,
     FileInfo,
-    MD5ValidationError,
+    HashValidationError,
+    MD5ValidationError,  # Alias de compatibilidad hacia atrás
     NexusDownloader,
+    validate_sha256_format,
     _cleanup,
 )
 from sky_claw.security.hitl import Decision, HITLGuard
@@ -61,6 +63,7 @@ def _make_file_info(
     file_name: str = "TestMod-100-v1.zip",
     size_bytes: int = 1024,
     md5: str = "",
+    sha256: str = "",
     download_url: str = "https://premium-files.nexusmods.com/file/100/200",
 ) -> FileInfo:
     return FileInfo(
@@ -69,12 +72,18 @@ def _make_file_info(
         file_name=file_name,
         size_bytes=size_bytes,
         md5=md5,
+        sha256=sha256,
         download_url=download_url,
     )
 
 
 def _md5_of(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
+
+
+def _sha256_of(data: bytes) -> str:
+    """Helper para calcular SHA256 de bytes."""
+    return hashlib.sha256(data).hexdigest()
 
 
 def _make_aiohttp_response(
@@ -185,10 +194,67 @@ class TestFileInfo:
         assert fi.size_bytes == 512
         assert fi.md5 == "abc"
 
+    def test_sha256_field_default_empty(self) -> None:
+        """Verifica que sha256 tiene valor por defecto vacío."""
+        fi = _make_file_info()
+        assert fi.sha256 == ""
+
+    def test_sha256_field_stored(self) -> None:
+        """Verifica que sha256 se almacena correctamente."""
+        sha256_hash = "a" * 64  # 64 chars hex simulado
+        fi = _make_file_info(sha256=sha256_hash)
+        assert fi.sha256 == sha256_hash
+
     def test_frozen(self) -> None:
         fi = _make_file_info()
         with pytest.raises((AttributeError, TypeError)):
             fi.nexus_id = 99  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# validate_sha256_format
+# ---------------------------------------------------------------------------
+
+
+class TestValidateSha256Format:
+    """Tests para la función validate_sha256_format."""
+
+    def test_valid_sha256_format(self) -> None:
+        """Hash SHA256 válido de 64 caracteres hexadecimales."""
+        valid_hash = "a" * 64
+        assert validate_sha256_format(valid_hash) is True
+
+    def test_valid_sha256_with_numbers(self) -> None:
+        """Hash SHA256 válido con números y letras."""
+        valid_hash = "0123456789abcdef" * 4
+        assert validate_sha256_format(valid_hash) is True
+
+    def test_valid_sha256_uppercase(self) -> None:
+        """Hash SHA256 válido con mayúsculas."""
+        valid_hash = "ABCDEF" + "0" * 58
+        assert validate_sha256_format(valid_hash) is True
+
+    def test_invalid_too_short(self) -> None:
+        """Hash muy corto (menos de 64 chars)."""
+        assert validate_sha256_format("a" * 63) is False
+
+    def test_invalid_too_long(self) -> None:
+        """Hash muy largo (más de 64 chars)."""
+        assert validate_sha256_format("a" * 65) is False
+
+    def test_invalid_empty(self) -> None:
+        """Hash vacío."""
+        assert validate_sha256_format("") is False
+
+    def test_invalid_non_hex_chars(self) -> None:
+        """Hash con caracteres no hexadecimales."""
+        invalid_hash = "g" * 64  # 'g' no es hex válido
+        assert validate_sha256_format(invalid_hash) is False
+
+    def test_invalid_with_spaces(self) -> None:
+        """Hash con espacios."""
+        invalid_hash = "a" * 32 + " " + "a" * 32
+        assert validate_sha256_format(invalid_hash) is False
 
 
 # ---------------------------------------------------------------------------
@@ -505,6 +571,83 @@ class TestDownload:
 
         await d.download(fi, session, progress_cb=cb)
         assert progress_calls[0].total_bytes == len(content)
+
+    @pytest.mark.asyncio
+    async def test_successful_download_sha256_valid(self, tmp_path: pathlib.Path) -> None:
+        """Verifica que la validación SHA256 funciona correctamente."""
+        content = b"skyrim mod data with sha256"
+        sha256 = _sha256_of(content)
+        resp = _make_aiohttp_response(content=content)
+        session = _make_session(resp)
+        d = _make_downloader(tmp_path)
+        fi = _make_file_info(
+            file_name="mod_sha256.zip",
+            size_bytes=len(content),
+            md5="",  # Sin MD5, solo SHA256
+            sha256=sha256,
+            download_url="https://premium-files.nexusmods.com/mod_sha256.zip",
+        )
+        dest = await d.download(fi, session)
+        assert dest.exists()
+        assert dest.read_bytes() == content
+
+    @pytest.mark.asyncio
+    async def test_sha256_mismatch_raises_and_cleans_up(self, tmp_path: pathlib.Path) -> None:
+        """Verifica que SHA256 mismatch limpia el archivo y lanza HashValidationError."""
+        content = b"real data for sha256"
+        # Provide 5 responses for 5 retry attempts
+        responses = [_make_aiohttp_response(content=content) for _ in range(5)]
+        session = _make_session(*responses)
+        d = _make_downloader(tmp_path)
+        fi = _make_file_info(
+            file_name="bad_sha256.zip",
+            size_bytes=len(content),
+            md5="",
+            sha256="0" * 64,  # SHA256 incorrecto
+            download_url="https://premium-files.nexusmods.com/bad_sha256.zip",
+        )
+        with pytest.raises(HashValidationError, match="SHA256 mismatch"):
+            await d.download(fi, session)
+        # File must be cleaned up
+        assert not (d.staging_dir / "bad_sha256.zip").exists()
+
+    @pytest.mark.asyncio
+    async def test_hash_validation_error_is_alias_for_md5(self, tmp_path: pathlib.Path) -> None:
+        """Verifica que HashValidationError es compatible con MD5ValidationError (alias hacia atrás)."""
+        content = b"test alias"
+        responses = [_make_aiohttp_response(content=content) for _ in range(5)]
+        session = _make_session(*responses)
+        d = _make_downloader(tmp_path)
+        fi = _make_file_info(
+            file_name="alias_test.zip",
+            size_bytes=len(content),
+            md5="wrongmd5hash00000000000000000",
+            download_url="https://premium-files.nexusmods.com/alias_test.zip",
+        )
+        # Ambos deben funcionar: HashValidationError y MD5ValidationError
+        with pytest.raises(HashValidationError):
+            await d.download(fi, session)
+        assert not (d.staging_dir / "alias_test.zip").exists()
+
+    @pytest.mark.asyncio
+    async def test_dual_hash_validation_md5_and_sha256(self, tmp_path: pathlib.Path) -> None:
+        """Verifica cálculo dual de hashes MD5 y SHA256."""
+        content = b"dual hash test content"
+        md5 = _md5_of(content)
+        sha256 = _sha256_of(content)
+        resp = _make_aiohttp_response(content=content)
+        session = _make_session(resp)
+        d = _make_downloader(tmp_path)
+        fi = _make_file_info(
+            file_name="dual_hash.zip",
+            size_bytes=len(content),
+            md5=md5,
+            sha256=sha256,
+            download_url="https://premium-files.nexusmods.com/dual_hash.zip",
+        )
+        dest = await d.download(fi, session)
+        assert dest.exists()
+        assert dest.read_bytes() == content
 
     @pytest.mark.asyncio
     async def test_staging_dir_created_if_missing(self, tmp_path: pathlib.Path) -> None:
@@ -972,20 +1115,24 @@ class TestConfigCDNHosts:
 
 
 class TestNetworkGatewayCDN:
-    def test_premium_files_get_authorized(self) -> None:
+    @pytest.mark.asyncio
+    async def test_premium_files_get_authorized(self) -> None:
         gw = NetworkGateway(EgressPolicy(block_private_ips=False))
-        gw.authorize("GET", "https://premium-files.nexusmods.com/file.zip")
+        await gw.authorize("GET", "https://premium-files.nexusmods.com/file.zip")
 
-    def test_cf_files_get_authorized(self) -> None:
+    @pytest.mark.asyncio
+    async def test_cf_files_get_authorized(self) -> None:
         gw = NetworkGateway(EgressPolicy(block_private_ips=False))
-        gw.authorize("GET", "https://cf-files.nexusmods.com/file.zip")
+        await gw.authorize("GET", "https://cf-files.nexusmods.com/file.zip")
 
-    def test_premium_files_post_rejected(self) -> None:
+    @pytest.mark.asyncio
+    async def test_premium_files_post_rejected(self) -> None:
         gw = NetworkGateway(EgressPolicy(block_private_ips=False))
         with pytest.raises(EgressViolation):
-            gw.authorize("POST", "https://premium-files.nexusmods.com/file.zip")
+            await gw.authorize("POST", "https://premium-files.nexusmods.com/file.zip")
 
-    def test_cf_files_post_rejected(self) -> None:
+    @pytest.mark.asyncio
+    async def test_cf_files_post_rejected(self) -> None:
         gw = NetworkGateway(EgressPolicy(block_private_ips=False))
         with pytest.raises(EgressViolation):
-            gw.authorize("POST", "https://cf-files.nexusmods.com/file.zip")
+            await gw.authorize("POST", "https://cf-files.nexusmods.com/file.zip")

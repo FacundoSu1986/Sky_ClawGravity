@@ -18,16 +18,44 @@ import aiohttp
 import aiosqlite
 
 from sky_claw.agent.providers import LLMProvider, create_provider
-from sky_claw.agent.tools import AsyncToolRegistry
+from sky_claw.agent.tools_facade import AsyncToolRegistry
 from sky_claw.security.sanitize import sanitize_for_prompt
 from sky_claw.agent.semantic_router import SemanticRouter
 from sky_claw.agent.context_manager import ContextManager
 from sky_claw.security.credential_vault import CredentialVault
+from sky_claw.agent.lcel_chains import (
+    PromptComposer,
+    ChainBuilder,
+    ToolExecutor,
+)
+from sky_claw.core.schemas import RouteClassification
 
 logger = logging.getLogger(__name__)
 
 MAX_CONTEXT_MESSAGES = 20
 MAX_TOOL_ROUNDS = 10
+
+
+# BUG-002 FIX: Función de validación de API keys
+def _is_valid_api_key(key: str | None) -> bool:
+    """Valida que una API key sea válida y no un placeholder.
+    
+    BUG-002 FIX: Previene el uso de API keys placeholder o inválidas.
+    
+    Args:
+        key: API key a validar
+        
+    Returns:
+        True si la key parece válida, False si es placeholder o inválida
+    """
+    if not key or not isinstance(key, str):
+        return False
+    stripped = key.strip()
+    if not stripped or len(stripped) < 8:
+        return False
+    # Placeholders comunes que deben ser rechazados
+    placeholders = {"your_api_key_here", "insert_your_key", "xxx", "sk-xxx", "sk-..."}
+    return stripped.lower() not in placeholders
 
 _HISTORY_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS chat_history (
@@ -70,8 +98,16 @@ class LLMRouter:
         registry_db: str = "mod_registry.db",
         mo2_profile: str = "",
         vault: CredentialVault | None = None,
+        gateway: Any | None = None,
     ) -> None:
         if provider is None and not vault:
+            # BUG-002 FIX: Validar API key antes de instanciar provider
+            if not _is_valid_api_key(api_key):
+                raise ValueError(
+                    "Se requiere provider, vault, o api_key válido para inicializar LLMRouter. "
+                    "Complete la configuración inicial. "
+                    "La API key proporcionada está vacía, es muy corta, o es un placeholder."
+                )
             # Legacy fallback pattern, removed 'os.environ' dependency per SRE directives.
             from sky_claw.agent.providers import DeepSeekProvider
             # Instantiating locally if api_key passed directly, otherwise vault is required
@@ -90,6 +126,19 @@ class LLMRouter:
         # Standard 2026 Orchestration Layers
         self._semantic_router = SemanticRouter()
         self._context_manager = ContextManager(registry_db, mo2_profile)
+        self._gateway = gateway
+        
+        # LangChain LCEL Integration
+        self._lcel_prompt_composer = PromptComposer(
+            system_prompt=system_prompt or "Eres un asistente de modding de Skyrim SE/AE.",
+            tool_registry=tool_registry
+        )
+        # Tool executor por defecto para cadenas LCEL
+        self._lcel_tool_executor = ToolExecutor(
+            tool_name="lcel_default",
+            tool_description="Ejecutor de herramientas LCEL por defecto"
+        )
+        self._lcel_chain_builder = ChainBuilder(tool_executor=self._lcel_tool_executor)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -167,20 +216,42 @@ class LLMRouter:
                 "The integration layer must explicitly initialize the session context."
             )
 
-        # 1. Semantic Routing (Cognitive classification)
+        # 1. Semantic Routing con RouteClassification (LCEL Integration)
         routing_data = {"payload": {"text": user_message}, "metadata": metadata or {}}
         routed = self._semantic_router.route(routing_data)
         
+        # Convertir a RouteClassification schema para validación
+        route_classification = RouteClassification(
+            intent=routed.get("intent", "CHAT_GENERAL"),
+            confidence=routed.get("confidence", 0.7),
+            target_agent=routed.get("target_agent"),
+            tool_name=routed.get("tool_name"),
+            parameters=routed.get("parameters", {}),
+            requires_context=routed.get("intent") in ["CONSULTA_MODDING", "RAG_CONSULTA"],
+            metadata=metadata or {}
+        )
+        
+        logger.info(f"🎯 RouteClassification: intent={route_classification.intent}, confidence={route_classification.confidence}")
+        
         # Branch A: Deterministic System Management
-        if routed["intent"] == "COMANDO_SISTEMA":
+        if route_classification.intent == "COMANDO_SISTEMA":
             return await self._handle_system_op(routed["original_text"])
 
-        # Branch B: Contextual Modding Query (RAG)
+        # Branch B: Contextual Modding Query (RAG) usando LCEL
         injected_context = ""
-        if routed["intent"] == "CONSULTA_MODDING":
+        if route_classification.intent == "CONSULTA_MODDING":
             if progress_callback:
                 asyncio.create_task(progress_callback("searching_registry", 20))
             injected_context = await self._context_manager.build_prompt_context(user_message)
+            
+            # Usar LCEL para componer prompt RAG
+            if route_classification.requires_context:
+                rag_prompt = self._lcel_prompt_composer.compose_rag_prompt(
+                    query=user_message,
+                    context=injected_context,
+                    sources=["mod_registry", "conflict_db"]
+                )
+                logger.debug(f"📝 LCEL RAG prompt compuesto: {len(rag_prompt)} mensajes")
 
         user_message = sanitize_for_prompt(user_message)
         await self._save_message(chat_id, "user", user_message)
@@ -195,6 +266,7 @@ class LLMRouter:
                     "messages": messages,
                     "tools": tool_schemas,
                     "session": session,
+                    "gateway": self._gateway,
                     "system_prompt": f"{self._system_prompt}\n\n{injected_context}",
                 }
                 if self._model:
@@ -225,7 +297,7 @@ class LLMRouter:
                     ]
                     return "\n".join(text_parts)
 
-                # Execute requested tools.
+                # Execute requested tools con integración LCEL.
                 tool_results: list[dict[str, Any]] = []
                 for block in content_blocks:
                     if block.get("type") != "tool_use":
@@ -235,6 +307,16 @@ class LLMRouter:
                     tool_input: dict[str, Any] = block.get("input", {})
 
                     try:
+                        # Usar LCEL para componer prompt de herramienta si está disponible
+                        if route_classification.intent == "EJECUCION_HERRAMIENTA":
+                            tool_prompt = self._lcel_prompt_composer.compose_tool_prompt(
+                                tool_name=tool_name,
+                                tool_input=tool_input,
+                                tool_description=route_classification.parameters.get("description", f"Ejecutar {tool_name}")
+                            )
+                            logger.debug(f"🔧 LCEL tool prompt compuesto para {tool_name}")
+                        
+                        # Ejecutar herramienta con compatibilidad AsyncToolRegistry
                         result_str = await self._tools.execute(tool_name, tool_input)
                         consecutive_errors = 0
                         if progress_callback:
@@ -274,12 +356,16 @@ class LLMRouter:
             except (asyncio.CancelledError, KeyboardInterrupt):
                 raise
             except Exception as outer_exc:
-                logger.error("System-level router failure: %s", outer_exc)
-                return f"Error Crítico: El ciclo de herramientas falló por una excepción de sistema: {outer_exc}"
+                logger.exception("System-level router failure: %s", outer_exc)
+                return "Error Critico: El ciclo de herramientas fallo por una excepcion interna. Consulta los logs del servidor."
         else:
             raise RuntimeError(
                 f"Agent exceeded {MAX_TOOL_ROUNDS} tool rounds"
             )
+
+    # ------------------------------------------------------------------
+    # System Operations
+    # ------------------------------------------------------------------
 
     async def _handle_system_op(self, command: str) -> str:
         """Handles COMANDO_SISTEMA branch synchronously."""

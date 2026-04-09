@@ -30,30 +30,37 @@ def gw_strict() -> NetworkGateway:
 
 
 class TestHostAllowList:
-    def test_nexus_www_allowed(self, gw: NetworkGateway) -> None:
-        gw.authorize("GET", "https://www.nexusmods.com/skyrimspecialedition/mods/1234")
+    @pytest.mark.asyncio
+    async def test_nexus_www_allowed(self, gw: NetworkGateway) -> None:
+        await gw.authorize("GET", "https://www.nexusmods.com/skyrimspecialedition/mods/1234")
 
-    def test_nexus_subdomain_allowed(self, gw: NetworkGateway) -> None:
-        gw.authorize("GET", "https://staticdelivery.nexusmods.com/file.7z")
+    @pytest.mark.asyncio
+    async def test_nexus_subdomain_allowed(self, gw: NetworkGateway) -> None:
+        await gw.authorize("GET", "https://staticdelivery.nexusmods.com/file.7z")
 
-    def test_telegram_allowed(self, gw: NetworkGateway) -> None:
-        gw.authorize("POST", "https://api.telegram.org/bot123456:ABC/sendMessage")
+    @pytest.mark.asyncio
+    async def test_telegram_allowed(self, gw: NetworkGateway) -> None:
+        await gw.authorize("POST", "https://api.telegram.org/bot123456:ABC/sendMessage")
 
-    def test_random_host_blocked(self, gw: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_random_host_blocked(self, gw: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="not in the allow-list"):
-            gw.authorize("GET", "https://evil.example.com/payload")
+            await gw.authorize("GET", "https://evil.example.com/payload")
 
-    def test_github_get_allowed(self, gw: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_github_get_allowed(self, gw: NetworkGateway) -> None:
         # github.com is in the allow-list for GET (tool auto-install).
-        gw.authorize("GET", "https://github.com/some/repo")
+        await gw.authorize("GET", "https://github.com/some/repo")
 
-    def test_github_post_blocked(self, gw: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_github_post_blocked(self, gw: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="not allowed"):
-            gw.authorize("POST", "https://github.com/some/repo")
+            await gw.authorize("POST", "https://github.com/some/repo")
 
-    def test_empty_url_rejected(self, gw: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_url_rejected(self, gw: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="no hostname"):
-            gw.authorize("GET", "")
+            await gw.authorize("GET", "")
 
 
 # ------------------------------------------------------------------
@@ -62,18 +69,22 @@ class TestHostAllowList:
 
 
 class TestMethodRestrictions:
-    def test_nexus_get_ok(self, gw: NetworkGateway) -> None:
-        gw.authorize("GET", "https://www.nexusmods.com/mods")
+    @pytest.mark.asyncio
+    async def test_nexus_get_ok(self, gw: NetworkGateway) -> None:
+        await gw.authorize("GET", "https://www.nexusmods.com/mods")
 
-    def test_nexus_post_blocked(self, gw: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_nexus_post_blocked(self, gw: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="not allowed"):
-            gw.authorize("POST", "https://www.nexusmods.com/api/upload")
+            await gw.authorize("POST", "https://www.nexusmods.com/api/upload")
 
-    def test_telegram_get_ok(self, gw: NetworkGateway) -> None:
-        gw.authorize("GET", "https://api.telegram.org/bot123/getUpdates")
+    @pytest.mark.asyncio
+    async def test_telegram_get_ok(self, gw: NetworkGateway) -> None:
+        await gw.authorize("GET", "https://api.telegram.org/bot123/getUpdates")
 
-    def test_telegram_post_ok(self, gw: NetworkGateway) -> None:
-        gw.authorize("POST", "https://api.telegram.org/bot123/sendMessage")
+    @pytest.mark.asyncio
+    async def test_telegram_post_ok(self, gw: NetworkGateway) -> None:
+        await gw.authorize("POST", "https://api.telegram.org/bot123/sendMessage")
 
 
 # ------------------------------------------------------------------
@@ -82,12 +93,14 @@ class TestMethodRestrictions:
 
 
 class TestTelegramPathPrefix:
-    def test_valid_bot_path(self, gw: NetworkGateway) -> None:
-        gw.authorize("GET", "https://api.telegram.org/bot123/getMe")
+    @pytest.mark.asyncio
+    async def test_valid_bot_path(self, gw: NetworkGateway) -> None:
+        await gw.authorize("GET", "https://api.telegram.org/bot123/getMe")
 
-    def test_missing_bot_prefix(self, gw: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_missing_bot_prefix(self, gw: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="does not start with"):
-            gw.authorize("GET", "https://api.telegram.org/file/something")
+            await gw.authorize("GET", "https://api.telegram.org/file/something")
 
 
 # ------------------------------------------------------------------
@@ -96,18 +109,22 @@ class TestTelegramPathPrefix:
 
 
 class TestPrivateIPBlocking:
-    def test_loopback_literal_blocked(self, gw_strict: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_loopback_literal_blocked(self, gw_strict: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="private/loopback"):
-            gw_strict.authorize("GET", "http://127.0.0.1:8080/data")
+            await gw_strict.authorize("GET", "http://127.0.0.1:8080/data")
 
-    def test_private_10_blocked(self, gw_strict: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_private_10_blocked(self, gw_strict: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="private/loopback"):
-            gw_strict.authorize("GET", "http://10.0.0.1/data")
+            await gw_strict.authorize("GET", "http://10.0.0.1/data")
 
-    def test_private_192_blocked(self, gw_strict: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_private_192_blocked(self, gw_strict: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="private/loopback"):
-            gw_strict.authorize("GET", "http://192.168.1.1/data")
+            await gw_strict.authorize("GET", "http://192.168.1.1/data")
 
-    def test_link_local_blocked(self, gw_strict: NetworkGateway) -> None:
+    @pytest.mark.asyncio
+    async def test_link_local_blocked(self, gw_strict: NetworkGateway) -> None:
         with pytest.raises(EgressViolation, match="private/loopback"):
-            gw_strict.authorize("GET", "http://169.254.0.1/x")
+            await gw_strict.authorize("GET", "http://169.254.0.1/x")

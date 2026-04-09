@@ -4,12 +4,13 @@
   "description": "Middleware de Red para Sky-Claw",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:telegram": "node telegram_gateway.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
     "grammy": "^1.21.0",
-    "uuid": "^13.0.0",
+    "playwright": "^1.49.0",
     "ws": "^8.16.0"
   },
   "engines": {

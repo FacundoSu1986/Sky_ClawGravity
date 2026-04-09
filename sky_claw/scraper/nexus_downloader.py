@@ -29,8 +29,14 @@ ProgressCallback = Callable[["DownloadProgress"], Awaitable[None]] | None
 class DownloadError(Exception):
     pass
 
-class MD5ValidationError(DownloadError):
+
+class HashValidationError(DownloadError):
+    """Error de validación de hash (MD5 o SHA256)."""
     pass
+
+
+# Alias para compatibilidad hacia atrás
+MD5ValidationError = HashValidationError
 
 class PremiumRequiredError(DownloadError):
     pass
@@ -45,6 +51,7 @@ class FileInfo:
         file_name: Original filename on Nexus.
         size_bytes: Expected file size in bytes (0 when unknown).
         md5: MD5 hex-digest provided by the Nexus API (empty string when absent).
+        sha256: SHA256 hex-digest for local integrity verification (64 chars hex, empty when absent).
         download_url: CDN URL for the actual file bytes.
     """
 
@@ -53,7 +60,22 @@ class FileInfo:
     file_name: str
     size_bytes: int
     md5: str
-    download_url: str
+    sha256: str = ""  # NUEVO: Para integridad local (64 chars hex)
+    download_url: str = ""
+
+
+def validate_sha256_format(hash_str: str) -> bool:
+    """Valida formato de hash SHA256 (64 chars hex).
+    
+    Args:
+        hash_str: String a validar como hash SHA256.
+        
+    Returns:
+        True si el string es un hash SHA256 válido (64 caracteres hexadecimales).
+    """
+    if len(hash_str) != 64:
+        return False
+    return all(c in "0123456789abcdefABCDEF" for c in hash_str)
 
 
 @dataclass
@@ -107,12 +129,15 @@ class NexusDownloader:
         timeout: int = NEXUS_DOWNLOAD_TIMEOUT_SECONDS,
         game_domain: str = "skyrimspecialedition",
     ) -> None:
+        import random
         self._api_key = api_key
         self._gateway = gateway
         self._staging_dir = staging_dir
         self._chunk_size = chunk_size
         self._timeout = timeout
         self._game_domain = game_domain
+        self._semaphore = asyncio.Semaphore(5)
+        self._random = random
 
     @property
     def staging_dir(self) -> pathlib.Path:
@@ -136,35 +161,39 @@ class NexusDownloader:
         file_id: int | None,
         session: aiohttp.ClientSession,
     ) -> FileInfo:
-        headers = {"apikey": self._api_key, "Accept": "application/json"}
-        meta_timeout = aiohttp.ClientTimeout(total=30)
-        
-        if file_id is None:
-            files_url = f"{_NEXUS_API_BASE}/games/{self._game_domain}/mods/{nexus_id}/files.json"
-            self._gateway.authorize("GET", files_url)
-            async with session.get(files_url, headers=headers, timeout=meta_timeout) as resp:
-                if resp.status in (401, 403):
-                    raise DownloadError("Invalid or missing Nexus API key")
-                if resp.status == 404:
-                    raise DownloadError(f"Mod {nexus_id} not found")
-                resp.raise_for_status() # Dispara ClientResponseError en 429 para activar el reintento
-                files_data = await resp.json()
+        async with self._semaphore:
+            # Añadir jitter para evitar Thundering Herd
+            await asyncio.sleep(self._random.uniform(0.1, 0.5))
+
+            headers = {"apikey": self._api_key, "Accept": "application/json"}
+            meta_timeout = aiohttp.ClientTimeout(total=30)
             
-            files_list = files_data.get("files", [])
-            if not files_list:
-                raise DownloadError(f"No files found for mod {nexus_id}")
-            
-            primary_files = [f for f in files_list if f.get("is_primary")]
-            target_file = primary_files[0] if primary_files else files_list[-1]
-            file_id = target_file["file_id"]
-            if isinstance(target_file.get("file_id"), list):
-                file_id = target_file["file_id"][1]
+            if file_id is None:
+                files_url = f"{_NEXUS_API_BASE}/games/{self._game_domain}/mods/{nexus_id}/files.json"
+                await self._gateway.authorize("GET", files_url)
+                async with session.get(files_url, headers=headers, timeout=meta_timeout) as resp:
+                    if resp.status in (401, 403):
+                        raise DownloadError("Invalid or missing Nexus API key")
+                    if resp.status == 404:
+                        raise DownloadError(f"Mod {nexus_id} not found")
+                    resp.raise_for_status() # Dispara ClientResponseError en 429 para activar el reintento
+                    files_data = await resp.json()
+                
+                files_list = files_data.get("files", [])
+                if not files_list:
+                    raise DownloadError(f"No files found for mod {nexus_id}")
+                
+                primary_files = [f for f in files_list if f.get("is_primary")]
+                target_file = primary_files[0] if primary_files else files_list[-1]
+                file_id = target_file["file_id"]
+                if isinstance(target_file.get("file_id"), list):
+                    file_id = target_file["file_id"][1]
             
         meta_url = (
             f"{_NEXUS_API_BASE}/games/{self._game_domain}"
             f"/mods/{nexus_id}/files/{file_id}.json"
         )
-        self._gateway.authorize("GET", meta_url)
+        await self._gateway.authorize("GET", meta_url)
 
         async with session.get(meta_url, headers=headers, timeout=meta_timeout) as resp:
             if resp.status == 401:
@@ -208,13 +237,17 @@ class NexusDownloader:
         session: aiohttp.ClientSession,
         progress_cb: ProgressCallback = None,
     ) -> pathlib.Path:
-        self._staging_dir.mkdir(parents=True, exist_ok=True)
-        dest = self._staging_dir / file_info.file_name
+        async with self._semaphore:
+            # Añadir jitter para evitar Thundering Herd
+            await asyncio.sleep(self._random.uniform(0.1, 0.5))
+            
+            self._staging_dir.mkdir(parents=True, exist_ok=True)
+            dest = self._staging_dir / file_info.file_name
 
-        if file_info.download_url == "FREE_FALLBACK":
-            return await self._handle_manual_fallback(file_info, dest, progress_cb)
+            if file_info.download_url == "FREE_FALLBACK":
+                return await self._handle_manual_fallback(file_info, dest, progress_cb)
 
-        self._gateway.authorize("GET", file_info.download_url)
+        await self._gateway.authorize("GET", file_info.download_url)
 
         progress = DownloadProgress(
             file_name=file_info.file_name,
@@ -222,7 +255,9 @@ class NexusDownloader:
         )
         timeout = aiohttp.ClientTimeout(total=self._timeout, sock_read=60)
         headers = {"apikey": self._api_key}
+        # Inicializar ambos hashes para cálculo dual
         md5_hash = hashlib.md5()
+        sha256_hash = hashlib.sha256()
 
         try:
             async with session.get(file_info.download_url, headers=headers, timeout=timeout) as resp:
@@ -236,7 +271,9 @@ class NexusDownloader:
                 async with aiofiles.open(dest, "wb") as fh:
                     async for chunk in resp.content.iter_chunked(self._chunk_size):
                         await fh.write(chunk)
+                        # Actualizar ambos hashes por chunk
                         md5_hash.update(chunk)
+                        sha256_hash.update(chunk)
                         progress.downloaded_bytes += len(chunk)
                         if progress_cb is not None:
                             await progress_cb(progress)
@@ -250,18 +287,39 @@ class NexusDownloader:
             await _cleanup(dest)
             raise DownloadError(f"I/O or timeout error for {file_info.file_name!r}: {exc}") from exc
 
-        # POST-DOWNLOAD: Validación de Hash estricta. 
-        # Si esto falla, lanza MD5ValidationError, lo atrapa Tenacity, limpia el archivo corrupto y reintenta.
+        # POST-DOWNLOAD: Validación de Hash estricta (MD5 contra Nexus API).
+        # Si esto falla, lanza HashValidationError, lo atrapa Tenacity, limpia el archivo corrupto y reintenta.
         if file_info.md5:
-            actual = md5_hash.hexdigest()
-            if actual.lower() != file_info.md5.lower():
+            actual_md5 = md5_hash.hexdigest()
+            if actual_md5.lower() != file_info.md5.lower():
                 await _cleanup(dest)
-                raise MD5ValidationError(
-                    f"MD5 mismatch for {file_info.file_name!r}: expected={file_info.md5!r} got={actual!r}"
+                raise HashValidationError(
+                    f"MD5 mismatch for {file_info.file_name!r}: "
+                    f"expected={file_info.md5!r} got={actual_md5!r}"
                 )
-            logger.info("MD5 validado OK para %s (%s)", file_info.file_name, actual)
+            logger.info("MD5 validado OK para %s (%s)", file_info.file_name, actual_md5)
         else:
-            logger.warning("Sin hash provisto por Nexus para %s. Omitiendo validación.", file_info.file_name)
+            logger.warning("Sin hash MD5 provisto por Nexus para %s. Omitiendo validación MD5.", file_info.file_name)
+
+        # Calcular y registrar SHA256 para integridad local
+        actual_sha256 = sha256_hash.hexdigest()
+        logger.info("SHA256 calculado para %s: %s", file_info.file_name, actual_sha256)
+        
+        # Validar SHA256 si fue proporcionado
+        if file_info.sha256:
+            if not validate_sha256_format(file_info.sha256):
+                logger.warning(
+                    "Formato SHA256 inválido proporcionado para %s (se esperaban 64 chars hex)",
+                    file_info.file_name
+                )
+            elif actual_sha256.lower() != file_info.sha256.lower():
+                await _cleanup(dest)
+                raise HashValidationError(
+                    f"SHA256 mismatch for {file_info.file_name!r}: "
+                    f"expected={file_info.sha256!r} got={actual_sha256!r}"
+                )
+            else:
+                logger.info("SHA256 validado OK para %s", file_info.file_name)
 
         return dest
 
@@ -374,7 +432,7 @@ class NexusDownloader:
             f"{_NEXUS_API_BASE}/games/{self._game_domain}"
             f"/mods/{nexus_id}/files/{file_id}/download_link.json"
         )
-        self._gateway.authorize("GET", url)
+        await self._gateway.authorize("GET", url)
 
         headers = {"apikey": self._api_key, "Accept": "application/json"}
         meta_timeout = aiohttp.ClientTimeout(total=30)

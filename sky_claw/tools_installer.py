@@ -90,8 +90,17 @@ class ToolInstallError(Exception):
 
 def _is_safe_path(member_path: str) -> bool:
     """Reject paths with traversal components."""
-    parts = pathlib.PurePosixPath(member_path).parts
-    return ".." not in parts
+    try:
+        from sky_claw.core.validators import validate_path_strict
+        
+        # Rechazar explícitamente rutas absolutas o con letra de unidad
+        if pathlib.PureWindowsPath(member_path).is_absolute() or pathlib.PurePosixPath(member_path).is_absolute():
+            return False
+            
+        validate_path_strict(member_path)
+        return True
+    except Exception:
+        return False
 
 
 def _extract_zip_safe(archive: pathlib.Path, dest: pathlib.Path) -> None:
@@ -102,7 +111,8 @@ def _extract_zip_safe(archive: pathlib.Path, dest: pathlib.Path) -> None:
                 continue
             if not _is_safe_path(info.filename):
                 raise PathViolation(f"Zip-slip detected: {info.filename!r}")
-        zf.extractall(dest)
+            zf.extract(info, dest)
+
 
 
 def _extract_7z_safe(archive: pathlib.Path, dest: pathlib.Path) -> None:
@@ -472,7 +482,7 @@ class ToolsInstaller:
         Returns:
             Tuple of (:class:`ReleaseAsset`, version tag).
         """
-        self._gateway.authorize("GET", releases_url)
+        await self._gateway.authorize("GET", releases_url)
 
         timeout = aiohttp.ClientTimeout(total=30)
         headers = {"Accept": "application/vnd.github+json"}
@@ -521,7 +531,7 @@ class ToolsInstaller:
 
         Validates file size after download.  Logs progress every 10 MB.
         """
-        self._gateway.authorize("GET", asset.download_url)
+        await self._gateway.authorize("GET", asset.download_url)
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / asset.name
         self._validator.validate(dest)

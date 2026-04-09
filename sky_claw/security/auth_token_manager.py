@@ -15,6 +15,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from sky_claw.security.file_permissions import restrict_to_owner
+
 logger = logging.getLogger("SkyClaw.AuthToken")
 
 # Token length in bytes (32 bytes = 256-bit entropy)
@@ -46,6 +48,7 @@ class AuthTokenManager:
             self._token_dir = Path.home() / ".sky_claw" / "tokens"
 
         self._token_dir.mkdir(parents=True, exist_ok=True)
+        restrict_to_owner(self._token_dir)
         self._token_path = self._token_dir / "ws_auth_token"
 
     # ── Server Side ──────────────────────────────────────────────────
@@ -56,18 +59,13 @@ class AuthTokenManager:
         self._token_hash = self._hash(self._token)
         self._created_at = time.time()
 
-        # Write plaintext token to a file readable by the daemon
+        # Write plaintext token to a file readable by the daemon.
+        # The daemon needs plaintext for the WS handshake (IPC channel).
         self._token_path.write_text(self._token, encoding="utf-8")
-        # Restrict permissions (best-effort on Windows)
-        try:
-            self._token_path.chmod(0o600)
-        except OSError:
-            pass  # Windows may not support chmod
+        # Restrict permissions (cross-platform)
+        restrict_to_owner(self._token_path)
 
-        logger.info(
-            f"Auth token generated and written to {self._token_path} "
-            f"(TTL={_TOKEN_TTL}s)"
-        )
+        logger.info(f"Auth token generated (TTL={_TOKEN_TTL}s)")
         return self._token
 
     def validate(self, token: str) -> bool:
@@ -90,12 +88,18 @@ class AuthTokenManager:
         return is_valid
 
     def revoke(self) -> None:
-        """Revoke the current token and delete the file."""
+        """Revoke the current token atomically — clear memory first, then disk."""
+        # Clear in-memory state FIRST to prevent concurrent validate() from succeeding
         self._token = None
         self._token_hash = None
         self._created_at = 0.0
 
         if self._token_path.exists():
+            # Overwrite with zeros before unlinking to prevent forensic recovery
+            try:
+                self._token_path.write_bytes(b"\x00" * 64)
+            except OSError:
+                pass
             self._token_path.unlink(missing_ok=True)
 
         logger.info("Auth token revoked.")

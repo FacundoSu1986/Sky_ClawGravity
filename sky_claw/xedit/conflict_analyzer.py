@@ -141,6 +141,42 @@ class ConflictAnalyzer:
     # Public API
     # ------------------------------------------------------------------
 
+    def validate_load_order_limit(self, plugins: list[str]) -> None:
+        """Validates the strict engine plugin limit of 254 plugins.
+        
+        Args:
+            plugins: List of plugin filenames.
+            
+        Raises:
+            RuntimeError: If the count exceeds 254.
+        """
+        active_plugins = [p for p in plugins if p.lower().endswith((".esp", ".esm"))]
+        if len(active_plugins) > 254:
+            logger.critical(f"CRITICAL ALERT: Plugin limit exceeded! ({len(active_plugins)} > 254)")
+            raise RuntimeError(f"Load order limit of 254 plugins exceeded: found {len(active_plugins)} active plugins.")
+
+    async def verify_masters(self, plugins: list[str], xedit_runner: XEditRunner) -> list[str]:
+        """Verify master dependencies for all active plugins.
+        
+        Args:
+            plugins: List of active plugin filenames.
+            xedit_runner: Configured xEdit runner.
+            
+        Returns:
+            List of error strings regarding missing masters.
+        """
+        # Note: A headless script like check_masters.pas might be run here.
+        # This implementation delegates to the runner script checking.
+        logger.info("[M-05] Verifying plugin master dependencies...")
+        try:
+            result = await xedit_runner.run_script("check_masters.pas", plugins)
+            if not result.success:
+                return [f"Error verifying masters: {err}" for err in result.errors]
+            return [] # No missing masters detected
+        except Exception as exc:
+            logger.error(f"Failed to verify masters: {exc}")
+            return [str(exc)]
+
     async def analyze(
         self,
         plugins: list[str],

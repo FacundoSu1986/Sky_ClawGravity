@@ -4,111 +4,339 @@
  */
 
 const { WebSocketServer } = require('ws');
+const path = require('path');
+const crypto = require('crypto');
+const https = require('https');
+const fs = require('fs');
+const { execSync } = require('child_process');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+function getOrCreateTlsCerts() {
+    // SEC-006: Priorizar certificados desde variables de entorno
+    const sslKeyPath = process.env.SSL_KEY_PATH;
+    const sslCertPath = process.env.SSL_CERT_PATH;
+
+    // Si ambas variables de entorno están definidas, intentar cargar certificados
+    if (sslKeyPath && sslCertPath) {
+        try {
+            if (fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)) {
+                const creds = {
+                    key: fs.readFileSync(sslKeyPath),
+                    cert: fs.readFileSync(sslCertPath)
+                };
+                console.log(JSON.stringify({
+                    level: "INFO",
+                    msg: "SSL certificates loaded successfully from environment paths",
+                    key_path: sslKeyPath,
+                    cert_path: sslCertPath,
+                    ts: Date.now()
+                }));
+                return creds;
+            } else {
+                console.error(JSON.stringify({
+                    level: "ERROR",
+                    msg: "SSL certificate files not found at specified paths",
+                    key_path: sslKeyPath,
+                    cert_path: sslCertPath,
+                    ts: Date.now()
+                }));
+                // Fallback a modo inseguro
+                console.warn(JSON.stringify({
+                    level: "WARN",
+                    msg: "SSL certs not found. Running in degraded INSECURE mode (ws://)",
+                    ts: Date.now()
+                }));
+                return null;
+            }
+        } catch (err) {
+            console.error(JSON.stringify({
+                level: "ERROR",
+                msg: "Failed to read SSL certificates",
+                error: err.message,
+                ts: Date.now()
+            }));
+            // Degradación elegante: no terminar el proceso
+            console.warn(JSON.stringify({
+                level: "WARN",
+                msg: "SSL certs not found. Running in degraded INSECURE mode (ws://)",
+                ts: Date.now()
+            }));
+            return null;
+        }
+    }
+
+    // Fallback: Intentar certificados auto-generados (comportamiento anterior)
+    const certDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.sky_claw', 'certs');
+    const keyPath = path.join(certDir, 'server.key');
+    const certPath = path.join(certDir, 'server.crt');
+    if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+        return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+    }
+    try {
+        fs.mkdirSync(certDir, { recursive: true });
+        execSync(`openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=localhost"`, { stdio: 'pipe' });
+        return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+    } catch (err) {
+        console.warn(JSON.stringify({
+            level: "WARN",
+            msg: "SSL certs not found. Running in degraded INSECURE mode (ws://)",
+            detail: "openssl not available",
+            error: err.message,
+            ts: Date.now()
+        }));
+        return null;
+    }
+}
 
 // Configuración de puertos (Zero Trust Local)
 const AGENT_PORT = 18789;
 const UI_PORT = 18790;
 const BIND_ADDRESS = '127.0.0.1';
 
+// SC-V01: Token de autenticación — obligatorio en entorno (Fail-Fast Pattern)
+const WS_AUTH_TOKEN = process.env.WS_AUTH_TOKEN;
+if (!WS_AUTH_TOKEN) {
+    console.error(JSON.stringify({
+        level: "FATAL",
+        message: "WS_AUTH_TOKEN environment variable missing",
+        timestamp: new Date().toISOString(),
+        source: "gateway",
+        action: "process_exit"
+    }));
+    process.exit(1);
+}
+
+/**
+ * Compara dos strings de forma segura contra ataques de timing side-channel.
+ * Utiliza crypto.timingSafeEqual para evitar filtración de información por tiempo de respuesta.
+ * @param {string} a - Primer string a comparar
+ * @param {string} b - Segundo string a comparar
+ * @returns {boolean} - true si son iguales, false en caso contrario
+ */
+function timingSafeEqual(a, b) {
+    // Validar que ambos sean strings
+    if (typeof a !== 'string' || typeof b !== 'string') {
+        return false;
+    }
+    // Si las longitudes no coinciden, retornar false sin lanzar error
+    if (a.length !== b.length) {
+        return false;
+    }
+    // Convertir a Buffers y comparar de forma segura
+    try {
+        return crypto.timingSafeEqual(
+            Buffer.from(a, 'utf8'),
+            Buffer.from(b, 'utf8')
+        );
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Exige un handshake de autenticación antes de procesar mensajes.
+ * El cliente debe enviar {"type":"auth","token":"<token>"} como primer mensaje.
+ * Si no autentica en 3s → cierre 4001. Token incorrecto → cierre 4003.
+ * @param {import('ws').WebSocket} ws
+ * @param {string} label  Etiqueta de log ('AGENT' o 'UI')
+ * @param {Function} onAuthenticated  Callback ejecutado tras auth exitosa
+ */
+function requireAuth(ws, label, onAuthenticated) {
+    const timer = setTimeout(() => {
+        console.warn(`[${label}] Auth timeout — cerrando conexión no autenticada.`);
+        ws.close(4001, 'auth_timeout');
+    }, 3000);
+
+    ws.once('message', (raw) => {
+        try {
+            const msg = JSON.parse(raw.toString());
+            if (msg.type === 'auth' && timingSafeEqual(msg.token, WS_AUTH_TOKEN)) {
+                clearTimeout(timer);
+                ws.send(JSON.stringify({ type: 'auth_ok' }));
+                onAuthenticated();
+            } else {
+                clearTimeout(timer);
+                console.log(JSON.stringify({
+                    event: "auth_failure",
+                    timestamp: new Date().toISOString(),
+                    source: "gateway",
+                    remote: ws._socket?.remoteAddress || "unknown",
+                    reason: "invalid_token"
+                }));
+                ws.close(4003, 'unauthorized');
+            }
+        } catch {
+            clearTimeout(timer);
+            ws.close(4003, 'unauthorized');
+        }
+    });
+}
+
 // Estado del Gateway
 let agentSocket = null;
 const uiSockets = new Set();
 const pendingCommands = [];
 
+const tlsCreds = getOrCreateTlsCerts();
+
 // --- Servidor para el Agente Python (Daemon) ---
-const agentServer = new WebSocketServer({ port: AGENT_PORT, host: BIND_ADDRESS });
+const agentServer = new WebSocketServer({ port: AGENT_PORT, host: BIND_ADDRESS, maxPayload: 1 * 1024 * 1024 });
 
 agentServer.on('connection', (ws) => {
-    console.log(`[AGENT] Daemon conectado desde ${ws._socket.remoteAddress}`);
-    agentSocket = ws;
+    requireAuth(ws, 'AGENT', () => {
+        console.log(`[AGENT] Daemon autenticado desde ${ws._socket.remoteAddress}`);
+        agentSocket = ws;
 
-    // Procesar cola de comandos pendientes (Resiliencia de Estado)
-    while (pendingCommands.length > 0 && agentSocket.readyState === ws.OPEN) {
-        const cmd = pendingCommands.shift();
-        console.log(`[AGENT] Despachando comando encolado: ${cmd.type}`);
-        agentSocket.send(JSON.stringify(cmd));
-    }
-
-    ws.on('message', (data) => {
-        const response = data.toString();
-        try {
-            const parsed = JSON.parse(response);
-            // Telemetría: Retransmitir silenciosamente a la UI
-            if (parsed.type === 'TELEMETRY') {
-                uiSockets.forEach(ui => {
-                    if (ui.readyState === 1) ui.send(response);
-                });
-                return;
-            }
-        } catch (e) {
-            // No es JSON, tratar como mensaje normal
+        // Procesar cola de comandos pendientes (Resiliencia de Estado)
+        while (pendingCommands.length > 0 && agentSocket.readyState === ws.OPEN) {
+            const cmd = pendingCommands.shift();
+            console.log(`[AGENT] Despachando comando encolado: ${cmd.type}`);
+            agentSocket.send(JSON.stringify(cmd));
         }
 
-        // Retransmitir respuestas normales del agente al frontend
-        console.log(`[AGENT] Mensaje recibido: ${response.substring(0, 50)}...`);
-        uiSockets.forEach(ui => {
-            if (ui.readyState === 1) ui.send(response);
+        ws.on('message', (data) => {
+            const response = data.toString();
+            try {
+                const parsed = JSON.parse(response);
+                // Telemetría: Retransmitir silenciosamente a la UI
+                if (parsed.type === 'TELEMETRY') {
+                    uiSockets.forEach(ui => {
+                        if (ui.readyState === 1) ui.send(response);
+                    });
+                    return;
+                }
+            } catch (e) {
+                // No es JSON, tratar como mensaje normal
+            }
+
+            // Retransmitir respuestas normales del agente al frontend
+            console.log(`[AGENT] Mensaje recibido: ${response.substring(0, 50)}...`);
+            uiSockets.forEach(ui => {
+                if (ui.readyState === 1) ui.send(response);
+            });
         });
-    });
 
-    // Notificar a las UIs que el agente está listo
-    uiSockets.forEach(ui => {
-        if (ui.readyState === 1) ui.send(JSON.stringify({ type: 'STATUS', content: '[READY] Daemon connected' }));
-    });
-
-    ws.on('close', () => {
-        console.warn('[AGENT] Daemon desconectado. Entrando en modo de espera/buffer.');
-        agentSocket = null;
-        // Notificar a las UIs sobre la caída (Chaos resilience)
+        // Notificar a las UIs que el agente está listo
         uiSockets.forEach(ui => {
-            if (ui.readyState === 1) ui.send(JSON.stringify({ type: 'STATUS', content: '[BUFFERING] Reconnecting to Daemon....' }));
+            if (ui.readyState === 1) ui.send(JSON.stringify({ type: 'STATUS', content: '[READY] Daemon connected' }));
         });
-    });
 
-    ws.on('error', (err) => {
-        console.error(`[AGENT] Error en socket del daemon: ${err.message}`);
-    });
+        ws.on('close', () => {
+            console.warn('[AGENT] Daemon desconectado. Entrando en modo de espera/buffer.');
+            agentSocket = null;
+            // Notificar a las UIs sobre la caída (Chaos resilience)
+            uiSockets.forEach(ui => {
+                if (ui.readyState === 1) ui.send(JSON.stringify({ type: 'STATUS', content: '[BUFFERING] Reconnecting to Daemon....' }));
+            });
+        });
+
+        ws.on('error', (err) => {
+            console.error(`[AGENT] Error en socket del daemon: ${err.message}`);
+        });
+    }); // end requireAuth
 });
 
 console.log(`[GATEWAY] Escuchando Agente Python en ws://${BIND_ADDRESS}:${AGENT_PORT}`);
 
 // --- Servidor para la Interfaz Web (Frontend) ---
-const uiServer = new WebSocketServer({ port: UI_PORT, host: BIND_ADDRESS });
+let uiHttpsServer = null;
+let uiServer;
+if (tlsCreds) {
+    uiHttpsServer = https.createServer(tlsCreds);
+    uiServer = new WebSocketServer({ server: uiHttpsServer, maxPayload: 1 * 1024 * 1024 });
+    uiHttpsServer.listen(UI_PORT, BIND_ADDRESS, () => console.log(`[GW] UI WS (wss://): port ${UI_PORT}`));
+} else {
+    uiServer = new WebSocketServer({ port: UI_PORT, host: BIND_ADDRESS, maxPayload: 1 * 1024 * 1024 });
+    console.log(`[GW] UI WS (ws://): port ${UI_PORT}`);
+}
 
 uiServer.on('connection', (ws) => {
-    console.log(`[UI] Nueva conexión de interfaz web.`);
-    uiSockets.add(ws);
+    requireAuth(ws, 'UI', () => {
+        console.log(`[UI] Nueva conexión de interfaz web autenticada.`);
+        uiSockets.add(ws);
 
-    ws.on('message', (data) => {
-        try {
-            const command = JSON.parse(data);
-            console.log(`[UI] Comando recibido: ${command.type || 'unknown'}`);
+        // C-06: Rate limiting - 10 comandos/segundo por conexión (Ventana Deslizante 1s)
+        ws._rateLimitCount = 0;
+        ws._rateLimitReset = Date.now() + 1000;
 
-            if (agentSocket && agentSocket.readyState === 1) {
-                // Enviar inmediatamente si el agente está vivo
-                agentSocket.send(data.toString());
-            } else {
-                // Buffer de Resiliencia: Encolar si el agente está reiniciando
-                console.warn('[GATEWAY] Agente offline. Encolando comando.');
-                pendingCommands.push(command);
-                
-                // Limitar tamaño del buffer para evitar fugas de memoria
-                if (pendingCommands.length > 100) pendingCommands.shift();
+        ws.on('message', (data) => {
+            // C-06: Verificar rate limiting antes de procesar
+            const now = Date.now();
+            if (now > ws._rateLimitReset) {
+                ws._rateLimitCount = 0;
+                ws._rateLimitReset = now + 1000;
             }
-        } catch (err) {
-            console.error('[UI] Error al procesar mensaje de UI:', err.message);
-        }
-    });
+            if (ws._rateLimitCount >= 10) {
+                // C-06: Drop silencioso - límite excedido
+                console.log(JSON.stringify({
+                    event: "rate_limit",
+                    timestamp: new Date().toISOString(),
+                    source: "gateway",
+                    remote: ws._socket?.remoteAddress || "unknown"
+                }));
+                return;
+            }
+            ws._rateLimitCount++;
 
-    ws.on('close', () => {
-        console.log('[UI] Interfaz web desconectada.');
-        uiSockets.delete(ws);
-    });
+            try {
+                const command = JSON.parse(data);
+                console.log(`[UI] Comando recibido: ${command.type || 'unknown'}`);
+
+                if (agentSocket && agentSocket.readyState === 1) {
+                    // Enviar inmediatamente si el agente está vivo
+                    agentSocket.send(data.toString());
+                } else {
+                    // Buffer de Resiliencia: Encolar si el agente está reiniciando
+                    console.warn('[GATEWAY] Agente offline. Encolando comando.');
+                    pendingCommands.push(command);
+
+                    // Limitar tamaño del buffer para evitar fugas de memoria
+                    if (pendingCommands.length > 100) pendingCommands.shift();
+                }
+            } catch (err) {
+                console.error('[UI] Error al procesar mensaje de UI:', err.message);
+            }
+        });
+
+        ws.on('close', () => {
+            console.log('[UI] Interfaz web desconectada.');
+            // C-06: Limpieza de estado para evitar fugas de memoria
+            ws._rateLimitCount = 0;
+            ws._rateLimitReset = 0;
+            uiSockets.delete(ws);
+        });
+    }); // end requireAuth
 });
 
-console.log(`[GATEWAY] Escuchando Interfaz Web en ws://${BIND_ADDRESS}:${UI_PORT}`);
+// --- Health Check HTTP Endpoint ---
+const http = require('http');
+const HEALTH_PORT = parseInt(process.env.HEALTH_PORT, 10) || 18791;
+const healthServer = http.createServer((req, res) => {
+    if (req.url === '/health' && req.method === 'GET') {
+        const status = {
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            agent_connected: agentSocket !== null,
+            ui_connections: uiSockets.size,
+            uptime_seconds: Math.floor(process.uptime()),
+        };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(status));
+    } else {
+        res.writeHead(404);
+        res.end();
+    }
+});
+healthServer.listen(HEALTH_PORT, BIND_ADDRESS, () => {
+    console.log(`[GW] Health: http://${BIND_ADDRESS}:${HEALTH_PORT}/health`);
+});
 
 // Manejo de errores globales para el proceso Node
 process.on('uncaughtException', (err) => {
     console.error('[CRITICAL] Error no capturado en el Gateway:', err);
+});
+
+// H-11: Captura global de promesas rechazadas sin catch
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
 });

@@ -25,6 +25,7 @@ from sky_claw.agent.router import LLMRouter
 from sky_claw.auto_detect import AutoDetector
 from sky_claw.local_config import LocalConfig, load as load_local_config, save as save_local_config
 from sky_claw.logging_config import correlation_id_var
+from sky_claw.security.auth_token_manager import AuthTokenManager
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ class WebApp:
         config_path: pathlib.Path | None = None,
         tools_installer: Any = None,
         on_setup_complete: OnSetupComplete | None = None,
+        auth_manager: AuthTokenManager | None = None,
     ) -> None:
         self._router = router
         self._session = session
@@ -82,6 +84,7 @@ class WebApp:
         self._config_path = config_path or _CONFIG_PATH
         self._tools_installer = tools_installer
         self._on_setup_complete = on_setup_complete
+        self._auth_manager = auth_manager
 
     @web.middleware
     async def _correlation_middleware(
@@ -91,15 +94,57 @@ class WebApp:
     ) -> web.StreamResponse:
         """Middleware that sets a unique correlation ID for each web request."""
         corr_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+        # Reject suspicious non-UUID correlation IDs from clients
+        try:
+            uuid.UUID(corr_id)
+        except ValueError:
+            corr_id = str(uuid.uuid4())
         token = correlation_id_var.set(corr_id)
         try:
             return await handler(request)
         finally:
             correlation_id_var.reset(token)
 
+    @web.middleware
+    async def _setup_auth_middleware(
+        self,
+        request: web.Request,
+        handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
+    ) -> web.StreamResponse:
+        """Protect /api/setup and /api/* mutation endpoints.
+
+        Strategy: setup endpoints are restricted to requests originating
+        from loopback (127.0.0.1 / ::1).  This is correct for a local
+        desktop tool — the setup wizard is only ever used from the same
+        machine, and binding to localhost prevents remote exploitation.
+        For the /api/chat endpoint, a Bearer token is also required when
+        an AuthTokenManager is configured.
+        """
+        path = request.path
+
+        if path in ("/api/setup",) or path.startswith("/api/setup"):
+            peer = request.remote or ""
+            if peer not in ("127.0.0.1", "::1", "localhost"):
+                logger.warning("Setup endpoint blocked for non-local peer: %s", peer)
+                return web.Response(status=403, text="Forbidden: setup only accessible from localhost")
+
+        if path == "/api/chat" and self._auth_manager is not None:
+            auth_header = request.headers.get("Authorization", "")
+            if not auth_header.startswith("Bearer "):
+                return web.Response(status=401, text="Unauthorized")
+            token = auth_header[len("Bearer "):]
+            if not self._auth_manager.validate(token):
+                logger.warning("Invalid auth token on /api/chat from %s", request.remote)
+                return web.Response(status=401, text="Unauthorized")
+
+        return await handler(request)
+
     def create_app(self) -> web.Application:
         """Build and return the aiohttp Application."""
-        app = web.Application(middlewares=[self._correlation_middleware])
+        app = web.Application(middlewares=[
+            self._correlation_middleware,
+            self._setup_auth_middleware,
+        ])
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/setup.html", self._handle_setup_page)
         app.router.add_get("/api/setup", self._handle_get_setup)
@@ -200,7 +245,7 @@ class WebApp:
             return web.json_response(result)
         except Exception as exc:
             logger.error("Auto-detect error: %s", exc)
-            return web.json_response({"error": str(exc)}, status=500)
+            return web.json_response({"error": "Auto-detection failed. Check server logs."}, status=500)
 
     async def _handle_install_tools(self, request: web.Request) -> web.Response:
         """Install missing LOOT / SSEEdit via ToolsInstaller."""
@@ -231,7 +276,8 @@ class WebApp:
                 cfg.loot_exe = str(loot_result.exe_path)
                 save_local_config(cfg, self._config_path)
             except Exception as exc:
-                results["loot_error"] = str(exc)
+                logger.error("LOOT install error: %s", exc)
+                results["loot_error"] = "LOOT installation failed. Check server logs."
 
         if data.get("install_xedit", True):
             try:
@@ -243,7 +289,8 @@ class WebApp:
                 cfg.xedit_exe = str(xedit_result.exe_path)
                 save_local_config(cfg, self._config_path)
             except Exception as exc:
-                results["xedit_error"] = str(exc)
+                logger.error("xEdit install error: %s", exc)
+                results["xedit_error"] = "xEdit installation failed. Check server logs."
 
         return web.json_response(results)
 
@@ -281,5 +328,5 @@ class WebApp:
         except Exception as exc:
             logger.exception("Chat error: %s", exc)
             return web.json_response(
-                {"error": f"Error del Agente: {str(exc)} \n(Revisá tu API Key en la config inicial)"}, status=500
+                {"error": "Error del Agente. Revisa tu API Key en la config inicial y consulta los logs del servidor."}, status=500
             )

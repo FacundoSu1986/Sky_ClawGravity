@@ -45,19 +45,36 @@ class ManagedToolExecutor:
             return -1
 
         for arg in args:
-            # Heuristic: If it looks like a Linux path, translate it.
             if arg.startswith("/mnt/") or arg.startswith("/"):
+                # WSL path — must translate AND pass validation. No fallback.
                 try:
                     translated_path = await ModdingToolsAgent.translate_path_wsl_to_win(arg)
-                    try:
-                        validator.validate(translated_path)
-                        win_args.append(translated_path)
-                    except PathViolation as pv:
-                        logger.error(f"🚨 ABORT (Fail-Safe): Path Traversal Detected! {pv}")
+                except Exception as te:
+                    logger.error("🚨 ABORT: WSL path translation failed for arg — rejecting. %s", te)
+                    return -1
+                try:
+                    validator.validate(translated_path)
+                except PathViolation as pv:
+                    logger.error("🚨 ABORT (Fail-Safe): Path Traversal Detected! %s", pv)
+                    return -1
+                win_args.append(translated_path)
+            elif pathlib.Path(arg).is_absolute():
+                # Windows absolute path — apply base-directory jailing via pathlib
+                try:
+                    resolved = pathlib.Path(arg).resolve(strict=False)
+                    modding_root = pathlib.Path(SystemPaths.modding_root()).resolve(strict=False)
+                    if not resolved.is_relative_to(modding_root):
+                        logger.error(
+                            "🚨 ABORT: Base-dir jail violation — '%s' is outside '%s'",
+                            resolved, modding_root,
+                        )
                         return -1
-                except Exception:
-                    win_args.append(arg)
+                except Exception as je:
+                    logger.error("🚨 ABORT: Path resolution failed during jailing: %s", je)
+                    return -1
+                win_args.append(arg)
             else:
+                # Non-path argument (flag, option, plain string) — pass through
                 win_args.append(arg)
         
         logger.info(f"🚀 EXECUTOR [WSL2_INVOKE]: {binary_path}")
@@ -113,9 +130,11 @@ class ManagedToolExecutor:
                     await callback(f"{prefix}: {decoded}")
                 logger.debug(f"[PIPE-{prefix}] {decoded}")
 
+        # H-01: return_exceptions=True para prevenir crashes del orquestador
         await asyncio.gather(
             _read_stream(self.proc.stdout, "OUT"),
-            _read_stream(self.proc.stderr, "ERR")
+            _read_stream(self.proc.stderr, "ERR"),
+            return_exceptions=True
         )
 
     def signal_abort(self):

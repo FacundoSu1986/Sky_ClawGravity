@@ -24,6 +24,39 @@ if (!TELEGRAM_BOT_TOKEN || isNaN(ALLOWED_USER_ID)) {
     process.exit(1);
 }
 
+// SEC-007 FIX: Authentication configuration for WebSocket
+if (!process.env.WS_AUTH_TOKEN) {
+    console.error("[FATAL] WS_AUTH_TOKEN is not set. Cannot start telegram gateway without a shared secret.");
+    process.exit(1);
+}
+const AUTH_TOKEN = process.env.WS_AUTH_TOKEN;
+const AUTH_TIMEOUT_MS = 5000;
+
+// SEC-007 FIX: Pre-calculate buffer for timing-safe comparison
+const EXPECTED_TOKEN_BUFFER = Buffer.from(AUTH_TOKEN, 'utf8');
+
+/**
+ * SEC-007 FIX: Timing-safe token comparison
+ * Uses crypto.timingSafeEqual() for constant-time comparison to prevent timing attacks.
+ * @param {string} inputToken - The token to validate
+ * @returns {boolean} - True if tokens match, false otherwise
+ */
+function timingSafeTokenCompare(inputToken) {
+    try {
+        const inputBuffer = Buffer.from(inputToken, 'utf8');
+
+        // Verify length first to avoid crash
+        if (inputBuffer.length !== EXPECTED_TOKEN_BUFFER.length) {
+            return false;
+        }
+
+        return crypto.timingSafeEqual(EXPECTED_TOKEN_BUFFER, inputBuffer);
+    } catch (err) {
+        console.error('[GW] Token comparison error:', err.message);
+        return false;
+    }
+}
+
 // 0. Persistence & Factory state
 let activeConfig = {
     browser_engine: "chromium" // Default: Chromium (Reliability 0.95)
@@ -45,7 +78,7 @@ async function launchEngine(preference) {
             console.warn(`[GW] Binario ${engineType} ausente en ${binPath}. Aplicando Fallback a Chromium.`);
             return await chromium.launch({ headless: true });
         }
-        
+
         // Paso 2: Launch con fingerprinting base (Confianza: WebKit/FF ~0.8)
         return await selected.launch({ headless: true });
     } catch (launchError) {
@@ -54,8 +87,25 @@ async function launchEngine(preference) {
     }
 }
 
-// 1. WebSocket Server (Zero Trust - Localhost binding for daemon)
-const wss = new WebSocketServer({ port: WS_PORT });
+// SEC-007 FIX: WebSocket Server with localhost-only verification and authentication
+const wss = new WebSocketServer({
+    port: WS_PORT,
+    maxPayload: 1 * 1024 * 1024,
+    verifyClient: (info, callback) => {
+        // SEC-007 FIX: Only allow connections from localhost
+        const remoteAddr = info.req.socket.remoteAddress;
+        const isLocal = remoteAddr === "127.0.0.1" ||
+            remoteAddr === "::1" ||
+            remoteAddr === "::ffff:127.0.0.1";
+
+        if (!isLocal) {
+            console.warn(`[GW] SEC-007: Conexión rechazada desde ${remoteAddr} - Solo localhost permitido`);
+            callback(false, 403, "Forbidden: Local connections only");
+            return;
+        }
+        callback(true);
+    }
+});
 let daemonSocket = null;
 
 wss.on("connection", (ws, req) => {
@@ -63,12 +113,52 @@ wss.on("connection", (ws, req) => {
     const remote = req.socket.remoteAddress;
     console.log(`[GW] Daemon connected from ${remote}`);
 
-    daemonSocket = ws;
+    // SEC-007 FIX: Authentication state tracking
+    let isAuthenticated = false;
+    let authTimeout = setTimeout(() => {
+        if (!isAuthenticated) {
+            console.warn(`[GW] SEC-007: Connection timeout - not authenticated`);
+            ws.close(4001, "Authentication timeout");
+        }
+    }, AUTH_TIMEOUT_MS);
 
     ws.on("message", async (data) => {
         try {
             const message = JSON.parse(data);
-            
+
+            // SEC-007 FIX: Handle authentication first
+            if (message.type === "auth") {
+                if (timingSafeTokenCompare(message.token)) {
+                    isAuthenticated = true;
+                    clearTimeout(authTimeout);
+                    ws.send(JSON.stringify({ type: "auth_success" }));
+                    console.log(`[GW] SEC-007: Daemon authenticated successfully`);
+                    // Set daemon socket only after successful auth
+                    daemonSocket = ws;
+                    return;
+                } else {
+                    console.log(JSON.stringify({
+                        event: "auth_failure",
+                        timestamp: new Date().toISOString(),
+                        source: "telegram_gateway",
+                        remote: ws._socket?.remoteAddress || "unknown",
+                        reason: "invalid_token"
+                    }));
+                    ws.close(4002, "Invalid token");
+                    return;
+                }
+            }
+
+            // SEC-007 FIX: Reject messages if not authenticated
+            if (!isAuthenticated) {
+                console.warn(`[GW] SEC-007: Message rejected - not authenticated`);
+                ws.send(JSON.stringify({
+                    type: "error",
+                    error: "Authentication required"
+                }));
+                return;
+            }
+
             // SRE Phase 3: Configuración Dinámica
             if (message.type === "command" && message.action === "set_config") {
                 if (message.payload?.browser_engine) {
@@ -80,25 +170,46 @@ wss.on("connection", (ws, req) => {
 
             // SRE Phase 2: Passthrough Web Scraper Integration (Multi-Engine)
             if (message.type === "command" && message.action === "scrape_nexus") {
+                // SEC-039 FIX: Validate URL before passing to Playwright
+                const ALLOWED_SCRAPE_DOMAINS = ["nexusmods.com", "www.nexusmods.com"];
+                let scrapeUrl;
+                try {
+                    scrapeUrl = new URL(message.url);
+                } catch {
+                    console.error(`[GW] Invalid URL rejected: ${message.url}`);
+                    return;
+                }
+                if (scrapeUrl.protocol !== "https:") {
+                    console.error(`[GW] Non-HTTPS URL rejected: ${scrapeUrl.protocol}`);
+                    return;
+                }
+                if (!ALLOWED_SCRAPE_DOMAINS.some(d => scrapeUrl.hostname === d || scrapeUrl.hostname.endsWith("." + d))) {
+                    console.error(`[GW] Domain not in allow-list: ${scrapeUrl.hostname}`);
+                    return;
+                }
+                // Block private/reserved IPs (basic check — DNS resolution happens in Playwright)
+                const blockedPatterns = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.)/;
+                if (blockedPatterns.test(scrapeUrl.hostname)) {
+                    console.error(`[GW] Private IP rejected: ${scrapeUrl.hostname}`);
+                    return;
+                }
+
                 console.log(`[GW] Iniciando Playwright RPC (${activeConfig.browser_engine}) para request: ${message.request_id}`);
                 let browser;
                 try {
                     // Paso 2: Implementación de Factory
                     browser = await launchEngine(message.payload?.browser_engine);
-                    // Fingerprint Randomization: Se utiliza el UA nativo del motor para evitar inconsistencias
+                    // SEC-046 FIX: Do not allow user-controlled User-Agent
                     const contextOptions = {};
-                    if (message.payload?.userAgent) {
-                        contextOptions.userAgent = message.payload.userAgent;
-                    }
                     const context = await browser.newContext(contextOptions);
                     const page = await context.newPage();
                     // Timeout robusto a 25s dejando 5s de margen al demonio Python
                     await page.goto(message.url, { waitUntil: "domcontentloaded", timeout: 25000 });
-                    
+
                     const title = await page.title();
                     // Aquí escalarías la lógica para raspar elementos DOM concretos.
                     const contentJson = { page_title: title, url: message.url };
-                    
+
                     const scrapeResult = {
                         type: "scrape_response",
                         request_id: message.request_id,
@@ -110,9 +221,9 @@ wss.on("connection", (ws, req) => {
                 } catch (scrapeErr) {
                     console.error(`[GW] Error de Scraping IPC: ${scrapeErr.message}`);
                     ws.send(JSON.stringify({
-                        type: "scrape_response", 
-                        request_id: message.request_id, 
-                        data: null, 
+                        type: "scrape_response",
+                        request_id: message.request_id,
+                        data: null,
                         error: scrapeErr.message
                     }));
                 } finally {

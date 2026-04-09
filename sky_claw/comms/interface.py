@@ -74,14 +74,24 @@ class InterfaceAgent:
         """Registra un callback asincrónico para mensajes de ejecución."""
         self._command_callbacks.append(callback)
 
-    async def send_telemetry(self, telemetry_data: dict):
-        """Envía datos de CPU/RAM al Gateway sin bloquear el flujo principal."""
-        if self.ws_connection:
-            try:
-                payload = {
-                    "type": "TELEMETRY",
-                    "content": telemetry_data
-                }
-                await self.ws_connection.send(json.dumps(payload))
-            except Exception as e:
-                logger.error(f"Fallo al enviar telemetría: {e}")
+    async def send_event(self, event_type: str, payload: dict) -> None:
+        """Emite un evento tipado al Gateway con el contrato JSON estandarizado.
+
+        Contrato: {"type": <str>, "payload": <dict>, "timestamp": <epoch_ms>}
+        """
+        if not self.ws_connection:
+            return
+        try:
+            import time as _t
+            msg = {
+                "type": event_type,
+                "payload": payload,
+                "timestamp": int(_t.time() * 1000),
+            }
+            await self.ws_connection.send(json.dumps(msg))
+        except Exception as e:
+            logger.error(f"Fallo al enviar evento '{event_type}': {e}")
+
+    async def send_telemetry(self, telemetry_data: dict) -> None:
+        """Compat shim: reenvía a send_event('telemetry', ...)."""
+        await self.send_event("telemetry", telemetry_data)

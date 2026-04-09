@@ -51,3 +51,9 @@ node_modules/
 gateway/node_modules/
 package-lock.json
 gateway/package-lock.json
+
+# Gateway secrets (nunca commitear)
+gateway/.env
+*.token
+.env
+.skyclaw_backups/

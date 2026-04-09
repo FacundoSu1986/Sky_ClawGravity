@@ -34,6 +34,14 @@ class LOOTNotFoundError(FileNotFoundError):
     """Raised when the LOOT executable is not found."""
 
 
+class LOOTTimeoutError(RuntimeError):
+    """Raised when LOOT execution exceeds the configured timeout."""
+
+    def __init__(self, timeout: int) -> None:
+        super().__init__(f"LOOT timed out after {timeout}s")
+        self.timeout = timeout
+
+
 class LOOTRunner:
     """Async wrapper for LOOT CLI with correct path handling.
 
@@ -96,10 +104,11 @@ class LOOTRunner:
             )
         except asyncio.TimeoutError:
             proc.kill()
-            await proc.communicate()
-            raise RuntimeError(
-                f"LOOT timed out after {self._config.timeout}s"
-            )
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=3.0)
+            except asyncio.TimeoutError:
+                pass
+            raise LOOTTimeoutError(self._config.timeout)
 
         stdout_text = stdout.decode(errors="replace")
         stderr_text = stderr.decode(errors="replace")
