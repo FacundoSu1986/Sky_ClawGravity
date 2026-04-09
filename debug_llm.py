@@ -4,8 +4,6 @@ import os
 import json
 
 async def test_deepseek():
-    api_key = "sk-0442e9703ea8426980e0c064972d0718" # Found this in some context or env if I could
-    # Wait, I don't have the key yet. I'll get it from keyring or env in the script.
     import keyring
     api_key = keyring.get_password("sky_claw", "deepseek_api_key")
     if not api_key:
