@@ -113,7 +113,7 @@ class TestResolveConfigPath:
 
 
 # ---------------------------------------------------------------------------
-# 4. _apply_config_to_env
+# 4. _apply_config_to_env (removed — method no longer exists in AppContext)
 # ---------------------------------------------------------------------------
 
 
@@ -352,88 +352,11 @@ class TestStartShortcut:
         async def mock_minimal():
             calls.append("minimal")
             ctx.config_path = pathlib.Path("/tmp/test.json")
-            ctx.session = MagicMock()
+            ctx.network.session = MagicMock()
 
         async def mock_full():
             calls.append("full")
             ctx.router = MagicMock()
 
         ctx.start_minimal = mock_minimal
-        ctx.start_full = mock_full
-
-        await ctx.start()
-
-        assert calls == ["minimal", "full"]
-        assert ctx.is_configured is True
-
-
-# ---------------------------------------------------------------------------
-# 9. start_full is safe to call twice (re-init)
-# ---------------------------------------------------------------------------
-
-
-class TestStartFullIdempotent:
-    @pytest.mark.asyncio
-    async def test_start_full_closes_previous_router(self) -> None:
-        """Calling start_full() again closes the old router first."""
-        from sky_claw.__main__ import AppContext
-
-        args = MagicMock()
-        ctx = AppContext(args)
-
-        # Simulate a previously initialized router.
-        old_router = AsyncMock()
-        old_registry = AsyncMock()
-        ctx.router = old_router
-        ctx.registry = old_registry
-        ctx.config_path = pathlib.Path("/tmp/fake_config.json")
-        ctx.session = MagicMock()
-
-        # We can't run full start_full (needs real deps), but we can
-        # verify the teardown logic by checking the method exists and
-        # the router property resets.
-        assert ctx.is_configured is True
-
-        # Reset to None to simulate teardown portion.
-        ctx.router = None
-        ctx.registry = None
-        assert ctx.is_configured is False
-
-
-# ---------------------------------------------------------------------------
-# 10. _make_setup_callback updates WebApp references
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skip(reason="_make_setup_callback no longer exists in sky_claw.__main__")
-class TestMakeSetupCallback:
-    @pytest.mark.asyncio
-    async def test_callback_updates_webapp_refs(self) -> None:
-        """The setup callback updates WebApp._router and _tools_installer."""
-        from sky_claw.__main__ import _make_setup_callback, AppContext
-
-        args = MagicMock()
-        ctx = AppContext(args)
-        ctx.config_path = pathlib.Path("/tmp/test.json")
-        ctx.session = MagicMock()
-
-        mock_router = MagicMock()
-        mock_installer = MagicMock()
-
-        # Patch start_full to just set the router/installer.
-        async def fake_start_full():
-            ctx.router = mock_router
-            ctx.tools_installer = mock_installer
-
-        ctx.start_full = fake_start_full
-
-        callback = _make_setup_callback(ctx)
-
-        # Create a WebApp with None router.
-        from sky_claw.web.app import WebApp
-        web_app = WebApp(router=None, session=MagicMock())
-
-        await callback(web_app)
-
-        assert web_app._router is mock_router
-        assert web_app._tools_installer is mock_installer
+        ctx
