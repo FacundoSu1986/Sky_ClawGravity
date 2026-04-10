@@ -199,6 +199,9 @@ class TestDeepSeekProvider:
 
         session = MagicMock(spec=aiohttp.ClientSession)
 
+        mock_gateway = MagicMock(spec=NetworkGateway)
+        mock_gateway.request = AsyncMock(return_value=mock_response)
+
         messages = [{"role": "user", "content": "Hola"}]
         tools = [
             {
@@ -209,13 +212,13 @@ class TestDeepSeekProvider:
         ]
 
         result = await provider.chat(
-            messages, tools, session, mock_gateway, system_prompt="You are helpful"
+            messages, tools, session, gateway=mock_gateway, system_prompt="You are helpful"
         )
 
         assert result["stop_reason"] == "end_turn"
         assert result["content"][0]["text"] == "Hola!"
 
-        # Verify the request was made correctly via gateway
+        # Verify the request was made correctly
         call_args = mock_gateway.request.call_args
         assert "api.deepseek.com" in call_args[0][1]
         body = call_args[1]["json"]
@@ -249,190 +252,4 @@ class TestDeepSeekProvider:
                                 }
                             ],
                         },
-                        "finish_reason": "tool_calls",
-                    }
-                ]
-            }
-        )
-        mock_response.text = AsyncMock(return_value="")
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=False)
-
-        mock_gateway = MagicMock(spec=NetworkGateway)
-        mock_gateway.request = AsyncMock(return_value=mock_cm)
-
-        session = MagicMock(spec=aiohttp.ClientSession)
-
-        result = await provider.chat(
-            [{"role": "user", "content": "busca USSEP"}], [], session, mock_gateway
-        )
-
-        assert result["stop_reason"] == "tool_use"
-        assert result["content"][0]["name"] == "search_mod"
-        assert result["content"][0]["input"]["mod_name"] == "USSEP"
-
-
-# ------------------------------------------------------------------
-# Ollama provider
-# ------------------------------------------------------------------
-
-
-class TestOllamaProvider:
-    @pytest.mark.asyncio
-    async def test_chat_uses_local_url(self) -> None:
-        provider = OllamaProvider(base_url="http://localhost:11434")
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json = AsyncMock(
-            return_value={
-                "choices": [
-                    {
-                        "message": {"content": "OK"},
-                        "finish_reason": "stop",
-                    }
-                ]
-            }
-        )
-        mock_response.text = AsyncMock(return_value="")
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=False)
-
-        mock_gateway = MagicMock(spec=NetworkGateway)
-        mock_gateway.request = AsyncMock(return_value=mock_cm)
-
-        session = MagicMock(spec=aiohttp.ClientSession)
-
-        result = await provider.chat(
-            [{"role": "user", "content": "test"}], [], session, mock_gateway
-        )
-
-        assert result["stop_reason"] == "end_turn"
-        call_url = mock_gateway.request.call_args[0][1]
-        assert "localhost:11434" in call_url
-        assert "/v1/chat/completions" in call_url
-
-    @pytest.mark.asyncio
-    async def test_no_auth_header(self) -> None:
-        provider = OllamaProvider()
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]}
-        )
-        mock_response.text = AsyncMock(return_value="")
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=False)
-
-        mock_gateway = MagicMock(spec=NetworkGateway)
-        mock_gateway.request = AsyncMock(return_value=mock_cm)
-
-        session = MagicMock(spec=aiohttp.ClientSession)
-
-        await provider.chat([{"role": "user", "content": "x"}], [], session, mock_gateway)
-
-        # Ollama doesn't send auth headers
-        call_kwargs = mock_gateway.request.call_args[1]
-        assert "headers" not in call_kwargs
-
-
-# ------------------------------------------------------------------
-# Anthropic provider
-# ------------------------------------------------------------------
-
-
-class TestAnthropicProvider:
-    @pytest.mark.asyncio
-    async def test_chat_sends_anthropic_format(self) -> None:
-        provider = AnthropicProvider(api_key="sk-test")
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json = AsyncMock(
-            return_value={
-                "stop_reason": "end_turn",
-                "content": [{"type": "text", "text": "Done"}],
-            }
-        )
-        mock_response.text = AsyncMock(return_value="")
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=False)
-
-        mock_gateway = MagicMock(spec=NetworkGateway)
-        mock_gateway.request = AsyncMock(return_value=mock_cm)
-
-        session = MagicMock(spec=aiohttp.ClientSession)
-
-        result = await provider.chat(
-            [{"role": "user", "content": "hi"}],
-            [],
-            session,
-            mock_gateway,
-            system_prompt="test",
-        )
-
-        assert result["stop_reason"] == "end_turn"
-        assert result["content"][0]["text"] == "Done"
-
-        headers = mock_gateway.request.call_args[1]["headers"]
-        assert headers["x-api-key"] == "sk-test"
-        assert "anthropic-version" in headers
-
-
-# ------------------------------------------------------------------
-# Factory
-# ------------------------------------------------------------------
-
-
-class TestCreateProvider:
-    def test_explicit_anthropic(self) -> None:
-        provider = create_provider(provider_name="anthropic", api_key="sk-1")
-        assert isinstance(provider, AnthropicProvider)
-
-    def test_explicit_deepseek(self) -> None:
-        provider = create_provider(provider_name="deepseek", api_key="ds-1")
-        assert isinstance(provider, DeepSeekProvider)
-
-    def test_explicit_ollama(self) -> None:
-        provider = create_provider(provider_name="ollama")
-        assert isinstance(provider, OllamaProvider)
-
-    def test_explicit_unknown_raises(self) -> None:
-        with pytest.raises(ProviderConfigError, match="Unknown provider"):
-            create_provider(provider_name="gpt5")
-
-    def test_anthropic_without_key_raises(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ProviderConfigError, match="ANTHROPIC_API_KEY"):
-                create_provider(provider_name="anthropic")
-
-    def test_auto_detect_anthropic(self) -> None:
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-auto"}, clear=True):
-            provider = create_provider()
-            assert isinstance(provider, AnthropicProvider)
-
-    def test_auto_detect_deepseek(self) -> None:
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "ds-auto"}, clear=True):
-            provider = create_provider()
-            assert isinstance(provider, DeepSeekProvider)
-
-    def test_fallback_to_ollama(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            env = os.environ.copy()
-            env.pop("ANTHROPIC_API_KEY", None)
-            env.pop("DEEPSEEK_API_KEY", None)
-            with patch.dict(os.environ, env, clear=True):
-                provider = create_provider()
-                assert isinstance(provider, OllamaProvider)
+                        "

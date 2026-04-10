@@ -46,22 +46,24 @@ class TestOperationJournal:
     @pytest.mark.asyncio
     async def test_begin_operation(self, journal):
         """Test beginning an operation."""
-        await journal.begin_transaction(description="test tx", mod_id=None)
+        tx_id = await journal.begin_transaction(description="test tx", mod_id=None)
         entry_id = await journal.begin_operation(
             agent_id="test_agent",
             operation_type=OperationType.MOD_INSTALL,
             target_path="/test/path/mod.esp",
+            transaction_id=tx_id,
         )
         assert entry_id > 0
     
     @pytest.mark.asyncio
     async def test_complete_operation(self, journal):
         """Test completing an operation."""
-        await journal.begin_transaction(description="test tx", mod_id=None)
+        tx_id = await journal.begin_transaction(description="test tx", mod_id=None)
         entry_id = await journal.begin_operation(
             agent_id="test_agent",
             operation_type=OperationType.MOD_INSTALL,
             target_path="/test/path/mod.esp",
+            transaction_id=tx_id,
         )
         await journal.complete_operation(entry_id)
         
@@ -72,11 +74,12 @@ class TestOperationJournal:
     @pytest.mark.asyncio
     async def test_fail_operation(self, journal):
         """Test failing an operation."""
-        await journal.begin_transaction(description="test tx", mod_id=None)
+        tx_id = await journal.begin_transaction(description="test tx", mod_id=None)
         entry_id = await journal.begin_operation(
             agent_id="test_agent",
             operation_type=OperationType.MOD_INSTALL,
             target_path="/test/path/mod.esp",
+            transaction_id=tx_id,
         )
         await journal.fail_operation(entry_id, "Test error")
         
@@ -136,11 +139,12 @@ class TestRollbackManager:
         snapshot_info = await rollback_manager._snapshots.create_snapshot(test_file)
         
         # Begin and complete operation
-        await journal.begin_transaction(description="test tx", mod_id=None)
+        tx_id = await journal.begin_transaction(description="test tx", mod_id=None)
         entry_id = await journal.begin_operation(
             agent_id="test_agent",
             operation_type=OperationType.FILE_MODIFY,
             target_path=str(test_file),
+            transaction_id=tx_id,
             snapshot_path=snapshot_info.snapshot_path,
         )
         await journal.complete_operation(entry_id)

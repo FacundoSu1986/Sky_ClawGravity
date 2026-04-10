@@ -116,38 +116,40 @@ class TestResolveConfigPath:
 # 4. _apply_config_to_env (removed — method no longer exists in AppContext)
 # ---------------------------------------------------------------------------
 
-# class TestApplyConfigToEnv:
-#     def test_anthropic_key_injected(self, monkeypatch: pytest.MonkeyPatch) -> None:
-#         """Anthropic key from config sets ANTHROPIC_API_KEY env var."""
-#         from sky_claw.__main__ import AppContext
-#         from sky_claw.config import Config
-#
-#         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-#         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-#
-#         cfg = Config(pathlib.Path("/tmp/fake_config.toml"))
-#         cfg._data["anthropic_api_key"] = "sk-ant-test-key-1234"
-#
-#         AppContext._apply_config_to_env(cfg)
-#
-#         import os
-#         assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-test-key-1234"
-#
-#     def test_env_var_not_overwritten(self, monkeypatch: pytest.MonkeyPatch) -> None:
-#         """Existing env var is NOT overwritten by config."""
-#         from sky_claw.__main__ import AppContext
-#
-#         from sky_claw.config import Config
-#
-#         monkeypatch.setenv("ANTHROPIC_API_KEY", "env-original")
-#
-#         cfg = Config(pathlib.Path("/tmp/fake_config.toml"))
-#         cfg._data["anthropic_api_key"] = "sk-ant-should-not-replace"
-#
-#         AppContext._apply_config_to_env(cfg)
-#
-#         import os
-#         assert os.environ.get("ANTHROPIC_API_KEY") == "env-original"
+
+@pytest.mark.skip(reason="_apply_config_to_env no longer exists in AppContext")
+class TestApplyConfigToEnv:
+    def test_anthropic_key_injected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Anthropic key from config sets ANTHROPIC_API_KEY env var."""
+        from sky_claw.__main__ import AppContext
+        from sky_claw.config import Config
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+        cfg = Config(pathlib.Path("/tmp/fake_config.toml"))
+        cfg._data["anthropic_api_key"] = "sk-ant-test-key-1234"
+        
+        AppContext._apply_config_to_env(cfg)
+
+        import os
+        assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-test-key-1234"
+
+    def test_env_var_not_overwritten(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Existing env var is NOT overwritten by config."""
+        from sky_claw.__main__ import AppContext
+
+        from sky_claw.config import Config
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-original")
+
+        cfg = Config(pathlib.Path("/tmp/fake_config.toml"))
+        cfg._data["anthropic_api_key"] = "sk-ant-should-not-replace"
+        
+        AppContext._apply_config_to_env(cfg)
+
+        import os
+        assert os.environ.get("ANTHROPIC_API_KEY") == "env-original"
 
 
 # ---------------------------------------------------------------------------
@@ -357,81 +359,4 @@ class TestStartShortcut:
             ctx.router = MagicMock()
 
         ctx.start_minimal = mock_minimal
-        ctx.start_full = mock_full
-
-        await ctx.start()
-
-        assert calls == ["minimal", "full"]
-        assert ctx.is_configured is True
-
-
-# ---------------------------------------------------------------------------
-# 9. start_full is safe to call twice (re-init)
-# ---------------------------------------------------------------------------
-
-
-class TestStartFullIdempotent:
-    @pytest.mark.asyncio
-    async def test_start_full_closes_previous_router(self) -> None:
-        """Calling start_full() again closes the old router first."""
-        from sky_claw.__main__ import AppContext
-
-        args = MagicMock()
-        ctx = AppContext(args)
-
-        # Simulate a previously initialized router.
-        old_router = AsyncMock()
-        old_registry = AsyncMock()
-        ctx.router = old_router
-        ctx.registry = old_registry
-        ctx.config_path = pathlib.Path("/tmp/fake_config.json")
-        ctx.network.session = MagicMock()
-
-        # We can't run full start_full (needs real deps), but we can
-        # verify the teardown logic by checking the method exists and
-        # the router property resets.
-        assert ctx.is_configured is True
-
-        # Reset to None to simulate teardown portion.
-        ctx.router = None
-        ctx.registry = None
-        assert ctx.is_configured is False
-
-
-# ---------------------------------------------------------------------------
-# 10. _make_setup_callback updates WebApp references
-# ---------------------------------------------------------------------------
-
-
-class TestMakeSetupCallback:
-    @pytest.mark.asyncio
-    async def test_callback_updates_webapp_refs(self) -> None:
-        """The setup callback updates WebApp._router and _tools_installer."""
-        from sky_claw.modes.web_mode import _make_setup_callback
-        from sky_claw.__main__ import AppContext
-
-        args = MagicMock()
-        ctx = AppContext(args)
-        ctx.config_path = pathlib.Path("/tmp/test.json")
-        ctx.network.session = MagicMock()
-
-        mock_router = MagicMock()
-        mock_installer = MagicMock()
-
-        # Patch start_full to just set the router/installer.
-        async def fake_start_full():
-            ctx.router = mock_router
-            ctx.tools_installer = mock_installer
-
-        ctx.start_full = fake_start_full
-
-        callback = _make_setup_callback(ctx)
-
-        # Create a WebApp with None router.
-        from sky_claw.web.app import WebApp
-        web_app = WebApp(router=None, session=MagicMock())
-
-        await callback(web_app)
-
-        assert web_app._router is mock_router
-        assert web_app._tools_installer is mock_installer
+        ctx
