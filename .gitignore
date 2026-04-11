@@ -57,3 +57,12 @@ gateway/.env
 *.token
 .env
 .skyclaw_backups/
+
+# Debug and test artifacts (may contain secrets)
+debug_llm.py
+dummy_malicious.py
+dummy_*.py
+
+# Generated and accidental Windows output
+nul
+.kilo/

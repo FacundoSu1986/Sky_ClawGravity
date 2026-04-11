@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
+import tempfile
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -143,7 +144,7 @@ class TestInstallDirSandbox:
 
         sandbox_roots: list[pathlib.Path] = [
             mo2_root,
-            pathlib.Path("/tmp/sky_claw"),
+            pathlib.Path(tempfile.gettempdir()) / "sky_claw",
         ]
         if install_dir and install_dir not in sandbox_roots:
             sandbox_roots.append(install_dir)
@@ -158,7 +159,7 @@ class TestInstallDirSandbox:
 
         sandbox_roots: list[pathlib.Path] = [
             mo2_root,
-            pathlib.Path("/tmp/sky_claw"),
+            pathlib.Path(tempfile.gettempdir()) / "sky_claw",
         ]
         mo2_parent = mo2_root.parent
         if mo2_parent != mo2_root and mo2_parent not in sandbox_roots:
@@ -169,13 +170,13 @@ class TestInstallDirSandbox:
         validator.validate(pathlib.Path("C:/Modding/SSEEdit/SSEEdit.exe"))
 
     def test_default_sandbox_without_install_dir(self) -> None:
-        """Without install_dir, only mo2_root and /tmp/sky_claw are roots."""
+        """Without install_dir, only mo2_root and tempdir/sky_claw are roots."""
         mo2_root = pathlib.Path("C:/Modding/MO2")
         install_dir = None
 
         sandbox_roots: list[pathlib.Path] = [
             mo2_root,
-            pathlib.Path("/tmp/sky_claw"),
+            pathlib.Path(tempfile.gettempdir()) / "sky_claw",
         ]
         if install_dir and install_dir not in sandbox_roots:
             sandbox_roots.append(install_dir)
@@ -196,7 +197,7 @@ class TestInstallDirSandbox:
         install_dir = pathlib.Path("D:/Modding")
         mo2_root = pathlib.Path("C:/MO2Portable")
 
-        sandbox_roots = [mo2_root, pathlib.Path("/tmp/sky_claw"), install_dir]
+        sandbox_roots = [mo2_root, pathlib.Path(tempfile.gettempdir()) / "sky_claw", install_dir]
         validator = PathValidator(roots=sandbox_roots)
 
         # Simulates ToolsInstaller extracting LOOT into install_dir.

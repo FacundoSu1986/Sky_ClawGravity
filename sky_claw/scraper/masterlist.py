@@ -165,7 +165,7 @@ class MasterlistClient:
                     )
                 data: dict[str, Any] = await resp.json()
             finally:
-                resp.release()
+                await resp.release()
         except MasterlistFetchError:
             self._cb.record_failure()
             raise
