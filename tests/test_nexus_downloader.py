@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from tenacity import wait_none
 
 from sky_claw.agent.tools import AsyncToolRegistry, DownloadModParams
 from sky_claw.db.async_registry import AsyncModRegistry
@@ -53,6 +54,8 @@ def _make_downloader(
         staging_dir=tmp_path / "staging",
         chunk_size=chunk_size,
         timeout=timeout,
+        file_info_retry_wait=wait_none(),
+        download_retry_wait=wait_none(),
     )
 
 
