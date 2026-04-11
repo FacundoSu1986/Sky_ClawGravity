@@ -81,7 +81,7 @@ def _make_file_info(
 
 
 def _md5_of(data: bytes) -> str:
-    return hashlib.md5(data).hexdigest()
+    return hashlib.md5(data, usedforsecurity=False).hexdigest()
 
 
 def _sha256_of(data: bytes) -> str:

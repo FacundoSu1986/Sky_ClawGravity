@@ -209,8 +209,9 @@ class TestValidatePathTraversal:
         with pytest.raises(PathViolation, match="traversal"):
             v.validate(traversal)
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="'...' is not a valid directory name on Windows")
     def test_triple_dot_not_traversal(self, tmp_path: pathlib.Path) -> None:
-        # "..." is a valid filename component, not a traversal marker.
+        # "..." is a valid filename component on POSIX, not a traversal marker.
         d = tmp_path / "..."
         d.mkdir()
         v = _make_validator(tmp_path)
