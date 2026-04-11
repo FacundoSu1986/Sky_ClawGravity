@@ -720,11 +720,11 @@ class OperationJournal:
                 WHERE agent_id = ? AND status IN ({placeholders})
                 ORDER BY timestamp DESC
                 LIMIT 1
-                """  # nosec B608
+                """  # nosec B608 - parameterized query, placeholders contain only '?' literals
             async with db.execute(
                 query,
                 (agent_id, *status_values)
-            ) as cursor:  # nosec B608
+            ) as cursor:
                 row = await cursor.fetchone()
                 
                 if row is None:
