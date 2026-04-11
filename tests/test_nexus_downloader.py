@@ -120,9 +120,9 @@ def _make_aiohttp_response(
     return resp
 
 
-def _make_session(*responses: MagicMock) -> MagicMock:
+def _make_session(*responses: MagicMock) -> AsyncMock:
     """Return a mock ClientSession whose .get() returns responses in order."""
-    session = MagicMock(spec=aiohttp.ClientSession)
+    session = AsyncMock(spec=aiohttp.ClientSession)
     session.get = MagicMock(side_effect=iter(responses))
     return session
 
