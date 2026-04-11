@@ -168,7 +168,7 @@ class NexusDownloader:
         file_id: int | None,
         session: aiohttp.ClientSession,
     ) -> FileInfo:
-        result: "FileInfo | None" = None
+        result: FileInfo
         async for attempt in AsyncRetrying(
             wait=self._file_info_retry_wait,
             stop=stop_after_attempt(5),
@@ -238,7 +238,7 @@ class NexusDownloader:
                     md5=md5,
                     download_url=download_url,
                 )
-        return result  # type: ignore[return-value]
+        return result
 
     # Backoff más agresivo para la descarga en sí.
     async def download(
@@ -247,7 +247,14 @@ class NexusDownloader:
         session: aiohttp.ClientSession,
         progress_cb: ProgressCallback = None,
     ) -> pathlib.Path:
-        dest_result: "pathlib.Path | None" = None
+        # Handle FREE_FALLBACK before the retry loop – no retry needed here
+        async with self._semaphore:
+            self._staging_dir.mkdir(parents=True, exist_ok=True)
+            dest = self._staging_dir / file_info.file_name
+            if file_info.download_url == "FREE_FALLBACK":
+                return await self._handle_manual_fallback(file_info, dest, progress_cb)
+
+        dest_result: pathlib.Path
         async for attempt in AsyncRetrying(
             wait=self._download_retry_wait,
             stop=stop_after_attempt(5),
@@ -262,10 +269,6 @@ class NexusDownloader:
                     
                     self._staging_dir.mkdir(parents=True, exist_ok=True)
                     dest = self._staging_dir / file_info.file_name
-
-                    if file_info.download_url == "FREE_FALLBACK":
-                        dest_result = await self._handle_manual_fallback(file_info, dest, progress_cb)
-                        return dest_result  # type: ignore[return-value]
 
                 await self._gateway.authorize("GET", file_info.download_url)
 
@@ -342,7 +345,7 @@ class NexusDownloader:
                         logger.info("SHA256 validado OK para %s", file_info.file_name)
 
                 dest_result = dest
-        return dest_result  # type: ignore[return-value]
+        return dest_result
 
     async def _handle_manual_fallback(
         self,

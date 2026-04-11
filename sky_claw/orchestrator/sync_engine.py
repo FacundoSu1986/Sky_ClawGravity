@@ -596,7 +596,7 @@ class SyncEngine:
 
     async def _safe_fetch_info(self, nexus_id: int, session: aiohttp.ClientSession, semaphore: asyncio.Semaphore) -> dict[str, Any] | None:
         """Envuelve la consulta a Nexus API con un semáforo de concurrencia y backoff."""
-        result: dict[str, Any] | None = None
+        result: dict[str, Any]
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((aiohttp.ClientError, MasterlistFetchError)),
             stop=stop_after_attempt(5),
