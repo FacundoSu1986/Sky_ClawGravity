@@ -328,5 +328,5 @@ class WebApp:
         except Exception as exc:
             logger.exception("Chat error: %s", exc)
             return web.json_response(
-                {"error": str(exc) or "Error del Agente. Revisa tu API Key en la config inicial y consulta los logs del servidor."}, status=500
+                {"error": "Error del Agente. Revisa tu API Key en la config inicial y consulta los logs del servidor."}, status=500
             )

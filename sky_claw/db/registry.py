@@ -78,17 +78,20 @@ class ModRegistry:
             return
         self._conn = await aiosqlite.connect(self._db_path)
         self._conn.row_factory = aiosqlite.Row
-        await self._conn.execute("PRAGMA journal_mode=WAL")
-        await self._conn.execute("PRAGMA foreign_keys=ON")
-        async with self._conn.execute("PRAGMA quick_check") as cur:
-            row = await cur.fetchone()
-            if row is None or str(row[0]).lower() != "ok":
-                await self._conn.close()
-                self._conn = None
-                raise RuntimeError(
-                    f"SQLite integrity check failed for {self._db_path}"
-                )
-        await self._conn.executescript(_SCHEMA_SQL)
+        try:
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            await self._conn.execute("PRAGMA foreign_keys=ON")
+            async with self._conn.execute("PRAGMA quick_check") as cur:
+                row = await cur.fetchone()
+                if row is None or str(row[0]).lower() != "ok":
+                    raise RuntimeError(
+                        f"SQLite integrity check failed for {self._db_path}"
+                    )
+            await self._conn.executescript(_SCHEMA_SQL)
+        except Exception:
+            await self._conn.close()
+            self._conn = None
+            raise
 
     async def close(self) -> None:
         if self._conn is not None:

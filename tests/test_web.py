@@ -91,4 +91,6 @@ class TestWebChatEndpoint:
         )
         assert resp.status == 500
         data = await resp.json()
-        assert "LLM failed" in data["error"]
+        assert "error" in data
+        # Exception details must NOT be leaked to the client (security requirement)
+        assert "LLM failed" not in data["error"]
