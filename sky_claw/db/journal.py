@@ -713,14 +713,14 @@ class OperationJournal:
         placeholders = ",".join("?" * len(status_values))
         
         async with self._lock:
-            query = f"""
-                SELECT id, timestamp, agent_id, operation_type, target_path, 
-                       status, snapshot_path, checksum, metadata
-                FROM journal_entries 
-                WHERE agent_id = ? AND status IN ({placeholders})
-                ORDER BY timestamp DESC
-                LIMIT 1
-                """  # nosec B608 - parameterized query, placeholders contain only '?' literals
+            query = (
+                "SELECT id, timestamp, agent_id, operation_type, target_path, "
+                "status, snapshot_path, checksum, metadata "
+                "FROM journal_entries "
+                f"WHERE agent_id = ? AND status IN ({placeholders}) "  # nosec
+                "ORDER BY timestamp DESC "
+                "LIMIT 1"
+            )
             async with db.execute(
                 query,
                 (agent_id, *status_values)

@@ -5,6 +5,7 @@ import logging
 import os
 import pathlib
 import queue
+import tempfile
 import uuid
 from typing import Any
 
@@ -227,7 +228,7 @@ class AppContext:
         if local_cfg.install_dir:
             install_dir = pathlib.Path(local_cfg.install_dir)
 
-        sandbox_roots: list[pathlib.Path] = [mo2_root, pathlib.Path("/tmp/sky_claw")]  # nosec B108
+        sandbox_roots: list[pathlib.Path] = [mo2_root, pathlib.Path(tempfile.gettempdir()) / "sky_claw"]
         if install_dir and install_dir not in sandbox_roots:
             sandbox_roots.append(install_dir)
         # --- DESPUÉS (Seguro - Zero Trust) ---
