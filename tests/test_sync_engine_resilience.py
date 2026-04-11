@@ -10,6 +10,7 @@ Tests:
 
 import asyncio
 import pytest
+from tenacity import wait_none
 from unittest.mock import AsyncMock, MagicMock, patch
 import sys
 import os
@@ -59,7 +60,8 @@ class TestSyncEngineResilience:
             registry=mock_registry,
             downloader=mock_downloader,
             hitl=mock_hitl,
-            config=SyncConfig(worker_count=2, batch_size=5)
+            config=SyncConfig(worker_count=2, batch_size=5),
+            fetch_retry_wait=wait_none(),
         )
         return engine
 

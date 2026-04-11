@@ -148,7 +148,7 @@ def mo2(tmp_path: pathlib.Path) -> MO2Controller:
 async def sync_engine(mo2: MO2Controller, adb: AsyncModRegistry) -> AsyncGenerator[SyncEngine, None]:
     gw = _make_gateway()
     masterlist = MasterlistClient(gateway=gw, api_key="fake")
-    engine = SyncEngine(mo2=mo2, masterlist=masterlist, registry=adb)
+    engine = SyncEngine(mo2=mo2, masterlist=masterlist, registry=adb, fetch_retry_wait=wait_none())
     yield engine
     tasks = list(engine._download_tasks)
     for task in tasks:

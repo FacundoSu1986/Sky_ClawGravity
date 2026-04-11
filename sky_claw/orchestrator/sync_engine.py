@@ -26,6 +26,7 @@ from collections import defaultdict
 
 import aiohttp
 from tenacity import (
+    AsyncRetrying,
     RetryError,
     retry,
     retry_if_exception_type,
@@ -157,6 +158,7 @@ class SyncEngine:
         downloader: NexusDownloader | None = None,
         hitl: HITLGuard | None = None,
         rollback_manager: RollbackManager | None = None,  # FASE 1.5
+        fetch_retry_wait=None,
     ) -> None:
         self._mo2 = mo2
         self._masterlist = masterlist
@@ -167,6 +169,12 @@ class SyncEngine:
         self._rollback_manager = rollback_manager  # FASE 1.5
         self._download_tasks: set[asyncio.Task[Any]] = set()
         self._shutdown_event = asyncio.Event()
+        # Retry wait strategy; override in tests to avoid real sleeps
+        self._fetch_retry_wait = (
+            fetch_retry_wait
+            if fetch_retry_wait is not None
+            else wait_exponential(multiplier=2, min=2, max=30)
+        )
         # H-06: Inicializar métricas
         self.metrics = SyncMetrics()
         # FASE 1.5: ID de agente para journal
@@ -586,16 +594,19 @@ class SyncEngine:
     # Legacy Update Cycle (without rollback)
     # ------------------------------------------------------------------
 
-    @retry(
-        retry=retry_if_exception_type((aiohttp.ClientError, MasterlistFetchError)),
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=2, min=2, max=30),
-        reraise=True,
-    )
     async def _safe_fetch_info(self, nexus_id: int, session: aiohttp.ClientSession, semaphore: asyncio.Semaphore) -> dict[str, Any] | None:
         """Envuelve la consulta a Nexus API con un semáforo de concurrencia y backoff."""
-        async with semaphore:
-            return await self._masterlist.fetch_mod_info(nexus_id, session)
+        result: dict[str, Any] | None = None
+        async for attempt in AsyncRetrying(
+            retry=retry_if_exception_type((aiohttp.ClientError, MasterlistFetchError)),
+            stop=stop_after_attempt(5),
+            wait=self._fetch_retry_wait,
+            reraise=True,
+        ):
+            with attempt:
+                async with semaphore:
+                    result = await self._masterlist.fetch_mod_info(nexus_id, session)
+        return result
 
     # ------------------------------------------------------------------
     # Sync Local Load Order (Legacy Logic)
