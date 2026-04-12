@@ -258,6 +258,7 @@ class ChainBuilder:
             RunnableLambda que ejecuta los pasos en secuencia o stub si LangChain no está disponible
         """
         if not LANGCHAIN_AVAILABLE:
+
             def execute_steps(x: Any) -> list[Any]:
                 results = []
                 for step in steps:
@@ -307,6 +308,7 @@ class ChainBuilder:
         Returns:
             RunnableLambda que ejecuta la cadena apropiada o stub si LangChain no está disponible
         """
+
         def route(x: Any) -> Any:
             return true_chain(x) if condition else false_chain(x)
 
@@ -325,6 +327,7 @@ class ChainBuilder:
         Returns:
             RunnableLambda con lógica de reintentos o stub si LangChain no está disponible
         """
+
         async def execute_with_retry(x: Any) -> Any:
             """Ejecuta con reintentos usando backoff."""
             last_error: Exception | None = None
