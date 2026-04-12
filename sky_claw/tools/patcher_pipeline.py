@@ -14,7 +14,12 @@ import json
 import logging
 import pathlib
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sky_claw.security.path_validator import PathValidator
+
+from sky_claw.security.path_validator import PathViolation
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +152,7 @@ class PatcherPipeline:
     def __init__(
         self,
         pipeline_config_path: pathlib.Path | None = None,
-        path_validator: Any | None = None,
+        path_validator: PathValidator | None = None,
     ) -> None:
         """
         Inicializa el pipeline de patchers.
@@ -187,8 +192,6 @@ class PatcherPipeline:
             PatcherPipelineError: Si el archivo está corrupto.
         """
         # S2-FIX: Validate path before opening.
-        from sky_claw.security.path_validator import PathViolation
-
         if self._path_validator is not None:
             try:
                 self._path_validator.validate(path, strict_symlink=False)
@@ -425,8 +428,6 @@ class PatcherPipeline:
             json_path: Path donde guardar el archivo.
         """
         # S2-FIX: Validate path before writing.
-        from sky_claw.security.path_validator import PathViolation
-
         if self._path_validator is not None:
             try:
                 self._path_validator.validate(json_path, strict_symlink=False)

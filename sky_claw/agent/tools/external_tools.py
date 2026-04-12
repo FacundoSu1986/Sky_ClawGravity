@@ -13,6 +13,7 @@ from typing import Any
 
 import aiohttp
 
+from sky_claw.security.network_gateway import NetworkGateway, GatewayTCPConnector
 from .schemas import SetupToolsParams
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ async def setup_tools(
     loot_exe_ref: list | None = None,
     tools: list[str] | None = None,
     *,
-    gateway: Any | None = None,
+    gateway: NetworkGateway | None = None,
     session: aiohttp.ClientSession | None = None,
 ) -> str:
     """Download and install tools (loot, xedit, pandora, bodyslide).
@@ -58,8 +59,6 @@ async def setup_tools(
 
     # S1-FIX: Use injected gateway session; fall back to GatewayTCPConnector-backed
     # session when a gateway is provided — never create a raw session.
-    from sky_claw.security.network_gateway import GatewayTCPConnector
-
     own_session = False
     if session is None:
         if gateway is not None:

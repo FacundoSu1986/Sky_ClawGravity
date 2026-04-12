@@ -1,6 +1,7 @@
 import aiosqlite
 import json
 import logging
+import sqlite3
 from typing import Optional, List, Dict
 
 logger = logging.getLogger("SkyClaw.Database")
@@ -128,7 +129,7 @@ class DatabaseAgent:
                 (domain, failures, locked_until),
             )
             await conn.commit()
-        except Exception:
+        except sqlite3.Error:
             await conn.rollback()
             raise
 
@@ -157,7 +158,7 @@ class DatabaseAgent:
                 (key, value, updated_at),
             )
             await conn.commit()
-        except Exception:
+        except sqlite3.Error:
             await conn.rollback()
             raise
 
@@ -189,7 +190,7 @@ class DatabaseAgent:
                 (name, version, size_mb, source),
             )
             await conn.commit()
-        except Exception:
+        except sqlite3.Error:
             await conn.rollback()
             raise
         async with conn.execute("SELECT last_insert_rowid()") as cursor:
@@ -222,6 +223,6 @@ class DatabaseAgent:
                 (event_type, message, json.dumps(details) if details else None),
             )
             await conn.commit()
-        except Exception:
+        except sqlite3.Error:
             await conn.rollback()
             raise

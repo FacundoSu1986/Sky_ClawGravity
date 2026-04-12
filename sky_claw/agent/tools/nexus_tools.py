@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
 
 import aiohttp
 
 from sky_claw.scraper.nexus_downloader import NexusDownloader
+from sky_claw.security.network_gateway import NetworkGateway, GatewayTCPConnector
 from sky_claw.security.hitl import Decision, HITLGuard
 from sky_claw.orchestrator.sync_engine import SyncEngine
 from .schemas import DownloadModParams
@@ -29,7 +29,7 @@ async def download_mod(
     nexus_id: int,
     file_id: int | None = None,
     *,
-    gateway: Any | None = None,
+    gateway: NetworkGateway | None = None,
     session: aiohttp.ClientSession | None = None,
 ) -> str:
     """Implementacion de _download_mod.
@@ -65,8 +65,6 @@ async def download_mod(
 
     # S1-FIX: Use injected gateway session; fall back to creating a
     # GatewayTCPConnector-backed session when a gateway is provided.
-    from sky_claw.security.network_gateway import GatewayTCPConnector
-
     own_session = False
     if session is None:
         if gateway is not None:
