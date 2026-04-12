@@ -148,7 +148,7 @@ Si dos reglas colisionan, obedece este orden **sin excepción**:
 | Gate | Herramienta | Criterio de paso |
 |------|-------------|------------------|
 | **Lint** | Ruff | `ruff check` + `ruff format --check` sin errores |
-| **Type Check** | Mypy | Non-blocking (`\|\| true`) — se endurecerá progresivamente |
+| **Type Check** | Mypy | Non-blocking (fallthrough con `or true`) — se endurecerá progresivamente |
 | **Test** | Pytest | `--cov-fail-under=60`, cobertura XML |
 | **Security** | Bandit + pip-audit | SAST sin high/critical; SCA sin vulnerabilidades conocidas |
 | **Build** | PyInstaller | Depende de lint + test + security pasados |
