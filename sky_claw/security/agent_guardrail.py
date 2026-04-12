@@ -86,14 +86,14 @@ _GUARDRAIL_INJECTION_RE = re.compile(
     r"(?i)(?:"
     # Override / jailbreak openers
     r"ignore\s+(?:all\s+)?(?:prior|previous)\s+(?:context|instructions?|commands?|directives?)"
-    r"|system\s*:\s*(?:you\s+are|override|now\b)"        # "system: you are now..."
-    r"|forget\s+(?:everything|all|prior|previous)"        # "Forget everything..."
-    r"|act\s+as\s+(?:DAN|an?\s+unrestricted|a\s+free)"   # "act as DAN"
-    r"|no\s+longer\s+bound\s+(?:by|to)"                  # "no longer bound by..."
-    r"|you\s+are\s+no\s+longer\s+bound"                  # "you are no longer bound"
-    r"|as\s+a\s+developer\s+you\s+must"                  # social engineering
-    r"|disregard\s+(?:all\s+)?(?:prior|previous|your)"   # "disregard all prior..."
-    r"|new\s+(?:primary\s+)?directive\s*:"               # "New directive:"
+    r"|system\s*:\s*(?:you\s+are|override|now\b)"  # "system: you are now..."
+    r"|forget\s+(?:everything|all|prior|previous)"  # "Forget everything..."
+    r"|act\s+as\s+(?:DAN|an?\s+unrestricted|a\s+free)"  # "act as DAN"
+    r"|no\s+longer\s+bound\s+(?:by|to)"  # "no longer bound by..."
+    r"|you\s+are\s+no\s+longer\s+bound"  # "you are no longer bound"
+    r"|as\s+a\s+developer\s+you\s+must"  # social engineering
+    r"|disregard\s+(?:all\s+)?(?:prior|previous|your)"  # "disregard all prior..."
+    r"|new\s+(?:primary\s+)?directive\s*:"  # "New directive:"
     r"|override\s+(?:all\s+)?(?:safety|security|instructions?)"
     r")"
 )
@@ -102,6 +102,7 @@ _GUARDRAIL_INJECTION_RE = re.compile(
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+
 
 class AgentGuardrailConfig(BaseModel):
     """Immutable configuration for ``AgentGuardrail``.
@@ -125,6 +126,7 @@ class AgentGuardrailConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Guardrail
 # ---------------------------------------------------------------------------
+
 
 class AgentGuardrail:
     """Stateless Zero-Trust middleware for LLM input/output validation.
@@ -246,9 +248,7 @@ class AgentGuardrail:
             try:
                 expected_schema.model_validate_json(text)
             except pydantic.ValidationError as exc:
-                logger.error(
-                    "Guardrail: schema violation in model output — %s", exc
-                )
+                logger.error("Guardrail: schema violation in model output — %s", exc)
                 raise AgentOrchestrationError(
                     f"Model output does not conform to {expected_schema.__name__}: {exc}"
                 ) from exc
@@ -259,6 +259,7 @@ class AgentGuardrail:
 # ---------------------------------------------------------------------------
 # Secure orchestrator
 # ---------------------------------------------------------------------------
+
 
 async def secure_llm_call(
     provider: Any,
@@ -311,6 +312,7 @@ async def secure_llm_call(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
 
 def _check_pii(text: str) -> None:
     """Raise ``SecurityViolationError`` if *text* contains PII patterns."""

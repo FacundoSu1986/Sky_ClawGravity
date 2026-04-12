@@ -25,6 +25,7 @@ from sky_claw.security.agent_guardrail import (
 # Shared fixture schema (used by schema-validation tests)
 # ---------------------------------------------------------------------------
 
+
 class ModResult(BaseModel):
     mod_id: int
     name: str
@@ -33,6 +34,7 @@ class ModResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Helper — clean provider mock
 # ---------------------------------------------------------------------------
+
 
 def _make_provider(text: str = "Safe response about Skyrim mods") -> AsyncMock:
     provider = AsyncMock()
@@ -46,6 +48,7 @@ def _make_provider(text: str = "Safe response about Skyrim mods") -> AsyncMock:
 # ---------------------------------------------------------------------------
 # TestBeforeModelCallback
 # ---------------------------------------------------------------------------
+
 
 class TestBeforeModelCallback:
     """before_model_callback must block injections and PII, pass clean input."""
@@ -62,7 +65,9 @@ class TestBeforeModelCallback:
     ]
 
     @pytest.mark.parametrize("payload", INJECTION_INPUTS)
-    async def test_injection_attack_raises_security_violation(self, payload: str) -> None:
+    async def test_injection_attack_raises_security_violation(
+        self, payload: str
+    ) -> None:
         guardrail = AgentGuardrail()
         with pytest.raises(SecurityViolationError):
             await guardrail.before_model_callback(payload)
@@ -70,7 +75,9 @@ class TestBeforeModelCallback:
     async def test_ssn_raises_security_violation(self) -> None:
         guardrail = AgentGuardrail()
         with pytest.raises(SecurityViolationError):
-            await guardrail.before_model_callback("My SSN is 123-45-6789, please verify.")
+            await guardrail.before_model_callback(
+                "My SSN is 123-45-6789, please verify."
+            )
 
     async def test_credit_card_raises_security_violation(self) -> None:
         guardrail = AgentGuardrail()
@@ -114,6 +121,7 @@ class TestBeforeModelCallback:
 # ---------------------------------------------------------------------------
 # TestAfterModelCallback
 # ---------------------------------------------------------------------------
+
 
 class TestAfterModelCallback:
     """after_model_callback must block path leakage and enforce output schema."""
@@ -183,6 +191,7 @@ class TestAfterModelCallback:
 # ---------------------------------------------------------------------------
 # TestSecureLlmCall
 # ---------------------------------------------------------------------------
+
 
 class TestSecureLlmCall:
     """secure_llm_call must orchestrate before → provider → after, stateless."""
