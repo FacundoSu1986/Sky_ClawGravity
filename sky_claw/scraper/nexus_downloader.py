@@ -8,6 +8,7 @@ from typing import Awaitable, Callable
 import aiofiles
 import aiohttp
 from tenacity import (
+    AsyncRetrying,
     retry,
     retry_if_exception,
     stop_after_attempt,
@@ -128,6 +129,8 @@ class NexusDownloader:
         chunk_size: int = NEXUS_DOWNLOAD_CHUNK_SIZE,
         timeout: int = NEXUS_DOWNLOAD_TIMEOUT_SECONDS,
         game_domain: str = "skyrimspecialedition",
+        file_info_retry_wait=None,
+        download_retry_wait=None,
     ) -> None:
         import random
         self._api_key = api_key
@@ -138,6 +141,17 @@ class NexusDownloader:
         self._game_domain = game_domain
         self._semaphore = asyncio.Semaphore(5)
         self._random = random
+        # Retry wait strategies; override in tests to avoid real sleeps
+        self._file_info_retry_wait = (
+            file_info_retry_wait
+            if file_info_retry_wait is not None
+            else wait_exponential(multiplier=2, min=2, max=60)
+        )
+        self._download_retry_wait = (
+            download_retry_wait
+            if download_retry_wait is not None
+            else wait_exponential(multiplier=4, min=5, max=120)
+        )
 
     @property
     def staging_dir(self) -> pathlib.Path:
@@ -148,180 +162,190 @@ class NexusDownloader:
         return self._timeout
 
     # Aplicamos Exponential Backoff. Empieza en 2s, sube hasta 60s, max 5 intentos.
-    @retry(
-        wait=wait_exponential(multiplier=2, min=2, max=60),
-        stop=stop_after_attempt(5),
-        retry=retry_if_exception(_should_retry_nexus),
-        before_sleep=_log_retry,
-        reraise=True
-    )
     async def get_file_info(
         self,
         nexus_id: int,
         file_id: int | None,
         session: aiohttp.ClientSession,
     ) -> FileInfo:
-        async with self._semaphore:
-            # Añadir jitter para evitar Thundering Herd
-            await asyncio.sleep(self._random.uniform(0.1, 0.5))
+        result: FileInfo
+        async for attempt in AsyncRetrying(
+            wait=self._file_info_retry_wait,
+            stop=stop_after_attempt(5),
+            retry=retry_if_exception(_should_retry_nexus),
+            before_sleep=_log_retry,
+            reraise=True,
+        ):
+            with attempt:
+                async with self._semaphore:
+                    # Añadir jitter para evitar Thundering Herd
+                    await asyncio.sleep(self._random.uniform(0.1, 0.5))
 
-            headers = {"apikey": self._api_key, "Accept": "application/json"}
-            meta_timeout = aiohttp.ClientTimeout(total=30)
-            
-            if file_id is None:
-                files_url = f"{_NEXUS_API_BASE}/games/{self._game_domain}/mods/{nexus_id}/files.json"
-                await self._gateway.authorize("GET", files_url)
-                async with session.get(files_url, headers=headers, timeout=meta_timeout) as resp:
-                    if resp.status in (401, 403):
+                    headers = {"apikey": self._api_key, "Accept": "application/json"}
+                    meta_timeout = aiohttp.ClientTimeout(total=30)
+                    
+                    if file_id is None:
+                        files_url = f"{_NEXUS_API_BASE}/games/{self._game_domain}/mods/{nexus_id}/files.json"
+                        await self._gateway.authorize("GET", files_url)
+                        async with session.get(files_url, headers=headers, timeout=meta_timeout) as resp:
+                            if resp.status in (401, 403):
+                                raise DownloadError("Invalid or missing Nexus API key")
+                            if resp.status == 404:
+                                raise DownloadError(f"Mod {nexus_id} not found")
+                            resp.raise_for_status() # Dispara ClientResponseError en 429 para activar el reintento
+                            files_data = await resp.json()
+                        
+                        files_list = files_data.get("files", [])
+                        if not files_list:
+                            raise DownloadError(f"No files found for mod {nexus_id}")
+                        
+                        primary_files = [f for f in files_list if f.get("is_primary")]
+                        target_file = primary_files[0] if primary_files else files_list[-1]
+                        file_id = target_file["file_id"]
+                        if isinstance(target_file.get("file_id"), list):
+                            file_id = target_file["file_id"][1]
+                    
+                meta_url = (
+                    f"{_NEXUS_API_BASE}/games/{self._game_domain}"
+                    f"/mods/{nexus_id}/files/{file_id}.json"
+                )
+                await self._gateway.authorize("GET", meta_url)
+
+                async with session.get(meta_url, headers=headers, timeout=meta_timeout) as resp:
+                    if resp.status == 401:
                         raise DownloadError("Invalid or missing Nexus API key")
+                    if resp.status == 403:
+                        raise DownloadError("Nexus API key does not have premium access")
                     if resp.status == 404:
-                        raise DownloadError(f"Mod {nexus_id} not found")
-                    resp.raise_for_status() # Dispara ClientResponseError en 429 para activar el reintento
-                    files_data = await resp.json()
-                
-                files_list = files_data.get("files", [])
-                if not files_list:
-                    raise DownloadError(f"No files found for mod {nexus_id}")
-                
-                primary_files = [f for f in files_list if f.get("is_primary")]
-                target_file = primary_files[0] if primary_files else files_list[-1]
-                file_id = target_file["file_id"]
-                if isinstance(target_file.get("file_id"), list):
-                    file_id = target_file["file_id"][1]
-            
-        meta_url = (
-            f"{_NEXUS_API_BASE}/games/{self._game_domain}"
-            f"/mods/{nexus_id}/files/{file_id}.json"
-        )
-        await self._gateway.authorize("GET", meta_url)
+                        raise DownloadError(f"File {file_id} not found for mod {nexus_id}")
+                    resp.raise_for_status()
+                    data = await resp.json()
 
-        async with session.get(meta_url, headers=headers, timeout=meta_timeout) as resp:
-            if resp.status == 401:
-                raise DownloadError("Invalid or missing Nexus API key")
-            if resp.status == 403:
-                raise DownloadError("Nexus API key does not have premium access")
-            if resp.status == 404:
-                raise DownloadError(f"File {file_id} not found for mod {nexus_id}")
-            resp.raise_for_status()
-            data = await resp.json()
+                size_bytes: int = int(data.get("size_in_bytes") or data.get("size", 0) * 1024)
+                md5: str = str(data.get("md5") or "")
+                file_name: str = str(data.get("file_name", f"mod_{nexus_id}_file_{file_id}"))
 
-        size_bytes: int = int(data.get("size_in_bytes") or data.get("size", 0) * 1024)
-        md5: str = str(data.get("md5") or "")
-        file_name: str = str(data.get("file_name", f"mod_{nexus_id}_file_{file_id}"))
+                try:
+                    download_url = await self._get_download_url(nexus_id, file_id, session)
+                except PremiumRequiredError:
+                    download_url = "FREE_FALLBACK"
 
-        try:
-            download_url = await self._get_download_url(nexus_id, file_id, session)
-        except PremiumRequiredError:
-            download_url = "FREE_FALLBACK"
-
-        return FileInfo(
-            nexus_id=nexus_id,
-            file_id=file_id,
-            file_name=file_name,
-            size_bytes=size_bytes,
-            md5=md5,
-            download_url=download_url,
-        )
+                result = FileInfo(
+                    nexus_id=nexus_id,
+                    file_id=file_id,
+                    file_name=file_name,
+                    size_bytes=size_bytes,
+                    md5=md5,
+                    download_url=download_url,
+                )
+        return result
 
     # Backoff más agresivo para la descarga en sí.
-    @retry(
-        wait=wait_exponential(multiplier=4, min=5, max=120),
-        stop=stop_after_attempt(5),
-        retry=retry_if_exception(_should_retry_nexus),
-        before_sleep=_log_retry,
-        reraise=True
-    )
     async def download(
         self,
         file_info: FileInfo,
         session: aiohttp.ClientSession,
         progress_cb: ProgressCallback = None,
     ) -> pathlib.Path:
+        # Handle FREE_FALLBACK before the retry loop – no retry needed here
         async with self._semaphore:
-            # Añadir jitter para evitar Thundering Herd
-            await asyncio.sleep(self._random.uniform(0.1, 0.5))
-            
             self._staging_dir.mkdir(parents=True, exist_ok=True)
             dest = self._staging_dir / file_info.file_name
-
             if file_info.download_url == "FREE_FALLBACK":
                 return await self._handle_manual_fallback(file_info, dest, progress_cb)
 
-        await self._gateway.authorize("GET", file_info.download_url)
+        dest_result: pathlib.Path
+        async for attempt in AsyncRetrying(
+            wait=self._download_retry_wait,
+            stop=stop_after_attempt(5),
+            retry=retry_if_exception(_should_retry_nexus),
+            before_sleep=_log_retry,
+            reraise=True,
+        ):
+            with attempt:
+                async with self._semaphore:
+                    # Añadir jitter para evitar Thundering Herd
+                    await asyncio.sleep(self._random.uniform(0.1, 0.5))
+                    
+                    self._staging_dir.mkdir(parents=True, exist_ok=True)
+                    dest = self._staging_dir / file_info.file_name
 
-        progress = DownloadProgress(
-            file_name=file_info.file_name,
-            total_bytes=file_info.size_bytes,
-        )
-        timeout = aiohttp.ClientTimeout(total=self._timeout, sock_read=60)
-        headers = {"apikey": self._api_key}
-        # Inicializar ambos hashes para cálculo dual
-        md5_hash = hashlib.md5(usedforsecurity=False)  # nosec
-        sha256_hash = hashlib.sha256()
+                await self._gateway.authorize("GET", file_info.download_url)
 
-        try:
-            async with session.get(file_info.download_url, headers=headers, timeout=timeout) as resp:
-                resp.raise_for_status()
-
-                if progress.total_bytes == 0:
-                    content_length = resp.headers.get("Content-Length")
-                    if content_length:
-                        progress.total_bytes = int(content_length)
-
-                async with aiofiles.open(dest, "wb") as fh:
-                    async for chunk in resp.content.iter_chunked(self._chunk_size):
-                        await fh.write(chunk)
-                        # Actualizar ambos hashes por chunk
-                        md5_hash.update(chunk)
-                        sha256_hash.update(chunk)
-                        progress.downloaded_bytes += len(chunk)
-                        if progress_cb is not None:
-                            await progress_cb(progress)
-                        # Yield the event loop para evitar bloquear el thread principal
-                        await asyncio.sleep(0)
-
-        except aiohttp.ClientError as exc:
-            await _cleanup(dest)
-            raise DownloadError(f"Download failed for {file_info.file_name!r}: {exc}") from exc
-        except (OSError, asyncio.TimeoutError) as exc:
-            await _cleanup(dest)
-            raise DownloadError(f"I/O or timeout error for {file_info.file_name!r}: {exc}") from exc
-
-        # POST-DOWNLOAD: Validación de Hash estricta (MD5 contra Nexus API).
-        # Si esto falla, lanza HashValidationError, lo atrapa Tenacity, limpia el archivo corrupto y reintenta.
-        if file_info.md5:
-            actual_md5 = md5_hash.hexdigest()
-            if actual_md5.lower() != file_info.md5.lower():
-                await _cleanup(dest)
-                raise HashValidationError(
-                    f"MD5 mismatch for {file_info.file_name!r}: "
-                    f"expected={file_info.md5!r} got={actual_md5!r}"
+                progress = DownloadProgress(
+                    file_name=file_info.file_name,
+                    total_bytes=file_info.size_bytes,
                 )
-            logger.info("MD5 validado OK para %s (%s)", file_info.file_name, actual_md5)
-        else:
-            logger.warning("Sin hash MD5 provisto por Nexus para %s. Omitiendo validación MD5.", file_info.file_name)
+                timeout = aiohttp.ClientTimeout(total=self._timeout, sock_read=60)
+                headers = {"apikey": self._api_key}
+                # Inicializar ambos hashes para cálculo dual
+                md5_hash = hashlib.md5(usedforsecurity=False)  # nosec B324 - used for file integrity checksum, not security
+                sha256_hash = hashlib.sha256()
 
-        # Calcular y registrar SHA256 para integridad local
-        actual_sha256 = sha256_hash.hexdigest()
-        logger.info("SHA256 calculado para %s: %s", file_info.file_name, actual_sha256)
-        
-        # Validar SHA256 si fue proporcionado
-        if file_info.sha256:
-            if not validate_sha256_format(file_info.sha256):
-                logger.warning(
-                    "Formato SHA256 inválido proporcionado para %s (se esperaban 64 chars hex)",
-                    file_info.file_name
-                )
-            elif actual_sha256.lower() != file_info.sha256.lower():
-                await _cleanup(dest)
-                raise HashValidationError(
-                    f"SHA256 mismatch for {file_info.file_name!r}: "
-                    f"expected={file_info.sha256!r} got={actual_sha256!r}"
-                )
-            else:
-                logger.info("SHA256 validado OK para %s", file_info.file_name)
+                try:
+                    async with session.get(file_info.download_url, headers=headers, timeout=timeout) as resp:
+                        resp.raise_for_status()
 
-        return dest
+                        if progress.total_bytes == 0:
+                            content_length = resp.headers.get("Content-Length")
+                            if content_length:
+                                progress.total_bytes = int(content_length)
+
+                        async with aiofiles.open(dest, "wb") as fh:
+                            async for chunk in resp.content.iter_chunked(self._chunk_size):
+                                await fh.write(chunk)
+                                # Actualizar ambos hashes por chunk
+                                md5_hash.update(chunk)
+                                sha256_hash.update(chunk)
+                                progress.downloaded_bytes += len(chunk)
+                                if progress_cb is not None:
+                                    await progress_cb(progress)
+                                # Yield the event loop para evitar bloquear el thread principal
+                                await asyncio.sleep(0)
+
+                except aiohttp.ClientError as exc:
+                    await _cleanup(dest)
+                    raise DownloadError(f"Download failed for {file_info.file_name!r}: {exc}") from exc
+                except (OSError, asyncio.TimeoutError) as exc:
+                    await _cleanup(dest)
+                    raise DownloadError(f"I/O or timeout error for {file_info.file_name!r}: {exc}") from exc
+
+                # POST-DOWNLOAD: Validación de Hash estricta (MD5 contra Nexus API).
+                # Si esto falla, lanza HashValidationError, lo atrapa Tenacity, limpia el archivo corrupto y reintenta.
+                if file_info.md5:
+                    actual_md5 = md5_hash.hexdigest()
+                    if actual_md5.lower() != file_info.md5.lower():
+                        await _cleanup(dest)
+                        raise HashValidationError(
+                            f"MD5 mismatch for {file_info.file_name!r}: "
+                            f"expected={file_info.md5!r} got={actual_md5!r}"
+                        )
+                    logger.info("MD5 validado OK para %s (%s)", file_info.file_name, actual_md5)
+                else:
+                    logger.warning("Sin hash MD5 provisto por Nexus para %s. Omitiendo validación MD5.", file_info.file_name)
+
+                # Calcular y registrar SHA256 para integridad local
+                actual_sha256 = sha256_hash.hexdigest()
+                logger.info("SHA256 calculado para %s: %s", file_info.file_name, actual_sha256)
+                
+                # Validar SHA256 si fue proporcionado
+                if file_info.sha256:
+                    if not validate_sha256_format(file_info.sha256):
+                        logger.warning(
+                            "Formato SHA256 inválido proporcionado para %s (se esperaban 64 chars hex)",
+                            file_info.file_name
+                        )
+                    elif actual_sha256.lower() != file_info.sha256.lower():
+                        await _cleanup(dest)
+                        raise HashValidationError(
+                            f"SHA256 mismatch for {file_info.file_name!r}: "
+                            f"expected={file_info.sha256!r} got={actual_sha256!r}"
+                        )
+                    else:
+                        logger.info("SHA256 validado OK para %s", file_info.file_name)
+
+                dest_result = dest
+        return dest_result
 
     async def _handle_manual_fallback(
         self,

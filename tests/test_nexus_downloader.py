@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from tenacity import wait_none
 
 from sky_claw.agent.tools import AsyncToolRegistry, DownloadModParams
 from sky_claw.db.async_registry import AsyncModRegistry
@@ -53,6 +54,8 @@ def _make_downloader(
         staging_dir=tmp_path / "staging",
         chunk_size=chunk_size,
         timeout=timeout,
+        file_info_retry_wait=wait_none(),
+        download_retry_wait=wait_none(),
     )
 
 
@@ -78,7 +81,7 @@ def _make_file_info(
 
 
 def _md5_of(data: bytes) -> str:
-    return hashlib.md5(data).hexdigest()
+    return hashlib.md5(data, usedforsecurity=False).hexdigest()
 
 
 def _sha256_of(data: bytes) -> str:
@@ -117,9 +120,9 @@ def _make_aiohttp_response(
     return resp
 
 
-def _make_session(*responses: MagicMock) -> MagicMock:
+def _make_session(*responses: MagicMock) -> AsyncMock:
     """Return a mock ClientSession whose .get() returns responses in order."""
-    session = MagicMock(spec=aiohttp.ClientSession)
+    session = AsyncMock(spec=aiohttp.ClientSession)
     session.get = MagicMock(side_effect=iter(responses))
     return session
 
@@ -145,7 +148,7 @@ def mo2(tmp_path: pathlib.Path) -> MO2Controller:
 async def sync_engine(mo2: MO2Controller, adb: AsyncModRegistry) -> AsyncGenerator[SyncEngine, None]:
     gw = _make_gateway()
     masterlist = MasterlistClient(gateway=gw, api_key="fake")
-    engine = SyncEngine(mo2=mo2, masterlist=masterlist, registry=adb)
+    engine = SyncEngine(mo2=mo2, masterlist=masterlist, registry=adb, fetch_retry_wait=wait_none())
     yield engine
     tasks = list(engine._download_tasks)
     for task in tasks:
@@ -806,7 +809,7 @@ class TestDownloadModSchema:
         # install_mod, run_xedit_analysis, download_mod,
         # preview_mod_installer, install_mod_from_archive, setup_tools,
         # analyze_esp_conflicts = 11 + newly added tools
-        assert len(tool_registry.tools) == 18
+        assert len(tool_registry.tools) == 21
 
 
 # ---------------------------------------------------------------------------

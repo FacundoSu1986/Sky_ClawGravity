@@ -54,7 +54,7 @@ def _make_webhook(
 ) -> tuple[TelegramWebhook, MagicMock, AsyncMock]:
     router = _make_router(router_response)
     sender = _make_sender()
-    session = MagicMock(spec=aiohttp.ClientSession)
+    session = AsyncMock(spec=aiohttp.ClientSession)
     webhook = TelegramWebhook(
         router=router,
         sender=sender,
@@ -633,7 +633,7 @@ class TestEndToEndHITLFlow:
 
         sender = _make_sender()
         router = _make_router()
-        session = MagicMock(spec=aiohttp.ClientSession)
+        session = AsyncMock(spec=aiohttp.ClientSession)
         webhook = TelegramWebhook(
             router=router,
             sender=sender,
@@ -735,7 +735,7 @@ class TestEndToEndHITLFlow:
         sender = _make_sender()
         webhook = TelegramWebhook(
             router=_make_router(), sender=sender,
-            session=MagicMock(spec=aiohttp.ClientSession), hitl=guard,
+            session=AsyncMock(spec=aiohttp.ClientSession), hitl=guard,
             authorized_user_id=999,
         )
         app = aiohttp.web.Application()

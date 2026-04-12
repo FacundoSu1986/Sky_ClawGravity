@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import aiohttp
 import pytest
@@ -31,7 +31,7 @@ class TestMasterlistClient:
         mock_resp = AsyncMock()
         mock_resp.status = 200
         mock_resp.json = AsyncMock(return_value={"mod_id": 42, "name": "TestMod"})
-        mock_resp.release = MagicMock()
+        mock_resp.release = AsyncMock()
 
         mock_session = AsyncMock(spec=aiohttp.ClientSession)
         mock_session.request = AsyncMock(return_value=mock_resp)
@@ -48,7 +48,7 @@ class TestMasterlistClient:
         mock_resp = AsyncMock()
         mock_resp.status = 404
         mock_resp.text = AsyncMock(return_value="Not Found")
-        mock_resp.release = MagicMock()
+        mock_resp.release = AsyncMock()
 
         mock_session = AsyncMock(spec=aiohttp.ClientSession)
         mock_session.request = AsyncMock(return_value=mock_resp)
