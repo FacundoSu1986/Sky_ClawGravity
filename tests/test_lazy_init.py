@@ -11,7 +11,6 @@ import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aiohttp import web
 
 from sky_claw.config import Config
 from sky_claw.local_config import LocalConfig, load, save
@@ -93,7 +92,6 @@ class TestResolveConfigPath:
         ctx = AppContext(args)
         ctx._resolve_config_path()
 
-        from sky_claw.config import Config
         assert ctx.config_path == Config.DEFAULT_CONFIG_FILE
 
     def test_frozen_mode(self) -> None:
@@ -108,7 +106,6 @@ class TestResolveConfigPath:
             mock_sys.executable = "C:/dist/SkyClawApp.exe"
             ctx._resolve_config_path()
 
-        from sky_claw.config import Config
         assert ctx.config_path == Config.DEFAULT_CONFIG_FILE
 
 
@@ -122,33 +119,32 @@ class TestApplyConfigToEnv:
     def test_anthropic_key_injected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Anthropic key from config sets ANTHROPIC_API_KEY env var."""
         from sky_claw.__main__ import AppContext
-        from sky_claw.config import Config
 
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
         cfg = Config(pathlib.Path("/tmp/fake_config.toml"))
         cfg._data["anthropic_api_key"] = "sk-ant-test-key-1234"
-        
+
         AppContext._apply_config_to_env(cfg)
 
         import os
+
         assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-test-key-1234"
 
     def test_env_var_not_overwritten(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Existing env var is NOT overwritten by config."""
         from sky_claw.__main__ import AppContext
 
-        from sky_claw.config import Config
-
         monkeypatch.setenv("ANTHROPIC_API_KEY", "env-original")
 
         cfg = Config(pathlib.Path("/tmp/fake_config.toml"))
         cfg._data["anthropic_api_key"] = "sk-ant-should-not-replace"
-        
+
         AppContext._apply_config_to_env(cfg)
 
         import os
+
         assert os.environ.get("ANTHROPIC_API_KEY") == "env-original"
 
 
@@ -229,10 +225,13 @@ class TestSetupCallback:
         app = web_app.create_app()
         client = await aiohttp_client(app)
 
-        resp = await client.post("/api/setup", json={
-            "mo2_root": "D:/MO2",
-            "api_key": "sk-ant-test-key",
-        })
+        resp = await client.post(
+            "/api/setup",
+            json={
+                "mo2_root": "D:/MO2",
+                "api_key": "sk-ant-test-key",
+            },
+        )
         assert resp.status == 200
         assert callback_called is True
         # Router should now be set by the callback.
@@ -258,9 +257,12 @@ class TestSetupCallback:
         app = web_app.create_app()
         client = await aiohttp_client(app)
 
-        resp = await client.post("/api/setup", json={
-            "api_key": "sk-ant-test",
-        })
+        resp = await client.post(
+            "/api/setup",
+            json={
+                "api_key": "sk-ant-test",
+            },
+        )
         assert resp.status == 500
         data = await resp.json()
         assert "initialization failed" in data["error"]
@@ -282,10 +284,13 @@ class TestSetupCallback:
         app = web_app.create_app()
         client = await aiohttp_client(app)
 
-        resp = await client.post("/api/setup", json={
-            "mo2_root": "E:/MO2",
-            "api_key": "sk-ant-no-callback",
-        })
+        resp = await client.post(
+            "/api/setup",
+            json={
+                "mo2_root": "E:/MO2",
+                "api_key": "sk-ant-no-callback",
+            },
+        )
         assert resp.status == 200
 
         cfg = load(config_path)

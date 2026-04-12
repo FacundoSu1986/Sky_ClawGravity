@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import pathlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,6 +26,7 @@ from sky_claw.security.path_validator import PathValidator
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
 
 def _make_mo2(tmp_path: pathlib.Path, lines: str) -> MO2Controller:
     """Create a minimal MO2 layout with the given modlist content."""
@@ -95,7 +95,9 @@ class TestSyncEngineRun:
         gw = NetworkGateway()
         masterlist = MasterlistClient(gateway=gw, api_key="fake")
 
-        async def fake_fetch(mod_id: int, session: aiohttp.ClientSession) -> dict[str, Any]:
+        async def fake_fetch(
+            mod_id: int, session: aiohttp.ClientSession
+        ) -> dict[str, Any]:
             return _fake_mod_info(mod_id, f"Mod-{mod_id}")
 
         engine = SyncEngine(
@@ -121,7 +123,9 @@ class TestSyncEngineRun:
         gw = NetworkGateway()
         masterlist = MasterlistClient(gateway=gw, api_key="fake")
 
-        async def flaky_fetch(mod_id: int, session: aiohttp.ClientSession) -> dict[str, Any]:
+        async def flaky_fetch(
+            mod_id: int, session: aiohttp.ClientSession
+        ) -> dict[str, Any]:
             if mod_id == 2001:
                 raise MasterlistFetchError("API 503")
             return _fake_mod_info(mod_id)

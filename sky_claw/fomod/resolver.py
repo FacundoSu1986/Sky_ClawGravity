@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 from sky_claw.fomod.models import (
     CompositeDependency,
-    ConditionalPattern,
     FileInstall,
     FomodConfig,
     GroupType,
@@ -77,8 +76,12 @@ class FomodResolver:
 
             for group in step.groups:
                 selected_plugins = self._resolve_group(
-                    step.name, group.name, group.group_type,
-                    group.plugins, step_selections, result,
+                    step.name,
+                    group.name,
+                    group.group_type,
+                    group.plugins,
+                    step_selections,
+                    result,
                 )
 
                 for plugin in group.plugins:
@@ -99,9 +102,7 @@ class FomodResolver:
 
         return result
 
-    def _is_step_visible(
-        self, step: InstallStep, flags: dict[str, str]
-    ) -> bool:
+    def _is_step_visible(self, step: InstallStep, flags: dict[str, str]) -> bool:
         """Check if a step's visibility conditions are met."""
         if step.visibility is None:
             return True

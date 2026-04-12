@@ -11,7 +11,7 @@ import aiosqlite
 import os
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Optional, Set
 from pathlib import Path
 from pydantic import BaseModel
 import threading
@@ -25,6 +25,7 @@ CACHE_DB_PATH = "security_cache.db"
 
 class WhitelistSchema(BaseModel):
     """Esquema Pydantic para validación de whitelist JSON."""
+
     approved_hashes: list[str]
 
 
@@ -103,7 +104,9 @@ class GovernanceManager:
             except RuntimeError:
                 raise
             except Exception as e:
-                logger.critical(f"Error crítico cargando whitelist: {e}. Abortando para prevenir pérdida de datos.")
+                logger.critical(
+                    f"Error crítico cargando whitelist: {e}. Abortando para prevenir pérdida de datos."
+                )
                 # Evita que el framework inicie con una whitelist comprometida
                 raise RuntimeError(f"Integridad de whitelist comprometida: {e}")
         return set()
@@ -137,7 +140,8 @@ class GovernanceManager:
     async def is_scanned_and_clean(self, file_path: str) -> bool:
         """Verifica si el archivo ya fue escaneado y no ha cambiado (incremental)."""
         file_hash = self.get_file_hash(file_path)
-        if file_hash is None: return False
+        if file_hash is None:
+            return False
 
         # Primero ver si está en la whitelist manual
         if file_hash in self.whitelist:
@@ -146,7 +150,9 @@ class GovernanceManager:
         try:
             async with aiosqlite.connect(self.cache_db_path) as db:
                 await db.execute("PRAGMA journal_mode=WAL")
-                cursor = await db.execute("SELECT status FROM scan_cache WHERE file_hash = ?", (file_hash,))
+                cursor = await db.execute(
+                    "SELECT status FROM scan_cache WHERE file_hash = ?", (file_hash,)
+                )
                 row = await cursor.fetchone()
                 if row and row[0] == "CLEAN":
                     return True
@@ -154,25 +160,31 @@ class GovernanceManager:
             logger.error(f"Error consultando caché de escaneo: {e}")
         return False
 
-    async def update_scan_result(self, file_path: str, results: List[Dict], status: str):
+    async def update_scan_result(
+        self, file_path: str, results: List[Dict], status: str
+    ):
         """Actualiza el estado de escaneo en la base de datos."""
         file_hash = self.get_file_hash(file_path)
-        if file_hash is None: return
+        if file_hash is None:
+            return
 
         try:
             async with aiosqlite.connect(self.cache_db_path) as db:
                 await db.execute("PRAGMA journal_mode=WAL")
-                await db.execute("""
+                await db.execute(
+                    """
                     INSERT OR REPLACE INTO scan_cache
                     (file_hash, file_path, last_scan_time, scan_results, status)
                     VALUES (?, ?, ?, ?, ?)
-                """, (
-                    file_hash,
-                    str(file_path),
-                    datetime.now(timezone.utc).isoformat(),
-                    json.dumps(results),
-                    status
-                ))
+                """,
+                    (
+                        file_hash,
+                        str(file_path),
+                        datetime.now(timezone.utc).isoformat(),
+                        json.dumps(results),
+                        status,
+                    ),
+                )
                 await db.commit()
         except Exception as e:
             logger.error(f"Error actualizando caché: {e}")
@@ -183,6 +195,3 @@ class GovernanceManager:
         if file_hash is not None:
             self.whitelist.add(file_hash)
             self.save_whitelist()
-
-
-

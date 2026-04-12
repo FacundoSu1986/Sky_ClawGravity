@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
 from sky_claw.web.app import WebApp
 
@@ -82,9 +79,7 @@ class TestWebChatEndpoint:
 
     @pytest.mark.asyncio
     async def test_chat_router_error_returns_500(self, client, mock_router) -> None:
-        mock_router.chat = AsyncMock(
-            side_effect=RuntimeError("LLM failed")
-        )
+        mock_router.chat = AsyncMock(side_effect=RuntimeError("LLM failed"))
         resp = await client.post(
             "/api/chat",
             json={"message": "test"},

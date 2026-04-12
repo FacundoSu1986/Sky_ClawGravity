@@ -9,8 +9,8 @@ from typing import Any, List, Optional
 project_root = pathlib.Path(__file__).resolve().parents[4] / "sky-claw"
 sys.path.append(str(project_root))
 
-from sky_claw.config import Config
-from sky_claw.db.async_registry import AsyncModRegistry
+from sky_claw.config import Config  # noqa: E402
+from sky_claw.db.async_registry import AsyncModRegistry  # noqa: E402
 
 async def run_db_op(command: str, params: dict):
     config = Config()

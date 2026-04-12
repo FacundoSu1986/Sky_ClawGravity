@@ -49,15 +49,21 @@ async def first_run_wizard():
     config._data["llm_provider"] = provider
     config._data["llm_model"] = model
     
-    if provider == "openai": config._data["openai_api_key"] = api_key
-    elif provider == "deepseek": config._data["deepseek_api_key"] = api_key
-    elif provider == "anthropic": config._data["anthropic_api_key"] = api_key
-    
-    if nexus_key: config._data["nexus_api_key"] = nexus_key
+    if provider == "openai":
+        config._data["openai_api_key"] = api_key
+    elif provider == "deepseek":
+        config._data["deepseek_api_key"] = api_key
+    elif provider == "anthropic":
+        config._data["anthropic_api_key"] = api_key
+
+    if nexus_key:
+        config._data["nexus_api_key"] = nexus_key
     config._data["mo2_root"] = mo2_root
     config._data["skyrim_path"] = skyrim_path
-    if bot_token: config._data["telegram_bot_token"] = bot_token
-    if chat_id: config._data["telegram_chat_id"] = chat_id
+    if bot_token:
+        config._data["telegram_bot_token"] = bot_token
+    if chat_id:
+        config._data["telegram_chat_id"] = chat_id
     config._data["first_run"] = False
     
     # Save

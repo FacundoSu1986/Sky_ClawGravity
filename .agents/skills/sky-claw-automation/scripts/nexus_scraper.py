@@ -9,10 +9,10 @@ from typing import Optional
 project_root = pathlib.Path(__file__).resolve().parents[4] / "sky-claw"
 sys.path.append(str(project_root))
 
-from sky_claw.config import Config
-from sky_claw.security.network_gateway import NetworkGateway
-from sky_claw.scraper.nexus_downloader import NexusDownloader
-import aiohttp
+from sky_claw.config import Config  # noqa: E402
+from sky_claw.security.network_gateway import NetworkGateway  # noqa: E402
+from sky_claw.scraper.nexus_downloader import NexusDownloader  # noqa: E402
+import aiohttp  # noqa: E402
 
 async def fetch_mod_info(mod_id: int, file_id: Optional[int] = None):
     config = Config()

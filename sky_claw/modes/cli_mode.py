@@ -18,7 +18,8 @@ async def _run_cli(ctx: AppContext) -> None:
             print("\nBye!")
             break
         text = user_input.strip()
-        if not text: continue
+        if not text:
+            continue
         correlation_id_var.set(str(uuid.uuid4()))
         try:
             response = await ctx.router.chat(text, ctx.session, chat_id=chat_id)

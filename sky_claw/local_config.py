@@ -16,13 +16,15 @@ import base64
 import json
 import logging
 import pathlib
+import sys
 import keyring
 from dataclasses import dataclass, asdict
 from typing import Any, cast, Protocol
 
+
 class DataclassInstance(Protocol):
     __dataclass_fields__: dict[str, Any]
-import sys
+
 
 logger = logging.getLogger(__name__)
 

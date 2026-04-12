@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 import pathlib
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -220,8 +219,10 @@ class TestPluginPairGrouping:
 
         pair_keys = {(p.plugin_a, p.plugin_b) for p in report.plugin_pairs}
         # Requiem.esp vs Skyrim.esm should be a pair.
-        assert ("Requiem.esp", "Skyrim.esm") in pair_keys or \
-               ("Skyrim.esm", "Requiem.esp") in pair_keys
+        assert ("Requiem.esp", "Skyrim.esm") in pair_keys or (
+            "Skyrim.esm",
+            "Requiem.esp",
+        ) in pair_keys
 
     @pytest.mark.asyncio
     async def test_sorted_by_conflict_count(self) -> None:
@@ -301,7 +302,9 @@ class TestSuggestResolution:
         )
 
         suggestions = analyzer.suggest_resolution(report)
-        assert any("reorder" in s.lower() or "load order" in s.lower() for s in suggestions)
+        assert any(
+            "reorder" in s.lower() or "load order" in s.lower() for s in suggestions
+        )
 
     def test_leveled_list_suggests_bashed_patch(self) -> None:
         analyzer = ConflictAnalyzer()
@@ -333,7 +336,9 @@ class TestSuggestResolution:
         analyzer = ConflictAnalyzer()
         report = ConflictReport(total_conflicts=0, critical_conflicts=0)
         suggestions = analyzer.suggest_resolution(report)
-        assert any("clean" in s.lower() or "no conflict" in s.lower() for s in suggestions)
+        assert any(
+            "clean" in s.lower() or "no conflict" in s.lower() for s in suggestions
+        )
 
     def test_heavy_pair_suggests_dedicated_patch(self) -> None:
         analyzer = ConflictAnalyzer()
@@ -444,14 +449,15 @@ class TestAnalyzeEspConflictsTool:
         )
         result = json.loads(result_str)
         assert "error" in result
-        assert "setup_tools" in result["error"].lower() or "xedit" in result["error"].lower()
+        assert (
+            "setup_tools" in result["error"].lower()
+            or "xedit" in result["error"].lower()
+        )
 
         await db.close()
 
     @pytest.mark.asyncio
-    async def test_with_specific_plugins(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    async def test_with_specific_plugins(self, tmp_path: pathlib.Path) -> None:
         from sky_claw.agent.tools import AsyncToolRegistry
         from sky_claw.db.async_registry import AsyncModRegistry
         from sky_claw.mo2.vfs import MO2Controller
@@ -465,7 +471,9 @@ class TestAnalyzeEspConflictsTool:
         validator = PathValidator(roots=[tmp_path])
         mo2 = MO2Controller(tmp_path, path_validator=validator)
         (tmp_path / "profiles" / "Default").mkdir(parents=True)
-        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text("", encoding="utf-8")
+        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text(
+            "", encoding="utf-8"
+        )
 
         db = AsyncModRegistry(db_path=tmp_path / "test.db")
         await db.open()
