@@ -147,15 +147,18 @@ class PatcherPipeline:
     def __init__(
         self,
         pipeline_config_path: pathlib.Path | None = None,
+        path_validator: Any | None = None,
     ) -> None:
         """
         Inicializa el pipeline de patchers.
 
         Args:
             pipeline_config_path: Path opcional al archivo de configuración.
+            path_validator: Optional PathValidator for sandbox enforcement.
         """
         self._patchers: dict[str, PatcherDefinition] = {}
         self._config_path = pipeline_config_path
+        self._path_validator = path_validator
 
         # Cargar configuración inicial si existe
         if pipeline_config_path and pipeline_config_path.exists():
@@ -183,6 +186,16 @@ class PatcherPipeline:
         Raises:
             PatcherPipelineError: Si el archivo está corrupto.
         """
+        # S2-FIX: Validate path before opening.
+        from sky_claw.security.path_validator import PathViolation
+
+        if self._path_validator is not None:
+            try:
+                self._path_validator.validate(path, strict_symlink=False)
+            except PathViolation:
+                logger.error("Path traversal blocked for pipeline load: %s", path)
+                raise
+
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
@@ -411,6 +424,16 @@ class PatcherPipeline:
         Args:
             json_path: Path donde guardar el archivo.
         """
+        # S2-FIX: Validate path before writing.
+        from sky_claw.security.path_validator import PathViolation
+
+        if self._path_validator is not None:
+            try:
+                self._path_validator.validate(json_path, strict_symlink=False)
+            except PathViolation:
+                logger.error("Path traversal blocked for pipeline save: %s", json_path)
+                raise
+
         data = self.to_dict()
 
         # Crear directorio padre si no existe

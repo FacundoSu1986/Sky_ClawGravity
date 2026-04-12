@@ -91,9 +91,22 @@ class Config:
                 except Exception:
                     pass
 
-        # If we found plain text keys and migrated them, scrub them from the TOML
+        # S3-FIX: If we migrated secrets to keyring, scrub them from the TOML on disk.
+        # Verify the save succeeds; if it fails, log a critical warning so the
+        # operator is aware that plaintext secrets remain on disk.
         if migrated:
-            self.save()
+            try:
+                self.save()
+                logger.info(
+                    "Migrated sensitive keys to keyring and scrubbed plaintext from TOML."
+                )
+            except Exception as exc:
+                logger.critical(
+                    "Failed to scrub plaintext secrets from TOML after keyring migration: %s. "
+                    "Sensitive data may remain on disk at %s.",
+                    exc,
+                    self._config_path,
+                )
 
     def _load_defaults(self) -> dict[str, Any]:
         return {

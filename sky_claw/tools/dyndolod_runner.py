@@ -871,7 +871,16 @@ class DynDOLODRunner:
             mod_path: Path al directorio del mod.
             mod_name: Nombre del mod.
         """
+        # S2-FIX: Validate target path is within MO2 mods sandbox.
+        from sky_claw.security.path_validator import PathValidator, PathViolation
+
         meta_ini_path = mod_path / "meta.ini"
+        validator = PathValidator(roots=[self._config.mo2_mods_path])
+        try:
+            validator.validate(meta_ini_path, strict_symlink=False)
+        except PathViolation:
+            logger.error("Path traversal blocked for meta.ini: %s", meta_ini_path)
+            raise
 
         config = configparser.ConfigParser()
         config["General"] = {
