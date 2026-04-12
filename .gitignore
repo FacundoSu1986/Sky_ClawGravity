@@ -57,6 +57,7 @@ gateway/.env
 *.token
 .env
 .skyclaw_backups/
+sky_claw_config.json
 
 # Debug and test artifacts (may contain secrets)
 debug_llm.py
