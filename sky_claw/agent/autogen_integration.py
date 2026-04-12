@@ -12,7 +12,7 @@ from typing import Optional, Any, Dict, List, Callable
 from abc import ABC, abstractmethod
 
 try:
-    import autogen
+    import autogen  # noqa: F401
     from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
     AUTOGEN_AVAILABLE = True
 except ImportError:

@@ -1,7 +1,5 @@
-import json
 import logging
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +15,7 @@ class CrewAIBridge(SpecializedAgentBridge):
         if not self.enabled:
             return "CrewAI is not enabled."
         try:
-            from crewai import Agent, Task, Crew, Process
+            from crewai import Agent, Task, Crew, Process  # noqa: F401
             # Implementation for modding-specific agents
             # e.g., 'ConflictAnalyzer', 'PatchGenerator'
             return f"Executing CrewAI task: {task_description}"
