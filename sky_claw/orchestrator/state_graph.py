@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-LangGraph StateGraph Integration for Sky_Claw SupervisorAgent.
+LangGraph StateGraph Integration for Sky-Claw SupervisorAgent.
 
 This module implements a stateful workflow graph using LangGraph fororchestrating agent operations with:
 - Defined states for each phase
@@ -148,7 +148,7 @@ class StateGraphValidator:
 
 if PYDANTIC_AVAILABLE:
     class WorkflowState(BaseModel):
-        """Estado del workflow de LangGraph para Sky_Claw."""
+        """Estado del workflow de LangGraph para Sky-Claw."""
         
         # Identificación
         workflow_id: str = Field(default_factory=lambda: f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}")
@@ -261,7 +261,7 @@ class StateGraphState(TypedDict):
 # =============================================================================
 
 class StateGraphNodes:
-    """Nodos del grafo de estados para Sky_Claw."""
+    """Nodos del grafo de estados para Sky-Claw."""
     
     @staticmethod
     def init_node(state: StateGraphState) -> Dict[str, Any]:

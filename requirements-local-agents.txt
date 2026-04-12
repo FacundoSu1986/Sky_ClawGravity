@@ -1,4 +1,4 @@
-# Local-First AI Agent Extensions for Sky_Claw (Python 3.14 Fix)
+# Local-First AI Agent Extensions for Sky-Claw (Python 3.14 Fix)
 # Note: Some libraries like CrewAI have strict <=3.13 pins.
 # We use --pre and less restrictive versions where possible.
 

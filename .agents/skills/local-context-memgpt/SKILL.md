@@ -1,11 +1,11 @@
 ---
 name: local-context-memgpt
-description: Implementa MemGPT como sistema de memoria a largo plazo local-first para agentes Sky_Claw. Usar cuando la ventana de contexto se exceda, se necesite recordar historial de mods entre sesiones, o mantener preferencias persistentes. No usar para consultas simples sin necesidad de memoria persistente.
+description: Implementa MemGPT como sistema de memoria a largo plazo local-first para agentes Sky-Claw. Usar cuando la ventana de contexto se exceda, se necesite recordar historial de mods entre sesiones, o mantener preferencias persistentes. No usar para consultas simples sin necesidad de memoria persistente.
 ---
 
 # Local Context MemGPT
 
-Sistema de memoria a largo plazo local-first usando MemGPT para agentes Sky_Claw. Garantiza la soberanía de datos mediante procesamiento 100% local.
+Sistema de memoria a largo plazo local-first usando MemGPT para agentes Sky-Claw. Garantiza la soberanía de datos mediante procesamiento 100% local.
 
 ## Cuándo Usar
 
@@ -30,7 +30,7 @@ pip install memgpt
 memgpt configure  # Seleccionar SQLite local
 ```
 
-### 2. Integración con Sky_Claw
+### 2. Integración con Sky-Claw
 ```python
 from sky_claw.agent.specialized_bridges import MemGPTBridge
 

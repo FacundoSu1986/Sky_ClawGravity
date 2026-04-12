@@ -1,4 +1,4 @@
-# Pre-Flight Stability Check - Sky_Claw LCEL Integration
+# Pre-Flight Stability Check - Sky-Claw LCEL Integration
 
 **Date**: 2026-04-03
 **Status**: ✅ PASSED

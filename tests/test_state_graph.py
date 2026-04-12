@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tests for LangGraph StateGraph integration in Sky_Claw.
+Tests for LangGraph StateGraph integration in Sky-Claw.
 
 Tests verify:
 - State transitions

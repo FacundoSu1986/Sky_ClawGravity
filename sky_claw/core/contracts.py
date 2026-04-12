@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-contracts.py — Validación de contratos entre agentes del sistema Sky_Claw.
+contracts.py — Validación de contratos entre agentes del sistema Sky-Claw.
 
 Implementa un SchemaRegistry poblado al inicializar el módulo con los modelos
 Pydantic v2 de sky_claw.core.schemas, y decoradores @validate_input,

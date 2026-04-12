@@ -1,11 +1,11 @@
-# AutoGen Integration - Sky_Claw
+# AutoGen Integration - Sky-Claw
 
 **Date**: 2026-04-03
 **Status**: ✅ Implemented
 
 ## Overview
 
-This document describes the integration of Microsoft AutoGen into Sky_Claw for multi-agent orchestration. The integration enables conversational interactions between specialized agents using the existing Sky_Claw infrastructure.
+This document describes the integration of Microsoft AutoGen into Sky-Claw for multi-agent orchestration. The integration enables conversational interactions between specialized agents using the existing Sky-Claw infrastructure.
 
 ## Architecture
 
@@ -61,7 +61,7 @@ class SkyClawConversableAgent(ABC):
 
 ### 3. AutoGenWrapper
 
-Wrapper for AutoGen agents that integrates with Sky_Claw infrastructure.
+Wrapper for AutoGen agents that integrates with Sky-Claw infrastructure.
 
 ```python
 from sky_claw.agent.autogen_integration import AutoGenWrapper, AutoGenConfig
@@ -109,7 +109,7 @@ results = await orchestrator.run_conversation(
 
 ### 5. Factory Function
 
-Pre-configured Sky_Claw agents factory.
+Pre-configured Sky-Claw agents factory.
 
 ```python
 from sky_claw.agent.autogen_integration import create_sky_claw_agents, AutoGenConfig
@@ -212,7 +212,7 @@ from sky_claw.agent.autogen_integration import (
 from sky_claw.agent.lcel_chains import ToolExecutor
 
 async def main():
-    executor = ToolExecutor(tool_name="sky_claw", tool_description="Sky_Claw tools")
+    executor = ToolExecutor(tool_name="sky_claw", tool_description="Sky-Claw tools")
     config = AutoGenConfig(model="gpt-4")
     
     # Create pre-configured agents
@@ -270,7 +270,7 @@ async def route_to_agent(message: str, classification: RouteClassification):
 Run the integration tests:
 
 ```bash
-cd "Claude antigravity/Sky_Claw-main"
+cd "sky-claw"
 python tests/test_autogen_integration.py
 ```
 

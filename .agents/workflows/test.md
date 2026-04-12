@@ -11,7 +11,7 @@ Ejecuta la suite de pruebas del proyecto Sky-Claw y genera reporte de cobertura.
 // turbo
 1. **Ejecutar suite completa de tests con cobertura**:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    python -m pytest tests/ -v --tb=short --cov=sky_claw --cov-report=term-missing 2>&1
    ```
 
@@ -22,7 +22,7 @@ Ejecuta la suite de pruebas del proyecto Sky-Claw y genera reporte de cobertura.
 
 3. **Si se requiere un test específico**, ejecutar con filtro:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    python -m pytest tests/ -k "<nombre_del_test>" -v --tb=long 2>&1
    ```
 

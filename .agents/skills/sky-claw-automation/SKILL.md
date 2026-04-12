@@ -3,7 +3,7 @@ name: sky-claw-automation
 description: Automatiza el ciclo de vida de mods de Skyrim: scraping en Nexus Mods, gestión de base de datos SQLite y notificaciones vía Telegram. Úsalo para buscar actualizaciones, validar compatibilidades y ejecutar tareas de mantenimiento en App-nexus.
 ---
 
-# Sky_Claw: Skyrim Modding Automation Skill
+# Sky-Claw: Skyrim Modding Automation Skill
 
 Esta habilidad permite al agente operar como un backend inteligente para la gestión de mods de Skyrim (PC), integrando automatización de navegador (Playwright/Selenium) con la lógica de negocio de App-nexus.
 

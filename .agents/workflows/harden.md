@@ -10,25 +10,25 @@ Ejecuta el ciclo completo de endurecimiento de seguridad sobre el proyecto Sky-C
 
 1. **Ejecutar análisis estático AST Guardian** sobre todos los archivos `.py` del proyecto:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    python -m pytest tests/ -k "ast_guardian or security" -v --tb=short
    ```
 
 2. **Verificar que no existan llamadas prohibidas** (`eval`, `exec`, `__import__`, `compile`, `subprocess.call` con `shell=True`):
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    Get-ChildItem -Path sky_claw -Recurse -Filter "*.py" | Select-String -Pattern "eval\(|exec\(|__import__|compile\(|shell=True" -CaseSensitive
    ```
 
 3. **Verificar sanitización de PII** en logs y outputs:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    Get-ChildItem -Path sky_claw -Recurse -Filter "*.py" | Select-String -Pattern "password|secret|api_key|token" -CaseSensitive
    ```
 
 4. **Validar integridad del CredentialVault** — revisar que no haya credenciales hardcodeadas:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    Get-ChildItem -Path . -Recurse -Include "*.py","*.yaml","*.yml","*.json","*.toml" | Select-String -Pattern "sk-|ghp_|AKIA|password\s*=" -CaseSensitive
    ```
 

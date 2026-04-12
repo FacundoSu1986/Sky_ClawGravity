@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-reasoning package - Motores de razonamiento avanzado para Sky_Claw.
+reasoning package - Motores de razonamiento avanzado para Sky-Claw.
 
 Este paquete implementa algoritmos de razonamiento que extienden
 las capacidades de los agentes más allá del Chain-of-Thought lineal.

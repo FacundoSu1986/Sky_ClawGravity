@@ -29,7 +29,7 @@ Before implementation, evaluate the task complexity:
 
 ## How to use it
 
-1.  **Read the implementation playbook**: Follow detailed examples in [implementation-playbook.md](file:///e:/Pruba%20antigravity/Sky_Claw-main/.agents/skills/llm-application-dev-langchain-agent/resources/implementation-playbook.md).
+1.  **Read the implementation playbook**: Follow detailed examples in [implementation-playbook.md](file:///e:/Pruba%20antigravity/sky-claw/.agents/skills/llm-application-dev-langchain-agent/resources/implementation-playbook.md).
 2.  **Define state**: Initialize your `AgentState` with necessary session and context fields.
 3.  **Implement patterns**: Follow the checklists and production patterns detailed below.
 

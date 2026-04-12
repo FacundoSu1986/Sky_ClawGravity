@@ -3,7 +3,7 @@
 test_schemas.py - Tests unitarios completos para schemas de validación Pydantic.
 
 Este módulo contiene tests unitarios para verificar el funcionamiento correcto
-de los esquemas Pydantic y los validadores de seguridad del sistema Sky_Claw.
+de los esquemas Pydantic y los validadores de seguridad del sistema Sky-Claw.
 """
 import pytest
 from datetime import datetime

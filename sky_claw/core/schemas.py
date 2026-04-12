@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-schemas.py - Modelos de validación Pydantic para entrada/salida de agentes del sistema Sky_Claw.
+schemas.py - Modelos de validación Pydantic para entrada/salida de agentes del sistema Sky-Claw.
 """
 import logging
 import re
