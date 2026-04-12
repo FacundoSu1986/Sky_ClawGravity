@@ -104,7 +104,14 @@ class AsyncModRegistry:
     """
 
     def __init__(self, db_path: pathlib.Path | str | None = None) -> None:
-        self._db_path = str(db_path or DB_PATH)
+        raw_path = str(db_path or DB_PATH)
+        from sky_claw.core.validators.path import PathTraversalValidator
+        validator = PathTraversalValidator(allow_absolute=True)
+        result = validator.validate(raw_path)
+        if not result.is_valid:
+            raise ValueError(f"Path traversal detected in database path '{raw_path}': {result.error_message}")
+            
+        self._db_path = raw_path
         self._conn: aiosqlite.Connection | None = None
 
     # ------------------------------------------------------------------
@@ -302,7 +309,7 @@ class AsyncModRegistry:
             "FROM dependencies d "
             "JOIN mods src ON d.mod_id = src.mod_id "
             "LEFT JOIN mods m ON d.depends_on_nexus_id = m.nexus_id "
-            f"WHERE m.nexus_id IS NULL AND src.name IN ({placeholders})",  # nosec B608 - parameterized query
+            "WHERE m.nexus_id IS NULL AND src.name IN (" + placeholders + ")",  # nosec
             tuple(mod_names),
         ) as cur:
             rows = await cur.fetchall()

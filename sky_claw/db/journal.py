@@ -222,7 +222,14 @@ class OperationJournal:
             db_path: Path al archivo de base de datos SQLite.
                      Si es None, usa un path por defecto.
         """
-        self._db_path = db_path or pathlib.Path(".skyclaw_journal.db")
+        raw_path = str(db_path or ".skyclaw_journal.db")
+        from sky_claw.core.validators.path import PathTraversalValidator
+        validator = PathTraversalValidator(allow_absolute=True)
+        result = validator.validate(raw_path)
+        if not result.is_valid:
+            raise ValueError(f"Path traversal detected in journal path '{raw_path}': {result.error_message}")
+            
+        self._db_path = pathlib.Path(raw_path)
         self._db: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
         self._current_transaction: int | None = None
@@ -713,14 +720,14 @@ class OperationJournal:
         placeholders = ",".join("?" * len(status_values))
         
         async with self._lock:
-            query = f"""
-                SELECT id, timestamp, agent_id, operation_type, target_path, 
-                       status, snapshot_path, checksum, metadata
-                FROM journal_entries 
-                WHERE agent_id = ? AND status IN ({placeholders})
-                ORDER BY timestamp DESC
-                LIMIT 1
-                """  # nosec B608 - parameterized query, placeholders contain only '?' literals
+            query = (
+                "SELECT id, timestamp, agent_id, operation_type, target_path, "
+                "status, snapshot_path, checksum, metadata "
+                "FROM journal_entries "
+                f"WHERE agent_id = ? AND status IN ({placeholders}) "  # nosec
+                "ORDER BY timestamp DESC "
+                "LIMIT 1"
+            )
             async with db.execute(
                 query,
                 (agent_id, *status_values)

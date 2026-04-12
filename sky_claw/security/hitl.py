@@ -121,7 +121,7 @@ class HITLGuard:
             logger.error("HITL: notify_fn failed: %s", exc)
             async with self._lock:
                 self._pending.pop(request_id, None)
-            raise
+            return Decision.TIMEOUT
 
         logger.info("HITL: awaiting operator decision for %s", request_id)
 
