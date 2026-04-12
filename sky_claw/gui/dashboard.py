@@ -1,7 +1,6 @@
 """DashboardGUI — Nordic theme premium dashboard."""
 from __future__ import annotations
 
-import asyncio
 import logging
 import queue
 from typing import Any, Dict, List, Optional
@@ -9,9 +8,7 @@ from typing import Any, Dict, List, Optional
 from nicegui import ui
 
 from .icons import (
-    _ICON_LAYERS, _ICON_MOD, _ICON_PENDING, _ICON_CONFLICT,
-    _ICON_STORAGE, _ICON_CHAT, _ICON_SETTINGS, _ICON_SEARCH,
-    _ICON_ROCKET, _ICON_SERVER, _ICON_CHART, _ICON_ANVIL, _ICON_CART,
+    _ICON_LAYERS, _ICON_CHAT, _ICON_ANVIL, _ICON_CART,
 )
 from .message_handlers import (
     MessageHandlerStrategy,
@@ -22,6 +19,7 @@ from .message_handlers import (
 )
 from .setup_wizard import SetupWizardModal
 from .utils import _load_css, MAX_CHAT_MESSAGES
+from .views.actions import build_actions_panel, build_advanced_panel
 
 logger = logging.getLogger(__name__)
 

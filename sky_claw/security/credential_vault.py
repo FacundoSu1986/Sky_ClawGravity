@@ -1,7 +1,5 @@
 import os
-import stat
 import platform
-import hashlib
 import aiosqlite
 import logging
 import base64

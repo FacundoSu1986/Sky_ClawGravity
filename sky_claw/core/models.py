@@ -1,6 +1,6 @@
 import logging
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import List, Literal
 
 logger = logging.getLogger("SkyClaw.Models")
 

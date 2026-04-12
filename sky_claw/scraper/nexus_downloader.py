@@ -2,14 +2,13 @@ import asyncio
 import hashlib
 import logging
 import pathlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 import aiofiles
 import aiohttp
 from tenacity import (
     AsyncRetrying,
-    retry,
     retry_if_exception,
     stop_after_attempt,
     wait_exponential,
@@ -19,7 +18,7 @@ from sky_claw.config import (
     NEXUS_DOWNLOAD_CHUNK_SIZE,
     NEXUS_DOWNLOAD_TIMEOUT_SECONDS,
 )
-from sky_claw.security.network_gateway import EgressViolation, NetworkGateway
+from sky_claw.security.network_gateway import NetworkGateway
 
 logger = logging.getLogger(__name__)
 

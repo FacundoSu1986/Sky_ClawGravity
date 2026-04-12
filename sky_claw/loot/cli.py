@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import pathlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from sky_claw.loot.parser import LOOTOutputParser, LOOTResult
 from sky_claw.security.path_validator import PathValidator

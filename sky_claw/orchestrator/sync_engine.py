@@ -17,18 +17,16 @@ from __future__ import annotations
 import asyncio
 import configparser
 import logging
-import os
 import pathlib
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Coroutine, Dict, Optional
+from typing import Any, Coroutine, Dict
 from collections import defaultdict
 
 import aiohttp
 from tenacity import (
     AsyncRetrying,
     RetryError,
-    retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -44,9 +42,8 @@ from sky_claw.mo2.vfs import MO2Controller
 from sky_claw.scraper.nexus_downloader import NexusDownloader
 from sky_claw.security.hitl import HITLGuard, Decision
 # FASE 1.5: Imports de componentes de rollback
-from sky_claw.db.journal import OperationJournal, OperationStatus, OperationType
-from sky_claw.db.rollback_manager import RollbackManager, RollbackResult
-from sky_claw.db.snapshot_manager import FileSnapshotManager
+from sky_claw.db.journal import OperationType
+from sky_claw.db.rollback_manager import RollbackManager
 
 logger = logging.getLogger(__name__)
 

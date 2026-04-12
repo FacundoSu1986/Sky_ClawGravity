@@ -21,9 +21,9 @@ from typing import Any
 import aiofiles
 import aiofiles.os
 
-from sky_claw.fomod.models import FileInstall, FomodConfig
+from sky_claw.fomod.models import FileInstall
 from sky_claw.fomod.parser import parse_fomod, FomodParseError
-from sky_claw.fomod.resolver import FomodResolver, ResolveResult
+from sky_claw.fomod.resolver import FomodResolver
 from sky_claw.security.path_validator import PathValidator, PathViolation
 
 
@@ -269,7 +269,6 @@ class FomodInstaller:
 
     def _extract_fomod_xml(self, archive_path: pathlib.Path) -> str | None:
         """Try to read fomod/ModuleConfig.xml from archive without full extraction."""
-        from sky_claw.fomod.parser import parse_fomod_string  # noqa: F811
 
         suffix = archive_path.suffix.lower()
         if suffix == ".zip":

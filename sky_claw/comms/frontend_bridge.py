@@ -202,7 +202,7 @@ class FrontendBridge:
                 if not self._is_running:
                     break
                 self._handle_reconnect_error(
-                    exc, f"Enlace perdido con Gateway", backoff
+                    exc, "Enlace perdido con Gateway", backoff
                 )
                 self.ws = None
                 await asyncio.sleep(backoff)

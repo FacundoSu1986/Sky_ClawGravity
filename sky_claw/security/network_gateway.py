@@ -20,7 +20,7 @@ import socket
 import ssl
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 import aiohttp
 

@@ -2,7 +2,6 @@ import os
 import asyncio
 import logging
 import pathlib
-from typing import TYPE_CHECKING
 
 from sky_claw.core.database import DatabaseAgent
 from sky_claw.scraper.scraper_agent import ScraperAgent
@@ -39,13 +38,11 @@ from sky_claw.tools.synthesis_runner import (
 )
 from sky_claw.tools.patcher_pipeline import (
     PatcherPipeline,
-    PatcherDefinition,
 )
 # FASE 6: Imports de componentes de Wrye Bash
 from sky_claw.tools.wrye_bash_runner import (
     WryeBashRunner,
     WryeBashConfig,
-    WryeBashResult,
     WryeBashExecutionError,
 )
 from sky_claw.xedit.conflict_analyzer import ConflictAnalyzer

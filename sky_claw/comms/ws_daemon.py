@@ -128,7 +128,7 @@ class TelegramDaemon:
             # Misión 2: Auditoría Zero-Trust Async
             is_safe = await self.guardian.execute_audit("telegram_payload", text)
             if not is_safe:
-                logger.warning(f"🚫 Auditoría AST falló. Comando descartado por políticas Zero-Trust.")
+                logger.warning("🚫 Auditoría AST falló. Comando descartado por políticas Zero-Trust.")
                 if self.ws and getattr(self.ws, 'open', False):
                     err_msg = json.dumps({
                         "id": str(uuid.uuid4()),

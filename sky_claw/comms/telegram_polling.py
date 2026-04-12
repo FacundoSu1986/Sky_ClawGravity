@@ -17,7 +17,6 @@ class UpdateHandler(Protocol):
     async def process_update(self, data: dict[str, Any]) -> None:
         ...
 
-from sky_claw.comms.telegram import TelegramWebhook
 
 logger = logging.getLogger(__name__)
 

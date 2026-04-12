@@ -100,7 +100,7 @@ def test_route_classification():
             intent='CHAT_GENERAL',
             confidence=1.5  # Invalid: > 1.0
         )
-        print(f"[FAIL] Should have failed for invalid confidence")
+        print("[FAIL] Should have failed for invalid confidence")
         return False
     except Exception as e:
         print(f"[PASS] Correctly rejected invalid confidence: {type(e).__name__}")
@@ -111,7 +111,7 @@ def test_route_classification():
             intent='INVALID_INTENT',  # Invalid intent
             confidence=0.5
         )
-        print(f"[FAIL] Should have failed for invalid intent")
+        print("[FAIL] Should have failed for invalid intent")
         return False
     except Exception as e:
         print(f"[PASS] Correctly rejected invalid intent: {type(e).__name__}")

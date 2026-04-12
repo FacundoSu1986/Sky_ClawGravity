@@ -172,7 +172,7 @@ def _scan_text_payloads(filepath: Path) -> List[Dict[str, Any]]:
     if content is None:
         logger.error(f"No se pudo leer el archivo: {filepath}")
         return [{
-            "message": f"Error de lectura: archivo inaccesible",
+            "message": "Error de lectura: archivo inaccesible",
             "line": 0,
             "severity": "HIGH",
             "confidence": 0.8,

@@ -10,7 +10,6 @@ import pytest
 from sky_claw.fomod.models import (
     FomodConfig,
     GroupType,
-    FileInstall,
 )
 from sky_claw.core.errors import FomodParserSecurityError
 from sky_claw.fomod.parser import parse_fomod, parse_fomod_string, FomodParseError

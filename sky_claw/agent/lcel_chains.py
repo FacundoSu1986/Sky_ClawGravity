@@ -289,7 +289,7 @@ class ChainBuilder:
                 for step in steps:
                     tool = self._tool_executor(
                         step.get("tool", "Herramienta"),
-                        step.get("description", f"Descripción de paso")
+                        step.get("description", "Descripción de paso")
                     )
                     results.append(tool(x))
                 return results
@@ -374,6 +374,7 @@ class ChainBuilder:
         if not LANGCHAIN_AVAILABLE:
             # Retornar stub cuando LangChain no está disponible
             async def execute_with_retry(x):
+                last_exc = Exception("Max retries exceeded")
                 for attempt in range(max_retries):
                     try:
                         result = chain(x)
@@ -381,14 +382,16 @@ class ChainBuilder:
                             return await result
                         return result
                     except Exception as e:
+                        last_exc = e
                         logger.warning(f"Intento {attempt + 1} falló: {e}")
                         if attempt < max_retries - 1:
                             await asyncio.sleep(retry_delay)
-                raise e
+                raise last_exc
             return execute_with_retry
         
         async def execute_with_retry(x):
             """Ejecuta con reintentos."""
+            last_exc = Exception("Max retries exceeded")
             for attempt in range(max_retries):
                 try:
                     result = chain(x)
@@ -397,10 +400,11 @@ class ChainBuilder:
                         return await result
                     return result
                 except Exception as e:
+                    last_exc = e
                     logger.warning(f"Intento {attempt + 1} falló: {e}")
                     if attempt < max_retries - 1:
                         await asyncio.sleep(retry_delay)
-            raise e
+            raise last_exc
         
         return RunnableLambda(execute_with_retry)
 

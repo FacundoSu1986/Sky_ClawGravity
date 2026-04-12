@@ -289,19 +289,19 @@ def main_page():
     """
     ui.dark_mode().enable()
 
-    ui.add_head_html(f'''
+    ui.add_head_html('''
         <link rel="stylesheet" href="/static/styles.css">
         <script>
-            const sounds = {{
+            const sounds = {
                 'click': 'https://www.soundjay.com/buttons/button-16.mp3',
                 'hover': 'https://www.soundjay.com/buttons/button-20.mp3',
                 'success': 'https://www.soundjay.com/buttons/button-09.mp3'
-            }};
-            function playSkyrimSound(type) {{
+            };
+            function playSkyrimSound(type) {
                 const audio = new Audio(sounds[type]);
                 audio.volume = 0.2;
                 audio.play();
-            }}
+            }
         </script>
     ''')
 

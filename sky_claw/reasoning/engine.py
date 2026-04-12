@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Generic, List, Optional, Set, Tuple, TypeVar
+from typing import Any, Callable, Dict, Generic, List, Optional, Set, Tuple
 
 # Importar desde el módulo types
 from .types import (
@@ -31,7 +31,6 @@ from .types import (
     ThoughtGenerator,
     ThoughtEvaluator,
     SolutionChecker,
-    SearchStrategyProtocol,
 )
 
 # Importar desde el módulo strategies

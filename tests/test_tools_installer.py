@@ -11,12 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 import pytest
 
-from sky_claw.security.hitl import Decision, HITLGuard
+from sky_claw.security.hitl import HITLGuard
 from sky_claw.security.network_gateway import EgressPolicy, NetworkGateway
 from sky_claw.security.path_validator import PathValidator
 from sky_claw.tools_installer import (
-    InstallResult,
-    ReleaseAsset,
     ToolInstallError,
     ToolsInstaller,
     find_exe_in_dir,

@@ -23,7 +23,6 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import aiohttp
-from sky_claw.config import Config
 from tenacity import (
     retry,
     retry_if_exception,

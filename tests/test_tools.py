@@ -16,7 +16,6 @@ import pytest
 from sky_claw.agent.tools import AsyncToolRegistry
 from sky_claw.scraper.nexus_downloader import FileInfo, NexusDownloader
 from sky_claw.security.hitl import HITLGuard, Decision
-from sky_claw.loot.cli import LOOTRunner, LOOTConfig, LOOTNotFoundError
 
 
 class TestLootAutoInit:

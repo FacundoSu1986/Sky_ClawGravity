@@ -8,7 +8,7 @@ RESTRICCIÓN DE SEGURIDAD: Este módulo es STRICTLY READ-ONLY.
 No debe modificar, mover ni ocultar archivos.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path

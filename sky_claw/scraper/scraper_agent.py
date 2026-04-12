@@ -1,7 +1,5 @@
-import asyncio
 import time
 import logging
-from typing import Optional
 # Playwright and requests-html strictly banned locally in WSL2 per SRE (Cloudflare constraints).
 from sky_claw.core.models import CircuitBreakerTripped
 from sky_claw.core.schemas import ScrapingQuery, ModMetadata

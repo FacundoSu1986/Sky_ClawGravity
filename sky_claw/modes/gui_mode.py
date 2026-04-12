@@ -3,7 +3,7 @@ import asyncio
 import logging
 import uuid
 
-from sky_claw.logging_config import setup_logging, correlation_id_var
+from sky_claw.logging_config import correlation_id_var
 from sky_claw.orchestrator.supervisor import SupervisorAgent
 from sky_claw.app_context import AppContext, start_full, _resolve_config_path_static
 
@@ -56,7 +56,7 @@ async def _gui_mod_update_loop(ctx: AppContext) -> None:
             await asyncio.sleep(5)
 
 def run_gui_mode(args):
-    from sky_claw.gui.app import SetupPage, DashboardGUI
+    from sky_claw.gui.app import DashboardGUI
     from nicegui import ui, app
 
     config_path = _resolve_config_path_static(args)

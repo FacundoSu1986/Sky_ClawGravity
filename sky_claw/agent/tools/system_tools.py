@@ -56,7 +56,7 @@ async def run_loot_sort(mo2: Any, loot_runner: Any, loot_exe: pathlib.Path | Non
     params = ProfileParams(profile=profile)
     if loot_runner is None and loot_exe is not None:
         try:
-            from sky_claw.loot.cli import LOOTConfig, LOOTRunner, LOOTNotFoundError
+            from sky_claw.loot.cli import LOOTConfig, LOOTRunner
             config = LOOTConfig(loot_exe=loot_exe, game_path=mo2.root)
             loot_runner = LOOTRunner(config)
         except Exception as exc:

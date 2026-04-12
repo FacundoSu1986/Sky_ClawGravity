@@ -76,7 +76,7 @@ def test_autogen_wrapper():
     print("=" * 60)
     try:
         from sky_claw.agent.autogen_integration import (
-            AutoGenWrapper, AutoGenConfig, AUTOGEN_AVAILABLE
+            AutoGenWrapper, AutoGenConfig
         )
         
         # Create assistant agent
@@ -116,7 +116,7 @@ def test_multi_agent_orchestrator():
     print("=" * 60)
     try:
         from sky_claw.agent.autogen_integration import (
-            AutoGenWrapper, MultiAgentOrchestrator, AutoGenConfig, AUTOGEN_AVAILABLE
+            AutoGenWrapper, MultiAgentOrchestrator, AutoGenConfig
         )
         import asyncio
         
@@ -217,7 +217,7 @@ def test_get_orchestrator():
     print("=" * 60)
     try:
         from sky_claw.agent.autogen_integration import (
-            get_orchestrator, AUTOGEN_AVAILABLE
+            get_orchestrator
         )
         from sky_claw.agent.lcel_chains import ToolExecutor
         
@@ -237,7 +237,7 @@ def test_get_orchestrator():
         
         # Force new instance
         orchestrator3 = get_orchestrator(tool_executor=executor, force_new=True)
-        print(f"[PASS] New orchestrator instance created with force_new=True")
+        print("[PASS] New orchestrator instance created with force_new=True")
         
         return True
     except Exception as e:
@@ -254,7 +254,7 @@ def test_agent_communication():
     print("=" * 60)
     try:
         from sky_claw.agent.autogen_integration import (
-            AutoGenWrapper, AutoGenConfig, AUTOGEN_AVAILABLE
+            AutoGenWrapper, AutoGenConfig
         )
         import asyncio
         

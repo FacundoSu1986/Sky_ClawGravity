@@ -17,7 +17,7 @@ import os
 import pathlib
 import sys
 
-from sky_claw.app_context import AppContext, start_full, _is_configured, _resolve_config_path_static
+from sky_claw.app_context import AppContext
 from sky_claw.config import SystemPaths
 from sky_claw.logging_config import setup_logging
 from sky_claw.modes.cli_mode import _run_cli, _run_oneshot

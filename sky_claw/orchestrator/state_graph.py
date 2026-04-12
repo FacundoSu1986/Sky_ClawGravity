@@ -14,11 +14,9 @@ Gracefully degrades when LangGraph is not installed.
 from __future__ import annotations
 
 import logging
-import asyncio
 from enum import Enum
-from typing import Any, Dict, List, Optional, Callable, TypedDict, Annotated
+from typing import Any, Dict, List, Optional, Callable, TypedDict
 from datetime import datetime
-from dataclasses import dataclass, field
 
 # Conditional imports for graceful degradation
 try:
@@ -39,7 +37,8 @@ try:
 except ImportError:
     PYDANTIC_AVAILABLE = False
     BaseModel = object
-    Field = lambda *args, **kwargs: None
+    def Field(*args, **kwargs):
+        return None
 
 logger = logging.getLogger("SkyClaw.StateGraph")
 
@@ -275,13 +274,13 @@ class StateGraphNodes:
     @staticmethod
     def idle_node(state: StateGraphState) -> Dict[str, Any]:
         """Nodo de espera - esperando eventos."""
-        logger.debug(f"[StateGraph] En estado IDLE, esperando eventos...")
+        logger.debug("[StateGraph] En estado IDLE, esperando eventos...")
         return {"current_state": SupervisorState.IDLE.value}
     
     @staticmethod
     def watching_node(state: StateGraphState) -> Dict[str, Any]:
         """Nodo de monitoreo - detectando cambios."""
-        logger.debug(f"[StateGraph] Monitoreando cambios en modlist...")
+        logger.debug("[StateGraph] Monitoreando cambios en modlist...")
         return {"current_state": SupervisorState.WATCHING.value}
     
     @staticmethod
@@ -317,7 +316,7 @@ class StateGraphNodes:
     @staticmethod
     def completed_node(state: StateGraphState) -> Dict[str, Any]:
         """Nodo de completado - operación finalizada."""
-        logger.info(f"[StateGraph] Operación completada exitosamente")
+        logger.info("[StateGraph] Operación completada exitosamente")
         return {
             "current_state": SupervisorState.COMPLETED.value,
             "previous_state": SupervisorState.DISPATCHING.value,

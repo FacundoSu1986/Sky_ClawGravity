@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 from sky_claw.fomod.models import (
     CompositeDependency,
-    ConditionalPattern,
     FileInstall,
     FomodConfig,
     GroupType,

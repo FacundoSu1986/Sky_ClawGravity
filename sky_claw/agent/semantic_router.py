@@ -5,7 +5,6 @@ Utiliza FastEmbed para embeddings locales y clasificación semántica.
 """
 import asyncio
 import logging
-from typing import Optional, Tuple
 
 from sky_claw.core.schemas import RouteClassification
 

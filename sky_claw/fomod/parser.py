@@ -177,7 +177,7 @@ def _parse_install_steps(element: _stdlib_ET.Element | None) -> list[InstallStep
             steps.append(InstallStep(
                 name=name, visibility=visibility, groups=groups
             ))
-        except Exception as exc:
+        except Exception:
             logger.warning("Skipping malformed install step", exc_info=True)
     return steps
 
@@ -196,7 +196,7 @@ def _parse_groups(element: _stdlib_ET.Element | None) -> list[Group]:
             groups.append(Group(
                 name=name, group_type=group_type, plugins=plugins
             ))
-        except Exception as exc:
+        except Exception:
             logger.warning("Skipping malformed group", exc_info=True)
     return groups
 
@@ -243,7 +243,7 @@ def _parse_plugins(element: _stdlib_ET.Element | None) -> list[Plugin]:
                 files=files,
                 type_descriptor=type_desc,
             ))
-        except Exception as exc:
+        except Exception:
             logger.warning("Skipping malformed plugin", exc_info=True)
     return plugins
 
@@ -368,6 +368,6 @@ def _parse_conditional_installs(
             patterns.append(ConditionalPattern(
                 conditions=conditions, files=files
             ))
-        except Exception as exc:
+        except Exception:
             logger.warning("Skipping malformed conditional pattern", exc_info=True)
     return patterns

@@ -7,11 +7,9 @@ and processes the message in a background task.
 
 from __future__ import annotations
 
-import os
 import asyncio
 import collections
 import logging
-import re
 import uuid
 from typing import Any
 

@@ -6,7 +6,6 @@ import os
 import pathlib
 import queue
 import tempfile
-import uuid
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -16,14 +15,11 @@ import keyring
 from sky_claw.agent.providers import create_provider, ProviderConfigError
 from sky_claw.agent.router import LLMRouter
 from sky_claw.agent.tools_facade import AsyncToolRegistry
-from sky_claw.web.app import WebApp
-from sky_claw.security.auth_token_manager import AuthTokenManager
-from sky_claw.logging_config import correlation_id_var
 from sky_claw.comms.telegram import TelegramWebhook
 from sky_claw.comms.telegram_sender import TelegramSender
 from sky_claw.comms.telegram_polling import TelegramPolling
 from sky_claw.db.async_registry import AsyncModRegistry
-from sky_claw.config import Config, ALLOWED_HOSTS, ALLOWED_METHODS, XEDIT_COMMON_PATHS, LOOT_COMMON_PATHS, SystemPaths
+from sky_claw.config import Config, XEDIT_COMMON_PATHS, LOOT_COMMON_PATHS, SystemPaths
 from sky_claw.mo2.vfs import MO2Controller
 from sky_claw.orchestrator.sync_engine import SyncEngine
 from sky_claw.scraper.masterlist import MasterlistClient
@@ -35,7 +31,6 @@ from sky_claw.auto_detect import AutoDetector
 from sky_claw.tools_installer import ToolsInstaller, scan_common_paths
 from sky_claw.agent.animation_hub import AnimationHub, EngineConfig
 from sky_claw.local_config import load as _load_legacy_json
-from sky_claw.orchestrator.supervisor import SupervisorAgent
 
 logger = logging.getLogger("sky_claw")
 

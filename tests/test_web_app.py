@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp import web
-from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
+from aiohttp.test_utils import TestClient
 
 from sky_claw.web.app import WebApp
 from sky_claw.security.auth_token_manager import AuthTokenManager
