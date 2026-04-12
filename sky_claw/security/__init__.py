@@ -11,6 +11,13 @@ from sky_claw.security.text_inspector import TextInspector, scan_text
 from sky_claw.security.governance import GovernanceManager
 from sky_claw.security.metacognitive_logic import SecurityMetacognition, audit_resource
 
+# Zero-Trust LLM guardrail middleware (Titan v7.0)
+from sky_claw.security.agent_guardrail import (
+    AgentGuardrail,
+    AgentGuardrailConfig,
+    secure_llm_call,
+)
+
 __all__ = [
     "NetworkGateway",
     "PathValidator",
@@ -24,5 +31,9 @@ __all__ = [
     "scan_text",
     "GovernanceManager",
     "SecurityMetacognition",
-    "audit_resource"
+    "audit_resource",
+    # Titan v7.0 guardrail
+    "AgentGuardrail",
+    "AgentGuardrailConfig",
+    "secure_llm_call",
 ]
