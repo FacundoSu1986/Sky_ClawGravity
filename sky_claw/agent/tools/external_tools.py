@@ -13,6 +13,7 @@ from typing import Any
 
 import aiohttp
 
+from sky_claw.security.network_gateway import NetworkGateway, GatewayTCPConnector
 from .schemas import SetupToolsParams
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,9 @@ async def setup_tools(
     downloader: Any | None,
     loot_exe_ref: list | None = None,
     tools: list[str] | None = None,
+    *,
+    gateway: NetworkGateway | None = None,
+    session: aiohttp.ClientSession | None = None,
 ) -> str:
     """Download and install tools (loot, xedit, pandora, bodyslide).
 
@@ -53,7 +57,22 @@ async def setup_tools(
 
     results: dict[str, Any] = {}
 
-    async with aiohttp.ClientSession() as session:
+    # S1-FIX: Use injected gateway session; fall back to GatewayTCPConnector-backed
+    # session when a gateway is provided — never create a raw session.
+    own_session = False
+    if session is None:
+        if gateway is not None:
+            session = aiohttp.ClientSession(
+                connector=GatewayTCPConnector(gateway, limit=10),
+            )
+        else:
+            logger.warning(
+                "setup_tools called without gateway — creating unprotected session"
+            )
+            session = aiohttp.ClientSession()
+        own_session = True
+
+    try:
         for tool_name in params.tools:
             tool_name_lower = tool_name.lower()
             try:
@@ -121,6 +140,10 @@ async def setup_tools(
             except Exception as exc:
                 logger.error("Failed to install %s: %s", tool_name, exc)
                 results[tool_name_lower] = {"error": str(exc)}
+
+    finally:
+        if own_session and session and not session.closed:
+            await session.close()
 
     # Persist configuration if tools were installed
     if local_cfg and config_path:

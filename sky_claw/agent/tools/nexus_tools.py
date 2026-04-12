@@ -14,6 +14,7 @@ import logging
 import aiohttp
 
 from sky_claw.scraper.nexus_downloader import NexusDownloader
+from sky_claw.security.network_gateway import NetworkGateway, GatewayTCPConnector
 from sky_claw.security.hitl import Decision, HITLGuard
 from sky_claw.orchestrator.sync_engine import SyncEngine
 from .schemas import DownloadModParams
@@ -27,6 +28,9 @@ async def download_mod(
     sync_engine: SyncEngine,
     nexus_id: int,
     file_id: int | None = None,
+    *,
+    gateway: NetworkGateway | None = None,
+    session: aiohttp.ClientSession | None = None,
 ) -> str:
     """Implementacion de _download_mod.
 
@@ -59,10 +63,25 @@ async def download_mod(
     if sync_engine is None:
         return json.dumps({"error": "SyncEngine is not configured"})
 
-    # ------------------------------------------------------------------
-    # Step 1 - Consultar metadata del archivo antes asking the operator.
-    # ------------------------------------------------------------------
-    async with aiohttp.ClientSession() as session:
+    # S1-FIX: Use injected gateway session; fall back to creating a
+    # GatewayTCPConnector-backed session when a gateway is provided.
+    own_session = False
+    if session is None:
+        if gateway is not None:
+            session = aiohttp.ClientSession(
+                connector=GatewayTCPConnector(gateway, limit=10),
+            )
+        else:
+            logger.warning(
+                "download_mod called without gateway — creating unprotected session"
+            )
+            session = aiohttp.ClientSession()
+        own_session = True
+
+    try:
+        # ------------------------------------------------------------------
+        # Step 1 - Consultar metadata del archivo antes asking the operator.
+        # ------------------------------------------------------------------
         try:
             file_info = await downloader.get_file_info(
                 params.nexus_id, params.file_id, session
@@ -127,9 +146,16 @@ async def download_mod(
         _downloader = downloader
         _nexus_id = params.nexus_id
         _file_id = params.file_id
+        _gateway = gateway
 
         async def _do_download() -> None:
-            async with aiohttp.ClientSession() as dl_session:
+            if _gateway is not None:
+                dl_session = aiohttp.ClientSession(
+                    connector=GatewayTCPConnector(_gateway, limit=10),
+                )
+            else:
+                dl_session = aiohttp.ClientSession()
+            async with dl_session:
                 fresh_info = await _downloader.get_file_info(
                     _nexus_id, _file_id, dl_session
                 )
@@ -145,6 +171,9 @@ async def download_mod(
             params.file_id,
             file_info.file_name,
         )
+    finally:
+        if own_session and session and not session.closed:
+            await session.close()
 
     return json.dumps(
         {

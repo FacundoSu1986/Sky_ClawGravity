@@ -74,7 +74,18 @@ class TelegramPolling:
         """Internal polling loop."""
         own_session = False
         if self._session is None:
-            self._session = aiohttp.ClientSession()
+            # S1-FIX: Route through GatewayTCPConnector for DNS pinning/SSRF protection.
+            from sky_claw.security.network_gateway import GatewayTCPConnector
+
+            if self._gateway is not None:
+                self._session = aiohttp.ClientSession(
+                    connector=GatewayTCPConnector(self._gateway, limit=10),
+                )
+            else:
+                logger.warning(
+                    "TelegramPolling started without gateway — creating unprotected session"
+                )
+                self._session = aiohttp.ClientSession()
             own_session = True
         try:
             while self._running:

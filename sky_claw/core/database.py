@@ -1,6 +1,7 @@
 import aiosqlite
 import json
 import logging
+import sqlite3
 from typing import Optional, List, Dict
 
 logger = logging.getLogger("SkyClaw.Database")
@@ -117,16 +118,20 @@ class DatabaseAgent:
         self, domain: str, failures: int, locked_until: float
     ):
         conn = await self._get_conn()
-        await conn.execute(
-            """
-            INSERT INTO scraper_state (domain, failures, locked_until) 
-            VALUES (?, ?, ?)
-            ON CONFLICT(domain) DO UPDATE SET 
-            failures=excluded.failures, locked_until=excluded.locked_until
-        """,
-            (domain, failures, locked_until),
-        )
-        await conn.commit()
+        try:
+            await conn.execute(
+                """
+                INSERT INTO scraper_state (domain, failures, locked_until) 
+                VALUES (?, ?, ?)
+                ON CONFLICT(domain) DO UPDATE SET 
+                failures=excluded.failures, locked_until=excluded.locked_until
+            """,
+                (domain, failures, locked_until),
+            )
+            await conn.commit()
+        except sqlite3.Error:
+            await conn.rollback()
+            raise
 
     # ─────────────────────────────────────────────────────────────────────
     # Agent Memory (Key-Value)
@@ -142,16 +147,20 @@ class DatabaseAgent:
 
     async def set_memory(self, key: str, value: str, updated_at: float):
         conn = await self._get_conn()
-        await conn.execute(
-            """
-            INSERT INTO agent_memory (key, value, updated_at) 
-            VALUES (?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET 
-            value=excluded.value, updated_at=excluded.updated_at
-        """,
-            (key, value, updated_at),
-        )
-        await conn.commit()
+        try:
+            await conn.execute(
+                """
+                INSERT INTO agent_memory (key, value, updated_at) 
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET 
+                value=excluded.value, updated_at=excluded.updated_at
+            """,
+                (key, value, updated_at),
+            )
+            await conn.commit()
+        except sqlite3.Error:
+            await conn.rollback()
+            raise
 
     # ─────────────────────────────────────────────────────────────────────
     # Mods Repository (consumed by NiceGUI ReactiveState)
@@ -174,12 +183,16 @@ class DatabaseAgent:
     ) -> int:
         """Añade o actualiza un mod y devuelve su ID."""
         conn = await self._get_conn()
-        await conn.execute(
-            "INSERT OR REPLACE INTO mods (name, version, size_mb, source, status) "
-            "VALUES (?, ?, ?, ?, 'active')",
-            (name, version, size_mb, source),
-        )
-        await conn.commit()
+        try:
+            await conn.execute(
+                "INSERT OR REPLACE INTO mods (name, version, size_mb, source, status) "
+                "VALUES (?, ?, ?, ?, 'active')",
+                (name, version, size_mb, source),
+            )
+            await conn.commit()
+        except sqlite3.Error:
+            await conn.rollback()
+            raise
         async with conn.execute("SELECT last_insert_rowid()") as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
@@ -204,8 +217,12 @@ class DatabaseAgent:
     ) -> None:
         """Registra actividad en el log."""
         conn = await self._get_conn()
-        await conn.execute(
-            "INSERT INTO activity_log (event_type, message, details) VALUES (?, ?, ?)",
-            (event_type, message, json.dumps(details) if details else None),
-        )
-        await conn.commit()
+        try:
+            await conn.execute(
+                "INSERT INTO activity_log (event_type, message, details) VALUES (?, ?, ?)",
+                (event_type, message, json.dumps(details) if details else None),
+            )
+            await conn.commit()
+        except sqlite3.Error:
+            await conn.rollback()
+            raise

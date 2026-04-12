@@ -8,14 +8,21 @@ RESTRICCIÓN DE SEGURIDAD: Este módulo es STRICTLY READ-ONLY.
 No debe modificar, mover ni ocultar archivos.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Final, Optional
+from typing import TYPE_CHECKING, Final, Optional
 import hashlib
 import json
 import logging
+
+if TYPE_CHECKING:
+    from sky_claw.security.path_validator import PathValidator
+
+from sky_claw.security.path_validator import PathViolation
 
 logger = logging.getLogger(__name__)
 
@@ -91,18 +98,25 @@ class AssetConflictDetector:
         AssetType.ANIMATION: frozenset({".hkx", ".anim"}),
     }
 
-    def __init__(self, mo2_mods_path: Path, profile_name: str = "Default") -> None:
+    def __init__(
+        self,
+        mo2_mods_path: Path,
+        profile_name: str = "Default",
+        path_validator: PathValidator | None = None,
+    ) -> None:
         """
         Inicializa el detector.
 
         Args:
             mo2_mods_path: Ruta al directorio "mods" de MO2
             profile_name: Nombre del perfil activo de MO2
+            path_validator: Optional PathValidator for sandbox enforcement.
         """
         self._mo2_mods_path = mo2_mods_path
         self._profile_name = profile_name
         self._modlist_path: Optional[Path] = None
         self._mods_path: Optional[Path] = None
+        self._path_validator = path_validator
 
         logger.debug(
             f"AssetConflictDetector inicializado: mods_path={mo2_mods_path}, "
@@ -156,6 +170,13 @@ class AssetConflictDetector:
         enabled_mods: list[str] = []
 
         try:
+            # S2-FIX: Validate modlist_path before opening.
+            if self._path_validator is not None:
+                try:
+                    self._path_validator.validate(modlist_path, strict_symlink=False)
+                except PathViolation:
+                    logger.error("Path traversal blocked for modlist: %s", modlist_path)
+                    raise
             with open(modlist_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
@@ -225,6 +246,13 @@ class AssetConflictDetector:
 
         try:
             file_size = file_path.stat().st_size
+            # S2-FIX: Validate file_path before opening.
+            if self._path_validator is not None:
+                try:
+                    self._path_validator.validate(file_path, strict_symlink=False)
+                except PathViolation:
+                    logger.error("Path traversal blocked for checksum: %s", file_path)
+                    raise
             with open(file_path, "rb") as f:
                 if file_size <= 2 * mb:
                     # Archivo pequeño, leer completo
