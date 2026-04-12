@@ -418,9 +418,9 @@ class SynthesisRunner:
         logger.debug("Validando ESP: %s", esp_path)
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
-            def _check_esp():
+            def _check_esp() -> tuple[bool, str | int]:
                 if not esp_path.exists():
                     return False, "ESP no existe"
                 file_size = esp_path.stat().st_size

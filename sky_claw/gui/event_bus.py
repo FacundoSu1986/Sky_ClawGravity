@@ -75,30 +75,34 @@ class EventBus:
         while self._running:
             try:
                 event = self._event_queue.get(timeout=0.1)
-                with self._subscribers_lock:
-                    callbacks = list(self._subscribers.get(event.type, []))
-                loop = self._loop  # atomic capture — prevents TOCTOU race
-                if loop is None or not loop.is_running():
-                    self._logger.warning(
-                        "No hay event loop activo, descartando evento: %s (%d callbacks omitidos)",
-                        event.type.value,
-                        len(callbacks),
-                    )
-                    continue
-                for callback in callbacks:
-                    try:
-                        loop.call_soon_threadsafe(callback, event)
-                    except RuntimeError as exc:
-                        # Loop closed between is_running() check and call_soon_threadsafe()
-                        self._logger.warning(
-                            "Event loop cerrado al despachar evento %s: %s",
-                            event.type.value,
-                            exc,
-                        )
-                    except Exception as exc:
-                        self._logger.error("Error en callback: %s", exc)
             except queue.Empty:
                 continue
+
+            with self._subscribers_lock:
+                callbacks = list(self._subscribers.get(event.type, []))
+
+            loop = self._loop  # capture reference once per event
+            if loop is None:
+                self._logger.warning(
+                    "No hay event loop activo, descartando evento: %s (%d callbacks omitidos)",
+                    event.type.value,
+                    len(callbacks),
+                )
+                continue
+
+            for callback in callbacks:
+                try:
+                    loop.call_soon_threadsafe(callback, event)
+                except RuntimeError:
+                    # Loop was closed — clear our reference and stop dispatching
+                    self._loop = None
+                    self._logger.warning(
+                        "Event loop cerrado al despachar evento %s, descartando callbacks pendientes",
+                        event.type.value,
+                    )
+                    break
+                except Exception as exc:
+                    self._logger.error("Error en callback: %s", exc)
 
     def start(self) -> None:
         if not self._running:
@@ -107,11 +111,16 @@ class EventBus:
                 self._loop = asyncio.get_running_loop()
             except RuntimeError:
                 self._loop = None
-            self._processor = threading.Thread(target=self._process_events, daemon=True)
+            self._processor = threading.Thread(
+                target=self._process_events, daemon=True, name="EventBus-processor"
+            )
             self._processor.start()
 
     def stop(self) -> None:
         self._running = False
+        if hasattr(self, "_processor") and self._processor is not None:
+            self._processor.join(timeout=2.0)
+            self._processor = None
 
 
 # Singleton global — importar desde aquí en todo el proyecto
