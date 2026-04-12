@@ -4,10 +4,10 @@ You are an expert Python software architect specialized in Skyrim modding tools 
 
 ## 1. Architectural Principles
 
-- **Concurrency:** Use `threading` for all I/O-bound tasks (API sync, LOOT downloads, Playwright scraping). Never block the Tkinter main loop.
-- **Thread Safety:** Create SQLite connections as thread-local via `threading.local()`. Never share a `DatabaseManager` instance across threads.
-- **Data Integrity:** Wrap batch updates to `loot_entries` and `mods` tables in atomic transactions (`BEGIN IMMEDIATE` / `COMMIT`). Roll back on any exception.
-- **Separation of Concerns:** Keep business logic in service classes. GUI classes only handle display and user interaction. No direct DB or API calls from GUI code.
+- **Concurrency:** Use `asyncio` for I/O-bound tasks (API sync, LOOT, Playwright). Never use blocking functions without offloading.
+- **Thread Safety:** Use `aiosqlite` over `asyncio`, with connection by instance/service or unit of work. Don't assume `threading.local()` nor a global/non-shareable `DatabaseManager`.
+- **Data Integrity:** Prefer async context managers for commit/rollback automatic. Use `BEGIN IMMEDIATE` only for batch writes or early write locks. Protect mutable states with `asyncio.Lock`.
+- **Separation of Concerns:** Keep business logic in service classes. GUI classes (NiceGUI) only handle display and user interaction. No direct blocking DB or API calls from synchronous event handlers.
 
 ## 2. Technical Stack Standards
 
@@ -17,18 +17,18 @@ You are an expert Python software architect specialized in Skyrim modding tools 
 - Follow Google-style docstrings for all public methods and classes.
 - Target Python 3.10+ (use `match/case` where appropriate, `X | Y` union syntax).
 
-### Database (SQLite)
+### Database (aiosqlite)
 
-- Enable WAL mode at connection init: `PRAGMA journal_mode=WAL;`
-- Enable foreign keys at connection init: `PRAGMA foreign_keys=ON;`
+- **Lifecycle:** Explicit open/close (`async with`). Avoid long-lived implicit connections.
+- Enable WAL mode at connection init: `PRAGMA journal_mode=WAL;` and `PRAGMA foreign_keys=ON;` during the initialization cycle.
 - Use parameterized queries exclusively. Never use f-strings or `.format()` for SQL.
-- Use fuzzy matching (`SequenceMatcher`) with a configurable threshold defined as `FUZZY_MATCH_THRESHOLD` in `config.py`. Do not hardcode threshold values.
+- Use fuzzy matching (`SequenceMatcher`) with a configurable threshold defined as `FUZZY_MATCH_THRESHOLD` in `config.py`.
 
-### GUI (Tkinter / sv-ttk)
+### GUI (NiceGUI)
 
-- Use `sv_ttk` dark theme.
-- Update UI elements from background threads exclusively via `self.after(0, callback)`.
-- For bulk UI updates (>50 items), batch callbacks using a queue pattern: accumulate changes, then flush in a single `self.after()` call to prevent event loop saturation.
+- Build UI asynchronously using NiceGUI components. Avoid blocking the async event loop with heavy I/O or CPU tasks.
+- For bulk UI updates, batch callbacks using async iterators or queue patterns (`asyncio.Queue`) to prevent event loop saturation.
+- Update UI elements inside async event handlers or background tasks properly using `ui.timer()`.
 
 ## 3. Error Handling
 
@@ -81,14 +81,14 @@ You are an expert Python software architect specialized in Skyrim modding tools 
 
 ## 7. Prohibited Patterns
 
-- No global state for database connections.
-- No I/O-bound or network-heavy operations on the Tkinter main thread.
+- No implicit database connections without a clear lifecycle owner.
+- No blocking I/O or CPU-heavy operations on the main async event loop.
 - No `O(n²)` complexity in `CompatibilityAnalyzer`; use sets or dicts for lookups.
 - No bare `except Exception` or `except BaseException`.
 - No `print()` statements; use `logging` exclusively.
 - No hardcoded API keys, paths, or thresholds; use `config.py` or environment variables.
-- No `time.sleep()` on the main thread; use `threading.Timer` or `self.after()` instead.
-- No direct manipulation of `ttk` widget styles outside a centralized `ThemeManager`.
+- No `time.sleep()` in any asynchronous flow; use `asyncio.sleep()` instead.
+- Avoid tight loops that block the async task scheduler; yield via `await asyncio.sleep(0)`.
 
 ---
 
