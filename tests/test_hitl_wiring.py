@@ -141,7 +141,7 @@ class TestWebhookHITLApprove:
 
         # Register a pending request manually.
         req_task = asyncio.create_task(
-            guard.request_approval("download-10-20", "test")
+            guard.request_approval("test_reason", request_id="download-10-20")
         )
         await asyncio.sleep(0)  # Let the coroutine register the request.
 
@@ -167,7 +167,7 @@ class TestWebhookHITLApprove:
         webhook, router, sender = _make_webhook(hitl=guard)
 
         req_task = asyncio.create_task(
-            guard.request_approval("download-5-6", "test")
+            guard.request_approval("test_reason", request_id="download-5-6")
         )
         await asyncio.sleep(0)
 
@@ -319,7 +319,7 @@ class TestHITLNotifyFn:
             await guard.respond("req-notify-test", approved=True)
 
         asyncio.create_task(_respond())
-        await guard.request_approval("req-notify-test", "Download mod X", detail="file.zip")
+        await guard.request_approval("Download mod X", detail="file.zip", request_id="req-notify-test")
 
         sender.send.assert_awaited_once()
         call = sender.send.call_args
@@ -346,7 +346,7 @@ class TestHITLNotifyFn:
             await guard.respond("safe-req", approved=False)
 
         asyncio.create_task(_respond())
-        decision = await guard.request_approval("safe-req", "test")
+        decision = await guard.request_approval("test", request_id="safe-req")
         assert decision is Decision.DENIED
 
     @pytest.mark.asyncio
@@ -367,7 +367,7 @@ class TestHITLNotifyFn:
             await guard.respond("no-chat-req", approved=True)
 
         asyncio.create_task(_respond())
-        decision = await guard.request_approval("no-chat-req", "test")
+        decision = await guard.request_approval("test", request_id="no-chat-req")
 
         assert decision is Decision.APPROVED
         sender.send.assert_not_awaited()
@@ -385,9 +385,9 @@ class TestHITLNotifyFn:
             await guard.respond("bad-notify-req", approved=True)
 
         asyncio.create_task(_respond())
-        # Should propagate the exception from notify_fn — callers wrap it.
-        with pytest.raises(RuntimeError, match="Telegram is down"):
-            await guard.request_approval("bad-notify-req", "test")
+        # It should not propagate the exception; it returns TIMEOUT.
+        decision = await guard.request_approval("test", request_id="bad-notify-req")
+        assert decision is Decision.TIMEOUT
 
 
 # ---------------------------------------------------------------------------

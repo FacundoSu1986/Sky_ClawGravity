@@ -222,7 +222,14 @@ class OperationJournal:
             db_path: Path al archivo de base de datos SQLite.
                      Si es None, usa un path por defecto.
         """
-        self._db_path = db_path or pathlib.Path(".skyclaw_journal.db")
+        raw_path = str(db_path or ".skyclaw_journal.db")
+        from sky_claw.core.validators.path import PathTraversalValidator
+        validator = PathTraversalValidator(allow_absolute=True)
+        result = validator.validate(raw_path)
+        if not result.is_valid:
+            raise ValueError(f"Path traversal detected in journal path '{raw_path}': {result.error_message}")
+            
+        self._db_path = pathlib.Path(raw_path)
         self._db: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
         self._current_transaction: int | None = None

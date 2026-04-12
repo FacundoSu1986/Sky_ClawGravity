@@ -104,7 +104,14 @@ class AsyncModRegistry:
     """
 
     def __init__(self, db_path: pathlib.Path | str | None = None) -> None:
-        self._db_path = str(db_path or DB_PATH)
+        raw_path = str(db_path or DB_PATH)
+        from sky_claw.core.validators.path import PathTraversalValidator
+        validator = PathTraversalValidator(allow_absolute=True)
+        result = validator.validate(raw_path)
+        if not result.is_valid:
+            raise ValueError(f"Path traversal detected in database path '{raw_path}': {result.error_message}")
+            
+        self._db_path = raw_path
         self._conn: aiosqlite.Connection | None = None
 
     # ------------------------------------------------------------------
