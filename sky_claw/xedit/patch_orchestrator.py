@@ -638,7 +638,7 @@ class PatchOrchestrator:
                 error=f"Patching error: {e}",
             )
 
-    def select_strategy(self, conflict: "RecordConflict") -> PatchStrategy:
+    async def select_strategy(self, conflict: "RecordConflict") -> PatchStrategy:
         """Selecciona la estrategia óptima para un conflicto.
 
         Itera sobre las estrategias disponibles (ordenadas por prioridad)
@@ -653,24 +653,9 @@ class PatchOrchestrator:
         Raises:
             StrategySelectionError: Si ninguna estrategia puede manejar el conflicto.
         """
-        import asyncio
-
         for strategy in self._strategies:
-            # can_handle es async, necesitamos ejecutarlo
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Si ya estamos en un loop async, crear tarea
-                    import concurrent.futures
-
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(
-                            asyncio.run, strategy.can_handle(conflict)
-                        )
-                        can_handle = future.result()
-                else:
-                    can_handle = loop.run_until_complete(strategy.can_handle(conflict))
-
+                can_handle = await strategy.can_handle(conflict)
                 if can_handle:
                     logger.debug(
                         "Strategy %s selected for conflict %s",

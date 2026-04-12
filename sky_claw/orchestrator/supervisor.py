@@ -896,29 +896,14 @@ class SupervisorAgent:
                 if mods_path.exists():
                     return mods_path
 
-        # Fallback: usar auto-detección
-        from sky_claw.auto_detect import AutoDetector
-
-        try:
-            import asyncio
-
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Si ya hay un loop corriendo, usar versión síncrona
-                mo2_base = self._sync_detect_mo2_path()
-            else:
-                mo2_base = loop.run_until_complete(AutoDetector.find_mo2())
-            if mo2_base:
-                mods_path = mo2_base / "mods"
-                if mods_path.exists():
-                    return mods_path
-        except RuntimeError:
-            # No hay event loop, usar detección síncrona
-            mo2_base = self._sync_detect_mo2_path()
-            if mo2_base:
-                mods_path = mo2_base / "mods"
-                if mods_path.exists():
-                    return mods_path
+        # Fallback: usar auto-detección síncrona.
+        # Both inside and outside a running event loop we use the sync path
+        # to avoid the deprecated get_event_loop() / run_until_complete() trap.
+        mo2_base = self._sync_detect_mo2_path()
+        if mo2_base:
+            mods_path = mo2_base / "mods"
+            if mods_path.exists():
+                return mods_path
 
         raise RuntimeError(
             "No se pudo detectar la ruta de MO2. "

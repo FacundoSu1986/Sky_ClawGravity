@@ -25,6 +25,11 @@ from sky_claw.config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
+
+class DatabaseError(Exception):
+    """Raised when a database operation fails and has been rolled back."""
+
+
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS mods (
     mod_id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -356,8 +361,13 @@ class AsyncModRegistry:
             return
         if self._conn is None:
             raise RuntimeError("Database is not open")
-        await self._conn.executemany(_UPSERT_MOD_SQL_BATCH, rows)
-        await self._conn.commit()
+        try:
+            await self._conn.executemany(_UPSERT_MOD_SQL_BATCH, rows)
+            await self._conn.commit()
+        except Exception as exc:
+            await self._conn.rollback()
+            logger.error("Batch upsert failed, rolled back: %s", exc)
+            raise DatabaseError(f"upsert_mods_batch failed: {exc}") from exc
         logger.debug("Batch-upserted %d mod rows", len(rows))
 
     async def insert_deps_batch(
@@ -372,8 +382,13 @@ class AsyncModRegistry:
             return
         if self._conn is None:
             raise RuntimeError("Database is not open")
-        await self._conn.executemany(_INSERT_DEP_SQL, rows)
-        await self._conn.commit()
+        try:
+            await self._conn.executemany(_INSERT_DEP_SQL, rows)
+            await self._conn.commit()
+        except Exception as exc:
+            await self._conn.rollback()
+            logger.error("Batch insert deps failed, rolled back: %s", exc)
+            raise DatabaseError(f"insert_deps_batch failed: {exc}") from exc
         logger.debug("Batch-inserted %d dependency rows", len(rows))
 
     async def log_tasks_batch(
@@ -388,6 +403,11 @@ class AsyncModRegistry:
             return
         if self._conn is None:
             raise RuntimeError("Database is not open")
-        await self._conn.executemany(_LOG_TASK_SQL, rows)
-        await self._conn.commit()
+        try:
+            await self._conn.executemany(_LOG_TASK_SQL, rows)
+            await self._conn.commit()
+        except Exception as exc:
+            await self._conn.rollback()
+            logger.error("Batch log tasks failed, rolled back: %s", exc)
+            raise DatabaseError(f"log_tasks_batch failed: {exc}") from exc
         logger.debug("Batch-logged %d task rows", len(rows))

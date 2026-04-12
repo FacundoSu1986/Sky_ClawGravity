@@ -25,6 +25,7 @@ class DatabaseAgent:
 
         # ── WAL & Concurrency Hardening ──
         await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._conn.execute("PRAGMA synchronous=NORMAL")
         await self._conn.execute("PRAGMA busy_timeout=5000")
 
