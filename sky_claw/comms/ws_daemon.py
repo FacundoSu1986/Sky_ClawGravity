@@ -16,9 +16,9 @@ WORK_DIR = Path(__file__).resolve().parent.parent.parent
 AST_SKILLS_PATH = WORK_DIR / ".agents" / "skills" / "skyclaw-purple-auditor" / "scripts"
 if str(AST_SKILLS_PATH) not in sys.path:
     sys.path.append(str(AST_SKILLS_PATH))
-import ast_guardian
+import ast_guardian  # noqa: E402
 
-from sky_claw.security.auth_token_manager import AuthTokenManager
+from sky_claw.security.auth_token_manager import AuthTokenManager  # noqa: E402
 
 # Set-up standard 2026 logging
 logger = logging.getLogger("SkyClaw.TelegramDaemon")

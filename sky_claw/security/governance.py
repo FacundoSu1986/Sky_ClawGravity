@@ -137,7 +137,8 @@ class GovernanceManager:
     async def is_scanned_and_clean(self, file_path: str) -> bool:
         """Verifica si el archivo ya fue escaneado y no ha cambiado (incremental)."""
         file_hash = self.get_file_hash(file_path)
-        if file_hash is None: return False
+        if file_hash is None:
+            return False
 
         # Primero ver si está en la whitelist manual
         if file_hash in self.whitelist:
@@ -157,7 +158,8 @@ class GovernanceManager:
     async def update_scan_result(self, file_path: str, results: List[Dict], status: str):
         """Actualiza el estado de escaneo en la base de datos."""
         file_hash = self.get_file_hash(file_path)
-        if file_hash is None: return
+        if file_hash is None:
+            return
 
         try:
             async with aiosqlite.connect(self.cache_db_path) as db:

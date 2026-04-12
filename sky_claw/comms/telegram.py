@@ -47,7 +47,7 @@ def _parse_hitl_command(text: str) -> tuple[bool, str] | None:
     return None
 
 
-import html
+import html  # noqa: E402
 
 def escape_html(text: str) -> str:
     if not text:

@@ -13,7 +13,8 @@ async def _run_web(ctx: AppContext, port: int) -> None:
     assert ctx.session is not None
     local_cfg = load_local_config(ctx.config_path)
     already_configured = not local_cfg.first_run and bool(local_cfg.get_api_key())
-    if already_configured: await ctx.start_full()
+    if already_configured:
+        await ctx.start_full()
 
     auth_manager = AuthTokenManager()
     auth_manager.generate()

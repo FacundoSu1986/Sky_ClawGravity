@@ -779,16 +779,19 @@ class SupervisorAgent:
         """
         for raw in [r"C:\Modding\MO2", r"D:\Modding\MO2", r"E:\Modding\MO2", r"C:\MO2Portable", r"D:\MO2Portable", r"C:\Games\MO2", r"D:\Games\MO2"]:
             p = pathlib.Path(raw)
-            if (p / "ModOrganizer.exe").exists(): return p
+            if (p / "ModOrganizer.exe").exists():
+                return p
         la = os.environ.get("LOCALAPPDATA")
         if la:
             md = pathlib.Path(la) / "ModOrganizer"
             if md.is_dir():
                 for c in md.iterdir():
-                    if c.is_dir() and (c / "ModOrganizer.exe").exists(): return c
+                    if c.is_dir() and (c / "ModOrganizer.exe").exists():
+                        return c
         for pf in [r"C:\Program Files", r"C:\Program Files (x86)"]:
             c = pathlib.Path(pf) / "Mod Organizer 2"
-            if (c / "ModOrganizer.exe").exists(): return c
+            if (c / "ModOrganizer.exe").exists():
+                return c
         return None
 
     def _resolve_modlist_path(self, profile: str) -> pathlib.Path:

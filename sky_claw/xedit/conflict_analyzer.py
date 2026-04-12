@@ -381,7 +381,7 @@ def parse_conflict_lines(stdout: str) -> list[RecordConflict]:
             logger.warning("Malformed CONFLICT line (expected 6 fields): %s", line)
             continue
         try:
-            losers = [l.strip() for l in parts[5].split(",") if l.strip()]
+            losers = [entry.strip() for entry in parts[5].split(",") if entry.strip()]
             conflicts.append(RecordConflict(
                 form_id=parts[1].strip(),
                 editor_id=parts[2].strip(),

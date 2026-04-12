@@ -323,7 +323,8 @@ class AppContext:
             loot_exe = self._args.loot_exe
             if local_cfg.loot_exe:
                 cfg_loot = pathlib.Path(local_cfg.loot_exe)
-                if cfg_loot.exists(): loot_exe = cfg_loot
+                if cfg_loot.exists():
+                    loot_exe = cfg_loot
             if loot_exe is None or not loot_exe.exists():
                 found = scan_common_paths(LOOT_COMMON_PATHS, "loot.exe")
                 if found:
@@ -334,7 +335,8 @@ class AppContext:
             xedit_exe = getattr(self._args, "xedit_exe", None)
             if local_cfg.xedit_exe:
                 cfg_xedit = pathlib.Path(local_cfg.xedit_exe)
-                if cfg_xedit.exists(): xedit_exe = cfg_xedit
+                if cfg_xedit.exists():
+                    xedit_exe = cfg_xedit
             if xedit_exe is None or not xedit_exe.exists():
                 found = scan_common_paths(XEDIT_COMMON_PATHS, "SSEEdit.exe")
                 if found:

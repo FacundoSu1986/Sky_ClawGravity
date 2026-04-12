@@ -18,7 +18,7 @@ _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from sky_claw.orchestrator.state_graph import (
+from sky_claw.orchestrator.state_graph import (  # noqa: E402
     SupervisorState,
     WorkflowEventType,
     SupervisorStateGraph,
