@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 class SpecializedAgentBridge:
-    """Base class for specialized agent bridges in Sky_Claw."""
+    """Base class for specialized agent bridges in Sky-Claw."""
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.enabled = config.get("enabled", False)

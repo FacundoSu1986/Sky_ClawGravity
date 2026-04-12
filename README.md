@@ -51,8 +51,8 @@ Sky-Claw incluye scripts automáticos para facilitar la instalación:
 
 1. **Clonar y Construir**:
    ```batch
-   git clone https://github.com/FacundoSu1986/Sky_Claw.git
-   cd Sky_Claw
+   git clone https://github.com/FacundoSu1986/sky-claw.git
+   cd sky-claw
    build.bat
    ```
 

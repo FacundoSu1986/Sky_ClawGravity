@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-lcel_chains.py - Cadenas LangChain Expression Language para Sky_Claw.
+lcel_chains.py - Cadenas LangChain Expression Language para Sky-Claw.
 Implementa composición declarativa de prompts y manejo de herramientas
 utilizando el patrón LCEL (LangChain Expression Language).
 """
@@ -56,7 +56,7 @@ class ToolExecutor(RunnableLambda if LANGCHAIN_AVAILABLE else object):
 
 
 class PromptComposer:
-    """Componedor de prompts LCEL para Sky_Claw.
+    """Componedor de prompts LCEL para Sky-Claw.
     
     Nota: Si LangChain no está instalado, los métodos retornan mensajes
     en formato de diccionario compatible con la API de LLM.
@@ -218,7 +218,7 @@ class PromptComposer:
 
 
 class ChainBuilder:
-    """Constructor de cadenas LCEL para Sky_Claw."""
+    """Constructor de cadenas LCEL para Sky-Claw."""
     
     def __init__(self, tool_executor: ToolExecutor):
         """
@@ -412,6 +412,6 @@ _prompt_composer = PromptComposer(
 # ToolExecutor por defecto para uso común
 _default_tool_executor = ToolExecutor(
     tool_name="default",
-    tool_description="Herramienta por defecto para Sky_Claw"
+    tool_description="Herramienta por defecto para Sky-Claw"
 )
 chain_builder = ChainBuilder(tool_executor=_default_tool_executor)

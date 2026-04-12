@@ -1,8 +1,8 @@
-# LangGraph StateGraph Integration for Sky_Claw
+# LangGraph StateGraph Integration for Sky-Claw
 
 ## Overview
 
-This document describes the LangGraph StateGraph integration implemented for the SupervisorAgent in Sky_Claw. The integration provides stateful workflow orchestration with conditional transitions, checkpointing, and graceful degradation.
+This document describes the LangGraph StateGraph integration implemented for the SupervisorAgent in Sky-Claw. The integration provides stateful workflow orchestration with conditional transitions, checkpointing, and graceful degradation.
 
 ## Status
 
@@ -230,7 +230,7 @@ return SupervisorState.IDLE.value
 Run tests with:
 
 ```bash
-cd Claude antigravity/Sky_Claw-main
+cd sky-claw
 python -m pytest tests/test_state_graph.py -v
 ```
 

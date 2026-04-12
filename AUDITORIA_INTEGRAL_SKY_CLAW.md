@@ -20,11 +20,11 @@
 
 ### 🎯 Hallazgos Principales
 
-1. **Error de sintaxis crítico** en [`providers.py:47`](Claude antigravity/Sky_Claw-main/sky_claw/agent/providers.py:47) - Paréntesis extra
-2. **Vulnerabilidad de seguridad crítica** en [`credential_vault.py:20`](Claude antigravity/Sky_Claw-main/sky_claw/security/credential_vault.py:20) - Salt estático hardcoded
-3. **Error de sintaxis** en [`governance.py:46`](Claude antigravity/Sky_Claw-main/sky_claw/security/governance.py:46) - Falta importar `Set`
-4. **Validación de path traversal incompleta** en [`schemas.py:67-70`](Claude antigravity/Sky_Claw-main/sky_claw/core/schemas.py:67-70)
-5. **Error de indentación** en [`network_gateway.py:139`](Claude antigravity/Sky_Claw-main/sky_claw/security/network_gateway.py:139)
+1. **Error de sintaxis crítico** en [`providers.py:47`](sky-claw/sky_claw/agent/providers.py:47) - Paréntesis extra
+2. **Vulnerabilidad de seguridad crítica** en [`credential_vault.py:20`](sky-claw/sky_claw/security/credential_vault.py:20) - Salt estático hardcoded
+3. **Error de sintaxis** en [`governance.py:46`](sky-claw/sky_claw/security/governance.py:46) - Falta importar `Set`
+4. **Validación de path traversal incompleta** en [`schemas.py:67-70`](sky-claw/sky_claw/core/schemas.py:67-70)
+5. **Error de indentación** en [`network_gateway.py:139`](sky-claw/sky_claw/security/network_gateway.py:139)
 
 ---
 
@@ -32,7 +32,7 @@
 
 ### 1. Error de Sintaxis - providers.py:47
 
-**Archivo:** [`sky_claw/agent/providers.py`](Claude antigravity/Sky_Claw-main/sky_claw/agent/providers.py:47)  
+**Archivo:** [`sky_claw/agent/providers.py`](sky-claw/sky_claw/agent/providers.py:47)  
 **Línea:** 47  
 **Severidad:** CRÍTICA  
 **Impacto:** El código no puede ejecutarse, falla en importación
@@ -66,7 +66,7 @@ def _should_retry(exc: BaseException) -> bool:
 
 ### 2. Vulnerabilidad de Seguridad - credential_vault.py:20
 
-**Archivo:** [`sky_claw/security/credential_vault.py`](Claude antigravity/Sky_Claw-main/sky_claw/security/credential_vault.py:20)  
+**Archivo:** [`sky_claw/security/credential_vault.py`](sky-claw/sky_claw/security/credential_vault.py:20)  
 **Línea:** 20  
 **Severidad:** CRÍTICA  
 **Impacto:** Ataque de diccionario de fuerza bruta facilitado
@@ -130,7 +130,7 @@ async def _get_or_create_salt(self) -> bytes:
 
 ### 3. Error de Sintaxis - governance.py:46
 
-**Archivo:** [`sky_claw/security/governance.py`](Claude antigravity/Sky_Claw-main/sky_claw/security/governance.py:46)  
+**Archivo:** [`sky_claw/security/governance.py`](sky-claw/sky_claw/security/governance.py:46)  
 **Línea:** 46  
 **Severidad:** CRÍTICA  
 **Impacto:** El código no puede ejecutarse
@@ -157,7 +157,7 @@ def _load_whitelist(self) -> set[str]:
 
 ### 4. Validación de Path Traversal Incompleta - schemas.py:67-70
 
-**Archivo:** [`sky_claw/core/schemas.py`](Claude antigravity/Sky_Claw-main/sky_claw/core/schemas.py:67-70)  
+**Archivo:** [`sky_claw/core/schemas.py`](sky-claw/sky_claw/core/schemas.py:67-70)  
 **Líneas:** 67-70  
 **Severidad:** CRÍTICA  
 **Impacto:** Path traversal attacks posibles
@@ -229,7 +229,7 @@ def validate_path(cls, v: str) -> str:
 
 ### 5. Error de Indentación - network_gateway.py:139
 
-**Archivo:** [`sky_claw/security/network_gateway.py`](Claude antigravity/Sky_Claw-main/sky_claw/security/network_gateway.py:139)  
+**Archivo:** [`sky_claw/security/network_gateway.py`](sky-claw/sky_claw/security/network_gateway.py:139)  
 **Línea:** 139  
 **Severidad:** CRÍTICA  
 **Impacto:** Error de sintaxis
@@ -265,7 +265,7 @@ def validate_redirection_chain(self, url: str, history: list[str]) -> None:
 
 ### 6. Manejo Inadecuado de Permisos en Windows - auth_token_manager.py:63
 
-**Archivo:** [`sky_claw/security/auth_token_manager.py`](Claude antigravity/Sky_Claw-main/sky_claw/security/auth_token_manager.py:63)  
+**Archivo:** [`sky_claw/security/auth_token_manager.py`](sky-claw/sky_claw/security/auth_token_manager.py:63)  
 **Línea:** 63  
 **Severidad:** ALTA  
 **Impacto:** Permisos de archivo pueden no aplicarse en Windows
@@ -331,7 +331,7 @@ def _set_secure_permissions(self) -> None:
 
 ### 7. Potencial SQL Injection - database.py:104
 
-**Archivo:** [`sky_claw/core/database.py`](Claude antigravity/Sky_Claw-main/sky_claw/core/database.py:104)  
+**Archivo:** [`sky_claw/core/database.py`](sky-claw/sky_claw/core/database.py:104)  
 **Línea:** 104  
 **Severidad:** ALTA  
 **Impacto:** SQL injection posible si no se valida input
@@ -384,7 +384,7 @@ async def update_circuit_breaker(self, domain: str, failures: int, locked_until:
 
 ### 8. Patrones de Glob Incompletos - metacognitive_logic.py:67
 
-**Archivo:** [`sky_claw/security/metacognitive_logic.py`](Claude antigravity/Sky_Claw-main/sky_claw/security/metacognitive_logic.py:67)  
+**Archivo:** [`sky_claw/security/metacognitive_logic.py`](sky-claw/sky_claw/security/metacognitive_logic.py:67)  
 **Línea:** 67  
 **Severidad:** ALTA  
 **Impacto:** Archivos maliciosos pueden no ser escaneados
@@ -443,7 +443,7 @@ async def _phase_decompose(self) -> bool:
 
 ### 9. Defang de Prompt Injection Incompleto - sanitize.py:49
 
-**Archivo:** [`sky_claw/security/sanitize.py`](Claude antigravity/Sky_Claw-main/sky_claw/security/sanitize.py:49)  
+**Archivo:** [`sky_claw/security/sanitize.py`](sky-claw/sky_claw/security/sanitize.py:49)  
 **Línea:** 49  
 **Severidad:** MEDIA  
 **Impacto:** Prompt injection aún posible
@@ -506,7 +506,7 @@ def sanitize_for_prompt(
 
 ### 10. Validación de ".." Antes de Resolve - path_validator.py:52
 
-**Archivo:** [`sky_claw/security/path_validator.py`](Claude antigravity/Sky_Claw-main/sky_claw/security/path_validator.py:52)  
+**Archivo:** [`sky_claw/security/path_validator.py`](sky-claw/sky_claw/security/path_validator.py:52)  
 **Línea:** 52  
 **Severidad:** MEDIA  
 **Impacto:** Symlinks pueden evadir validación
@@ -581,7 +581,7 @@ def validate(self, path: str | pathlib.Path, *, strict_symlink: bool = True) -> 
 
 ### 11. Timeout Fijo para Descarga Manual - nexus_downloader.py:301
 
-**Archivo:** [`sky_claw/scraper/nexus_downloader.py`](Claude antigravity/Sky_Claw-main/sky_claw/scraper/nexus_downloader.py:301)  
+**Archivo:** [`sky_claw/scraper/nexus_downloader.py`](sky-claw/sky_claw/scraper/nexus_downloader.py:301)  
 **Línea:** 301  
 **Severidad:** ALTA  
 **Impacto:** Experiencia de usuario pobre para descargas grandes
@@ -639,7 +639,7 @@ async def _handle_manual_fallback(
 
 ### 12. Sin Validación de Tamaño de Cola - sync_engine.py:54
 
-**Archivo:** [`sky_claw/orchestrator/sync_engine.py`](Claude antigravity/Sky_Claw-main/sky_claw/orchestrator/sync_engine.py:54)  
+**Archivo:** [`sky_claw/orchestrator/sync_engine.py`](sky-claw/sky_claw/orchestrator/sync_engine.py:54)  
 **Línea:** 54  
 **Severidad:** ALTA  
 **Impacto:** Memory exhaustion posible
@@ -704,7 +704,7 @@ class SyncEngine:
 
 ### 13. Error Lógico en Comparación de Strings - mo2/vfs.py:144
 
-**Archivo:** [`sky_claw/mo2/vfs.py`](Claude antigravity/Sky_Claw-main/sky_claw/mo2/vfs.py:144)  
+**Archivo:** [`sky_claw/mo2/vfs.py`](sky-claw/sky_claw/mo2/vfs.py:144)  
 **Línea:** 144  
 **Severidad:** ALTA  
 **Impacto:** Mods pueden no ser eliminados correctamente
@@ -762,7 +762,7 @@ async def remove_mod_from_modlist(
 
 ### 14. Referencia a Módulo Inexistente - supervisor.py:8
 
-**Archivo:** [`sky_claw/orchestrator/supervisor.py`](Claude antigravity/Sky_Claw-main/sky_claw/orchestrator/supervisor.py:8)  
+**Archivo:** [`sky_claw/orchestrator/supervisor.py`](sky-claw/sky_claw/orchestrator/supervisor.py:8)  
 **Línea:** 8  
 **Severidad:** ALTA  
 **Impacto:** ImportError en tiempo de ejecución
@@ -787,7 +787,7 @@ from sky_claw.comms.frontend_bridge import FrontendBridge
 
 ### 15. Sin Pooling de Conexiones SQLite - database.py:92-96
 
-**Archivo:** [`sky_claw/core/database.py`](Claude antigravity/Sky_Claw-main/sky_claw/core/database.py:92-96)  
+**Archivo:** [`sky_claw/core/database.py`](sky-claw/sky_claw/core/database.py:92-96)  
 **Líneas:** 92-96  
 **Severidad:** MEDIA  
 **Impacto:** Overhead de conexión en cada operación
@@ -852,7 +852,7 @@ class DatabaseAgent:
 
 ### 16. asyncio.gather Sin Límite de Concurrencia - sync_engine.py:159
 
-**Archivo:** [`sky_claw/orchestrator/sync_engine.py`](Claude antigravity/Sky_Claw-main/sky_claw/orchestrator/sync_engine.py:159)  
+**Archivo:** [`sky_claw/orchestrator/sync_engine.py`](sky-claw/sky_claw/orchestrator/sync_engine.py:159)  
 **Línea:** 159  
 **Severidad:** MEDIA  
 **Impacto:** Memory exhaustion y rate limiting
@@ -906,7 +906,7 @@ async def check_for_updates(self, session: aiohttp.ClientSession) -> UpdatePaylo
 
 ### 17. PRAGMA journal_mode=WAL en Cada Conexión - router.py:103
 
-**Archivo:** [`sky_claw/agent/router.py`](Claude antigravity/Sky_Claw-main/sky_claw/agent/router.py:103)  
+**Archivo:** [`sky_claw/agent/router.py`](sky-claw/sky_claw/agent/router.py:103)  
 **Línea:** 103  
 **Severidad:** MEDIA  
 **Impacto:** Overhead innecesario
@@ -946,7 +946,7 @@ async def open(self) -> None:
 
 ### 18. Hardcoded WebSocket URL - scraper_agent.py:64
 
-**Archivo:** [`sky_claw/scraper/scraper_agent.py`](Claude antigravity/Sky_Claw-main/sky_claw/scraper/scraper_agent.py:64)  
+**Archivo:** [`sky_claw/scraper/scraper_agent.py`](sky-claw/sky_claw/scraper/scraper_agent.py:64)  
 **Línea:** 64  
 **Severidad:** BAJA  
 **Impacto:** Difícil de cambiar en diferentes entornos
@@ -980,7 +980,7 @@ class ScraperAgent:
 
 ### 19. Hardcoded MO2 Path - supervisor.py:23
 
-**Archivo:** [`sky_claw/orchestrator/supervisor.py`](Claude antigravity/Sky_Claw-main/sky_claw/orchestrator/supervisor.py:23)  
+**Archivo:** [`sky_claw/orchestrator/supervisor.py`](sky-claw/sky_claw/orchestrator/supervisor.py:23)  
 **Línea:** 23  
 **Severidad:** BAJA  
 **Impacto:** No funciona en instalaciones personalizadas
@@ -1018,7 +1018,7 @@ class SupervisorAgent:
 
 ### 20. Singleton Global sin Thread-Safety - governance.py:125
 
-**Archivo:** [`sky_claw/security/governance.py`](Claude antigravity/Sky_Claw-main/sky_claw/security/governance.py:125)  
+**Archivo:** [`sky_claw/security/governance.py`](sky-claw/sky_claw/security/governance.py:125)  
 **Línea:** 125  
 **Severidad:** BAJA  
 **Impacto:** Race conditions en entornos multi-threaded
@@ -1100,12 +1100,12 @@ def get_governance() -> GovernanceManager:
 ## 🎯 RECOMENDACIONES PRIORITARIAS
 
 ### Inmediato (1-2 días)
-1. **Corregir errores de sintaxis** - [`providers.py:47`](Claude antigravity/Sky_Claw-main/sky_claw/agent/providers.py:47), [`governance.py:46`](Claude antigravity/Sky_Claw-main/sky_claw/security/governance.py:46), [`network_gateway.py:139`](Claude antigravity/Sky_Claw-main/sky_claw/security/network_gateway.py:139)
-2. **Corregir vulnerabilidad de salt estático** - [`credential_vault.py:20`](Claude antigravity/Sky_Claw-main/sky_claw/security/credential_vault.py:20)
-3. **Corregir import inexistente** - [`supervisor.py:8`](Claude antigravity/Sky_Claw-main/sky_claw/orchestrator/supervisor.py:8)
+1. **Corregir errores de sintaxis** - [`providers.py:47`](sky-claw/sky_claw/agent/providers.py:47), [`governance.py:46`](sky-claw/sky_claw/security/governance.py:46), [`network_gateway.py:139`](sky-claw/sky_claw/security/network_gateway.py:139)
+2. **Corregir vulnerabilidad de salt estático** - [`credential_vault.py:20`](sky-claw/sky_claw/security/credential_vault.py:20)
+3. **Corregir import inexistente** - [`supervisor.py:8`](sky-claw/sky_claw/orchestrator/supervisor.py:8)
 
 ### Corto Plazo (1-2 semanas)
-4. Mejorar validación de path traversal - [`schemas.py:67-70`](Claude antigravity/Sky_Claw-main/sky_claw/core/schemas.py:67-70)
+4. Mejorar validación de path traversal - [`schemas.py:67-70`](sky-claw/sky_claw/core/schemas.py:67-70)
 5. Implementar pooling de conexiones SQLite
 6. Agregar límites de concurrencia en `asyncio.gather`
 7. Mejorar sanitización de prompt injection

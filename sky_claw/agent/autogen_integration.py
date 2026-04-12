@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-autogen_integration.py - Integración de Microsoft AutoGen para Sky_Claw.
+autogen_integration.py - Integración de Microsoft AutoGen para Sky-Claw.
 Implementa orquestación multi-agente con conversaciones entre agentes,
 usando los módulos existentes (ToolExecutor, PromptComposer, RouteClassification).
 
@@ -62,7 +62,7 @@ class AutoGenConfig:
 
 
 class SkyClawConversableAgent(ABC):
-    """Clase base abstracta para agentes conversacionales de Sky_Claw.
+    """Clase base abstracta para agentes conversacionales de Sky-Claw.
     
     Esta clase proporciona una interfaz común para agentes que pueden participar
     en conversaciones multi-agente, independientemente de si AutoGen está disponible.
@@ -105,10 +105,10 @@ class SkyClawConversableAgent(ABC):
 
 
 class AutoGenWrapper(SkyClawConversableAgent):
-    """Wrapper para agentes AutoGen que integra con la arquitectura Sky_Claw.
+    """Wrapper para agentes AutoGen que integra con la arquitectura Sky-Claw.
     
     Este wrapper permite usar agentes AutoGen (AssistantAgent, UserProxyAgent)
-    con los componentes existentes de Sky_Claw como ToolExecutor y RouteClassification.
+    con los componentes existentes de Sky-Claw como ToolExecutor y RouteClassification.
     """
     
     def __init__(
@@ -353,10 +353,10 @@ def create_sky_claw_agents(
     tool_executor: Any,
     config: Optional[AutoGenConfig] = None
 ) -> Dict[str, AutoGenWrapper]:
-    """Factory function para crear agentes Sky_Claw preconfigurados.
+    """Factory function para crear agentes Sky-Claw preconfigurados.
     
     Crea un conjunto de agentes conversacionales especializados para
-    las diferentes tareas de Sky_Claw:
+    las diferentes tareas de Sky-Claw:
     - SupervisorAgent: Coordina y despacha tareas
     - ScraperAgent: Maneja scraping de Nexus Mods
     - SecurityAgent: Realiza auditorías de seguridad
@@ -374,7 +374,7 @@ def create_sky_claw_agents(
     # Supervisor Agent
     agents["supervisor"] = AutoGenWrapper(
         name="SupervisorAgent",
-        system_message="""Eres el agente supervisor de Sky_Claw. Tu rol es:
+        system_message="""Eres el agente supervisor de Sky-Claw. Tu rol es:
 1. Coordinar las tareas entre los agentes especializados
 2. Despachar solicitudes al agente apropiado
 3. Sintetizar resultados de múltiples agentes
@@ -389,7 +389,7 @@ Debes usar RouteClassification para determinar qué agente debe manejar cada sol
     # Scraper Agent
     agents["scraper"] = AutoGenWrapper(
         name="ScraperAgent",
-        system_message="""Eres el agente de scraping de Sky_Claw. Tu rol es:
+        system_message="""Eres el agente de scraping de Sky-Claw. Tu rol es:
 1. Consultar Nexus Mods para obtener metadata de mods
 2. Manejar el modo stealth cuando sea necesario
 3. Respetar el Circuit Breaker para evitar baneos
@@ -404,7 +404,7 @@ Usa las herramientas de scraping disponibles para completar las tareas.""",
     # Security Agent
     agents["security"] = AutoGenWrapper(
         name="SecurityAgent",
-        system_message="""Eres el agente de seguridad de Sky_Claw. Tu rol es:
+        system_message="""Eres el agente de seguridad de Sky-Claw. Tu rol es:
 1. Auditar archivos y código en busca de vulnerabilidades
 2. Detectar patrones maliciosos usando análisis estático
 3. Validar inputs contra schemas Pydantic
@@ -419,7 +419,7 @@ Aplica el framework metacognitivo de 5 fases para análisis profundo.""",
     # Database Agent
     agents["database"] = AutoGenWrapper(
         name="DatabaseAgent",
-        system_message="""Eres el agente de base de datos de Sky_Claw. Tu rol es:
+        system_message="""Eres el agente de base de datos de Sky-Claw. Tu rol es:
 1. Gestionar consultas a SQLite con modo WAL
 2. Mantener la integridad de los datos de mods
 3. Registrar actividad y logs del sistema
@@ -431,7 +431,7 @@ Usa las herramientas de base de datos disponibles para las operaciones CRUD.""",
         config=config
     )
     
-    logger.info(f"Creados {len(agents)} agentes Sky_Claw preconfigurados")
+    logger.info(f"Creados {len(agents)} agentes Sky-Claw preconfigurados")
     return agents
 
 

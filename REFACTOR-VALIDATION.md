@@ -151,7 +151,7 @@ All 7 issues (3 critical + 4 important) identified in the code review have been 
 
 1. **Run unit tests** (when Gateway is available):
    ```bash
-   cd E:\GravityParaClaude\Claude antigravity\Sky_Claw-main
+   cd E:\GravityParaClaude\Claude antigravity\sky-claw
    python test_frontend_bridge.py
    # Expected: 6/6 tests PASS
    ```

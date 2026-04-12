@@ -2,7 +2,7 @@
 """
 test_autogen_integration.py - Pruebas de integración para AutoGen.
 Verifica que la integración de AutoGen funcione correctamente con
-la arquitectura Sky_Claw.
+la arquitectura Sky-Claw.
 """
 import sys
 import os
@@ -187,7 +187,7 @@ def test_create_sky_claw_agents():
         # Create tool executor
         executor = ToolExecutor(tool_name="test", tool_description="Test executor")
         
-        # Create Sky_Claw agents
+        # Create Sky-Claw agents
         agents = create_sky_claw_agents(
             tool_executor=executor,
             config=AutoGenConfig()
@@ -201,7 +201,7 @@ def test_create_sky_claw_agents():
                 print(f"[FAIL] Agent '{name}' not found in factory output")
                 return False
         
-        print(f"[PASS] All {len(agents)} Sky_Claw agents created successfully")
+        print(f"[PASS] All {len(agents)} Sky-Claw agents created successfully")
         return True
     except Exception as e:
         print(f"[FAIL] create_sky_claw_agents error: {e}")

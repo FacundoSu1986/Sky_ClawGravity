@@ -1,6 +1,6 @@
 ---
 name: local-automation-interpreter
-description: Automatiza herramientas de modding de Windows (LOOT, xEdit, MO2) usando Open Interpreter con ejecución sandboxed. Usar cuando Sky_Claw necesite ejecutar scripts PowerShell/CMD para parchear mods, manipular carpetas, o actualizar el registro de mods. No usar para tareas que no requieran interacción con el sistema de archivos o binarios de modding.
+description: Automatiza herramientas de modding de Windows (LOOT, xEdit, MO2) usando Open Interpreter con ejecución sandboxed. Usar cuando Sky-Claw necesite ejecutar scripts PowerShell/CMD para parchear mods, manipular carpetas, o actualizar el registro de mods. No usar para tareas que no requieran interacción con el sistema de archivos o binarios de modding.
 ---
 
 # Local Automation Interpreter
@@ -9,7 +9,7 @@ Orquesta la ejecución segura de herramientas de modding de Windows (LOOT, xEdit
 
 ## Cuándo Usar
 
-- Cuando Sky_Claw necesite ejecutar scripts complejos de PowerShell o CMD para parchear archivos de mods.
+- Cuando Sky-Claw necesite ejecutar scripts complejos de PowerShell o CMD para parchear archivos de mods.
 - Cuando el usuario dé instrucciones de alto nivel como "Limpia todos los archivos .esm con xEdit y luego ordena con LOOT."
 - Para tareas multi-paso que involucren manipulación de carpetas y actualizaciones al registro de mods.
 - Al orquestar secuencias de herramientas de modding que requieran coordinación.
@@ -43,7 +43,7 @@ interpreter.chat(f"Ejecuta xEdit en {config.XEDIT_PATH} con el plugin {plugin_na
 ```
 
 ### 4. Interacción con Herramientas
-- Usar rutas absolutas del `config.py` de Sky_Claw para localizar binarios.
+- Usar rutas absolutas del `config.py` de Sky-Claw para localizar binarios.
 - Implementar esperas explícitas para procesos de larga duración.
 - Capturar stdout/stderr para telemetría y diagnóstico.
 

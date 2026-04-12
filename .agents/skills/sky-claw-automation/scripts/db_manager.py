@@ -6,7 +6,7 @@ import argparse
 from typing import Any, List, Optional
 
 # Ensure the sky_claw package is in the path
-project_root = pathlib.Path(__file__).resolve().parents[4] / "Sky_Claw-main"
+project_root = pathlib.Path(__file__).resolve().parents[4] / "sky-claw"
 sys.path.append(str(project_root))
 
 from sky_claw.config import Config

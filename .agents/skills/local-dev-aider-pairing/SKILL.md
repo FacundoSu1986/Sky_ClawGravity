@@ -1,17 +1,17 @@
 ---
 name: local-dev-aider-pairing
-description: Pair programming con Aider para modificación de código integrada con Git, generación de parches, y refactorización local-first. Usar para parchear mods, crear scripts Papyrus, o refactorizar lógica interna de Sky_Claw. No usar para cambios triviales que no justifiquen la sobrecarga de Aider.
+description: Pair programming con Aider para modificación de código integrada con Git, generación de parches, y refactorización local-first. Usar para parchear mods, crear scripts Papyrus, o refactorizar lógica interna de Sky-Claw. No usar para cambios triviales que no justifiquen la sobrecarga de Aider.
 ---
 
 # Local Dev Aider Pairing
 
-Habilita pair programming con Aider para modificación de código local-first integrada con Git, parches de mods, y refactorización de Sky_Claw.
+Habilita pair programming con Aider para modificación de código local-first integrada con Git, parches de mods, y refactorización de Sky-Claw.
 
 ## Cuándo Usar
 
-- Cuando Sky_Claw necesite parchear automáticamente un problema de compatibilidad en un plugin de mod.
+- Cuando Sky-Claw necesite parchear automáticamente un problema de compatibilidad en un plugin de mod.
 - Cuando el usuario solicite un script personalizado para un mod (ej: scripting Papyrus).
-- Para refactorizar la lógica interna de Sky_Claw manteniendo historial limpio de Git.
+- Para refactorizar la lógica interna de Sky-Claw manteniendo historial limpio de Git.
 - Al generar parches de compatibilidad basados en reportes de conflictos.
 
 ## Cuándo NO Usar
@@ -28,7 +28,7 @@ pip install aider-chat
 ```
 
 ### 2. Contextualización
-- Lanzar Aider en la carpeta de desarrollo del mod o de Sky_Claw.
+- Lanzar Aider en la carpeta de desarrollo del mod o de Sky-Claw.
 - Usar `/add` para incluir archivos relevantes (ej: `main.py`, archivos `.psc`).
 
 ### 3. Flujo de Trabajo
@@ -51,4 +51,4 @@ aider sky_claw/agent/router.py sky_claw/core/db.py
 
 ## Recursos
 
-- Integración con el ecosistema Sky_Claw vía `specialized_bridges.py`.
+- Integración con el ecosistema Sky-Claw vía `specialized_bridges.py`.

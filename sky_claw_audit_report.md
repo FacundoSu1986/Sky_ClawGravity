@@ -1,13 +1,13 @@
-# Reporte de Auditoría Técnica y de Seguridad: Sky_ClawGravity
+# Reporte de Auditoría Técnica y de Seguridad: Sky-Claw
 
 ## 1. Resumen Ejecutivo
 
 **Auditor:** Senior Technical Auditor & Multi-Agent Systems Specialist
 **Fecha:** 11 de Abril, 2026
-**Objetivo:** Sky_ClawGravity (Daemon Python 3.14+, Gateway Node.js 24)
+**Objetivo:** Sky-Claw (Daemon Python 3.14+, Gateway Node.js 24)
 **Alcance:** ~15,000 LOC, ~40 módulos, 7 capas arquitectónicas, 4 interfaces, 17 tools integrados, 13 controles de seguridad.
 
-Esta auditoría exhaustiva de Sky_ClawGravity evalúa la arquitectura del sistema, la postura de seguridad, la eficiencia en la gestión de recursos, y la coherencia en el dominio de modding de Skyrim SE/AE.
+Esta auditoría exhaustiva de Sky-Claw evalúa la arquitectura del sistema, la postura de seguridad, la eficiencia en la gestión de recursos, y la coherencia en el dominio de modding de Skyrim SE/AE.
 
 ### Tabla Resumen de Hallazgos
 

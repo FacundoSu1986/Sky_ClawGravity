@@ -16,7 +16,7 @@ Realiza una auditoría de seguridad enterprise sobre el proyecto Sky-Claw.
 
 2. **Ejecutar análisis estático** sobre el código Python:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    python -m pytest tests/ -v --tb=short 2>&1
    ```
 

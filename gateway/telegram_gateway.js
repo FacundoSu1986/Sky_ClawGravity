@@ -3,7 +3,7 @@
 /**
  * TELEGRAM WEBSOCKET GATEWAY (STANDARD 2026)
  * Implements a secure, stateless bridge between Telegram Bot API
- * and the Sky_ClawGravity Python daemon.
+ * and the Sky-Claw Python daemon.
  */
 
 const { Bot } = require("grammy");

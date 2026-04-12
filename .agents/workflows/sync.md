@@ -11,39 +11,39 @@ Automatiza el proceso de commit y push al repositorio remoto.
 // turbo
 1. **Verificar estado del repositorio**:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    git status
    ```
 
 // turbo
 2. **Revisar los cambios pendientes** (diff resumido):
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    git diff --stat
    ```
 
 3. **Agregar todos los cambios al staging**:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    git add -A
    ```
 
 4. **Crear commit con mensaje descriptivo** — generar un mensaje basado en los archivos modificados:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    git commit -m "<mensaje descriptivo basado en los cambios>"
    ```
 
 5. **Push al remoto (origin main)**:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    git push origin main
    ```
 
 // turbo
 6. **Verificar sincronización exitosa**:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    git log -n 1 --oneline
    ```
 

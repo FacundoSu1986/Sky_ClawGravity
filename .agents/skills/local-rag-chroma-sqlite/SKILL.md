@@ -5,7 +5,7 @@ description: Construye y consulta una base de conocimiento local de mods usando 
 
 # Local RAG con ChromaDB + SQLite
 
-Sistema RAG (Retrieval-Augmented Generation) local-first para la base de conocimiento de mods de Sky_Claw, combinando búsqueda vectorial (ChromaDB) con datos estructurados (SQLite).
+Sistema RAG (Retrieval-Augmented Generation) local-first para la base de conocimiento de mods de Sky-Claw, combinando búsqueda vectorial (ChromaDB) con datos estructurados (SQLite).
 
 ## Cuándo Usar
 

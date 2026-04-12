@@ -22,7 +22,7 @@ Inicia todos los componentes de la aplicación Sky-Claw.
 
 3. **Iniciar la aplicación** usando el script de arranque:
    ```bash
-   cd e:\Pruba antigravity\Sky_Claw-main
+   cd e:\Pruba antigravity\sky-claw
    .\SkyClawApp.bat
    ```
 

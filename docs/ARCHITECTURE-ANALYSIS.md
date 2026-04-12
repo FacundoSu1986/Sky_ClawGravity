@@ -1,4 +1,4 @@
-# 📐 Análisis Arquitectónico Exhaustivo — Sky_ClawGravity
+# 📐 Análisis Arquitectónico Exhaustivo — Sky-Claw
 
 **Fecha:** 2026-04-11  
 **Versión Analizada:** 0.1.0 (Build 1.4.26.16.32)  
@@ -9,7 +9,7 @@
 
 ## 1. Resumen Ejecutivo
 
-### Qué es Sky_Claw
+### Qué es Sky-Claw
 
 Sky-Claw es un **agente autónomo avanzado de gestión de mods para Skyrim SE/AE** que opera a través de Mod Organizer 2 (MO2). Permite buscar, descargar, instalar y resolver conflictos de mods usando lenguaje natural, con soporte multi-LLM y múltiples interfaces de usuario.
 
