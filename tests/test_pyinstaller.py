@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import os
 import pathlib
 from unittest.mock import patch
 
 import pytest
-from aiohttp import web
 
 from sky_claw.local_config import LocalConfig, load, save
 
@@ -162,7 +160,7 @@ class TestSetupEndpoint:
         self, tmp_path: pathlib.Path, aiohttp_client
     ) -> None:
         from sky_claw.web.app import WebApp
-        from unittest.mock import MagicMock, AsyncMock
+        from unittest.mock import MagicMock
 
         router = MagicMock()
         session = MagicMock()

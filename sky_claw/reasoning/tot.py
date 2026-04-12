@@ -18,8 +18,6 @@ References:
 
 # Types and Protocols
 from .types import (
-    T,
-    S,
     SearchStrategyType,
     EvaluationResult,
     PruningMethod,

@@ -16,7 +16,6 @@ import pytest
 from sky_claw.agent.tools import AsyncToolRegistry
 from sky_claw.scraper.nexus_downloader import FileInfo, NexusDownloader
 from sky_claw.security.hitl import HITLGuard, Decision
-from sky_claw.loot.cli import LOOTRunner, LOOTConfig, LOOTNotFoundError
 
 
 class TestLootAutoInit:
@@ -161,7 +160,7 @@ class TestDownloadModFreshUrl:
         )
 
         # Call _download_mod
-        result = asyncio.run(registry._download_mod(nexus_id=1234, file_id=5678))
+        asyncio.run(registry._download_mod(nexus_id=1234, file_id=5678))
 
         # Verify enqueue was called with a coroutine
         mock_sync_engine.enqueue_download.assert_called_once()

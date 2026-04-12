@@ -3,9 +3,8 @@ Sky-Claw Metacognitive Reasoning Logic v5.5 (Abril 2026)
 Framework de decisión secuencial de 5 pasos para Auditoría Purple Team.
 """
 
-import asyncio
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
 from pathlib import Path
 
@@ -76,7 +75,7 @@ class SecurityMetacognition:
         gov = GovernanceManager.get_instance()
         
         for file_path in self.session_data["files_to_scan"]:
-            path_obj = Path(file_path)
+            Path(file_path)
             
             # Protección: No volver a escanear si está limpio en el caché incremental
             if await gov.is_scanned_and_clean(file_path):

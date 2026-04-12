@@ -12,7 +12,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from sky_claw.xedit.output_parser import XEditOutputParser
 from sky_claw.xedit.runner import XEditRunner
 
 logger = logging.getLogger(__name__)

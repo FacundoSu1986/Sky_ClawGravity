@@ -22,7 +22,7 @@ from sky_claw.config import (
 from sky_claw.security.hitl import Decision, HITLGuard
 from sky_claw.security.network_gateway import NetworkGateway
 from sky_claw.security.path_validator import PathValidator, PathViolation
-from sky_claw.scraper.nexus_downloader import NexusDownloader, FileInfo
+from sky_claw.scraper.nexus_downloader import NexusDownloader
 
 logger = logging.getLogger(__name__)
 

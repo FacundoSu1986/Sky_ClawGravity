@@ -11,7 +11,6 @@ import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aiohttp import web
 
 from sky_claw.config import Config
 from sky_claw.local_config import LocalConfig, load, save
@@ -93,7 +92,6 @@ class TestResolveConfigPath:
         ctx = AppContext(args)
         ctx._resolve_config_path()
 
-        from sky_claw.config import Config
         assert ctx.config_path == Config.DEFAULT_CONFIG_FILE
 
     def test_frozen_mode(self) -> None:
@@ -108,7 +106,6 @@ class TestResolveConfigPath:
             mock_sys.executable = "C:/dist/SkyClawApp.exe"
             ctx._resolve_config_path()
 
-        from sky_claw.config import Config
         assert ctx.config_path == Config.DEFAULT_CONFIG_FILE
 
 
@@ -122,7 +119,6 @@ class TestApplyConfigToEnv:
     def test_anthropic_key_injected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Anthropic key from config sets ANTHROPIC_API_KEY env var."""
         from sky_claw.__main__ import AppContext
-        from sky_claw.config import Config
 
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
@@ -139,7 +135,6 @@ class TestApplyConfigToEnv:
         """Existing env var is NOT overwritten by config."""
         from sky_claw.__main__ import AppContext
 
-        from sky_claw.config import Config
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "env-original")
 

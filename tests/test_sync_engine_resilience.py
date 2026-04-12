@@ -11,14 +11,14 @@ Tests:
 import asyncio
 import pytest
 from tenacity import wait_none
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 import sys
 import os
 
 # Add path to sky_claw module
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from sky_claw.orchestrator.sync_engine import SyncEngine, SyncMetrics, SyncConfig
+from sky_claw.orchestrator.sync_engine import SyncEngine, SyncConfig
 
 
 class TestSyncEngineResilience:

@@ -22,7 +22,7 @@ import math
 import heapq
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Dict, Generic, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import Generic, List, Optional, Set, Tuple, TYPE_CHECKING
 
 # Importar desde el módulo types creado anteriormente
 from .types import (

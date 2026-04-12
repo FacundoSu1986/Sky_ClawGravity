@@ -14,7 +14,6 @@ Arquitectura:
 from __future__ import annotations
 
 import abc
-import asyncio
 import json
 import logging
 import queue
@@ -26,9 +25,7 @@ import keyring
 from nicegui import ui, app
 
 from .icons import (
-    _ICON_LAYERS, _ICON_MOD, _ICON_PENDING, _ICON_CONFLICT,
-    _ICON_STORAGE, _ICON_CHAT, _ICON_SETTINGS, _ICON_SEARCH,
-    _ICON_ROCKET, _ICON_SERVER, _ICON_CHART, _ICON_ANVIL, _ICON_CART
+    _ICON_LAYERS, _ICON_CHAT, _ICON_SETTINGS, _ICON_ROCKET, _ICON_ANVIL, _ICON_CART
 )
 from .models.app_state import AppState, get_app_state
 from .views.actions import build_actions_panel
@@ -564,7 +561,7 @@ class DashboardGUI:
                     else:
                         active_style = "color: var(--sky-text-secondary);"
 
-                    btn = ui.button(
+                    ui.button(
                         text,
                         on_click=lambda v=view: self._navigate(v),
                     ).classes(
@@ -949,7 +946,7 @@ class DashboardGUI:
                         ui.label("Asistente IA").style(
                             "color: var(--sky-text-primary); font-weight:700;"
                         )
-                        thinking_label = ui.label("Escribiendo...").style(
+                        ui.label("Escribiendo...").style(
                             "color: var(--sky-text-muted); font-size:0.75rem; display:none;"
                         )
 

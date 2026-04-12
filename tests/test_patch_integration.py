@@ -11,14 +11,13 @@ Fase 2: Dynamic Patching & xEdit Integration
 
 import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from sky_claw.xedit.patch_orchestrator import (
     PatchOrchestrator,
     PatchPlan,
     PatchResult,
     PatchStrategyType,
-    PatchStrategy,
     CreateMergedPatch,
     ExecuteXEditScript,
     PatchingError,

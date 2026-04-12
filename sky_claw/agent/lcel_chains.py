@@ -4,6 +4,7 @@ lcel_chains.py - Cadenas LangChain Expression Language para Sky-Claw.
 Implementa composición declarativa de prompts y manejo de herramientas
 utilizando el patrón LCEL (LangChain Expression Language).
 """
+import asyncio
 import logging
 from typing import Optional, Any, Dict, List
 
@@ -289,7 +290,7 @@ class ChainBuilder:
                 for step in steps:
                     tool = self._tool_executor(
                         step.get("tool", "Herramienta"),
-                        step.get("description", f"Descripción de paso")
+                        step.get("description", "Descripción de paso")
                     )
                     results.append(tool(x))
                 return results
@@ -298,7 +299,7 @@ class ChainBuilder:
         chain_steps = []
         
         for i, step in enumerate(steps):
-            step_prompt = step.get("prompt", f"Paso {i+1}")
+            step.get("prompt", f"Paso {i+1}")
             step_tool = self._tool_executor(
                 step.get("tool", "Herramienta"),
                 step.get("description", f"Descripción de paso {i+1}")
@@ -381,14 +382,16 @@ class ChainBuilder:
                             return await result
                         return result
                     except Exception as e:
+                        last_error = e
                         logger.warning(f"Intento {attempt + 1} falló: {e}")
                         if attempt < max_retries - 1:
                             await asyncio.sleep(retry_delay)
-                raise e
+                raise last_error
             return execute_with_retry
         
         async def execute_with_retry(x):
             """Ejecuta con reintentos."""
+            last_error: Exception | None = None
             for attempt in range(max_retries):
                 try:
                     result = chain(x)
@@ -397,10 +400,11 @@ class ChainBuilder:
                         return await result
                     return result
                 except Exception as e:
+                    last_error = e
                     logger.warning(f"Intento {attempt + 1} falló: {e}")
                     if attempt < max_retries - 1:
                         await asyncio.sleep(retry_delay)
-            raise e
+            raise last_error
         
         return RunnableLambda(execute_with_retry)
 

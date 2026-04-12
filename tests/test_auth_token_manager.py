@@ -16,11 +16,10 @@ import hashlib
 import secrets
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
 
-import pytest
 
-from sky_claw.security.auth_token_manager import AuthTokenManager, _TOKEN_BYTES, _TOKEN_TTL
+from sky_claw.security.auth_token_manager import AuthTokenManager, _TOKEN_TTL
 
 
 # ---------------------------------------------------------------------------

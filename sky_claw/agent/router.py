@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
 from typing import Any
 
@@ -309,7 +308,7 @@ class LLMRouter:
                     try:
                         # Usar LCEL para componer prompt de herramienta si está disponible
                         if route_classification.intent == "EJECUCION_HERRAMIENTA":
-                            tool_prompt = self._lcel_prompt_composer.compose_tool_prompt(
+                            self._lcel_prompt_composer.compose_tool_prompt(
                                 tool_name=tool_name,
                                 tool_input=tool_input,
                                 tool_description=route_classification.parameters.get("description", f"Ejecutar {tool_name}")
@@ -373,7 +372,7 @@ class LLMRouter:
         if "status" in cmd:
             return "SISTEMA: Núcleo Sky-Claw activo. WS Daemon operativo. Load Order proactivo activo."
         if "uptime" in cmd:
-            return f"SISTEMA: Uptime registrado (WSL2). Conexión Gateway: ESTABLE."
+            return "SISTEMA: Uptime registrado (WSL2). Conexión Gateway: ESTABLE."
         return f"COMANDO_SISTEMA: '{command}' recibido pero no implementado en esta versión."
 
     # ------------------------------------------------------------------

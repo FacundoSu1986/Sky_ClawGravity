@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
 from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
 from sky_claw.comms.telegram import TelegramWebhook, _DEDUP_MAX_SIZE
 from sky_claw.comms.telegram_sender import (

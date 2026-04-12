@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import pathlib
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
 
-from .journal import OperationJournal, OperationType, OperationStatus, JournalEntry
+from .journal import OperationJournal, OperationType, OperationStatus
 from .snapshot_manager import FileSnapshotManager
 
 logger = logging.getLogger(__name__)
@@ -74,7 +72,7 @@ class RollbackManager:
         # Restaurar archivo desde snapshot
         if entry.snapshot_path:
             try:
-                restored = await self._snapshots.restore_snapshot(
+                await self._snapshots.restore_snapshot(
                     pathlib.Path(entry.snapshot_path),
                     pathlib.Path(entry.target_path)
                 )

@@ -9,11 +9,10 @@ import pytest
 
 from sky_claw.auto_detect import (
     AutoDetector,
-    _find_skyrim_in_steam_libraries,
     _parse_steam_library_folders,
     _read_registry_value,
 )
-from sky_claw.local_config import LocalConfig, load, save
+from sky_claw.local_config import LocalConfig, save
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +257,6 @@ class TestAutoDetectEndpoint:
     @pytest.mark.asyncio
     async def test_auto_detect_endpoint(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
         from sky_claw.web.app import WebApp
-        from unittest.mock import AsyncMock
 
         router = MagicMock()
         session = MagicMock()

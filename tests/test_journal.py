@@ -1,20 +1,15 @@
 # tests/test_journal.py
 
 import pytest
-import asyncio
 import pathlib
-import tempfile
-from datetime import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from sky_claw.db.journal import (
     OperationJournal,
     OperationType,
     OperationStatus,
-    JournalEntry,
 )
 from sky_claw.db.snapshot_manager import FileSnapshotManager
-from sky_claw.db.rollback_manager import RollbackManager, RollbackResult
+from sky_claw.db.rollback_manager import RollbackManager
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp import web
-from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
+from aiohttp.test_utils import TestClient
 
 from sky_claw.web.app import WebApp
 from sky_claw.security.auth_token_manager import AuthTokenManager
@@ -249,7 +249,7 @@ class TestSetupLoopbackMiddleware:
     ):
         """A non-loopback peer address must receive HTTP 403."""
         web_app = _make_web_app(session=mock_session)
-        app = web_app.create_app()
+        web_app.create_app()
 
         # Override request.remote for this request by patching the middleware
         # check by spoofing the peer via a custom header approach. Since
@@ -355,7 +355,7 @@ class TestSetupLoopbackMiddleware:
         # No auth_manager — chat should pass the middleware without restriction
         remote_request.headers = {}
 
-        response = await web_app._setup_auth_middleware(remote_request, handler_called)
+        await web_app._setup_auth_middleware(remote_request, handler_called)
 
         # Handler must have been called (not blocked)
         handler_called.assert_called_once()

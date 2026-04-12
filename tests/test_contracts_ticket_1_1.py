@@ -43,7 +43,7 @@ def main():
             sys.exit(1)
         except ValueError as e:
             assert "Entrada inválida" in str(e)
-            print(f"[TEST 4 PASS] Invalid input correctly rejected: ValueError raised")
+            print("[TEST 4 PASS] Invalid input correctly rejected: ValueError raised")
 
     asyncio.run(test_invalid_input())
 

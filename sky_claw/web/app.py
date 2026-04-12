@@ -23,7 +23,7 @@ from aiohttp import web
 
 from sky_claw.agent.router import LLMRouter
 from sky_claw.auto_detect import AutoDetector
-from sky_claw.local_config import LocalConfig, load as load_local_config, save as save_local_config
+from sky_claw.local_config import load as load_local_config, save as save_local_config
 from sky_claw.logging_config import correlation_id_var
 from sky_claw.security.auth_token_manager import AuthTokenManager
 import uuid

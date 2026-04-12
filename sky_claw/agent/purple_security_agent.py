@@ -4,15 +4,13 @@ Agente Experto en Ciberseguridad con Razonamiento Metacognitivo.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from datetime import datetime
-from pathlib import Path
+from typing import Dict, Any, Optional
 
 # Importar esquemas Pydantic para validación estricta
 from sky_claw.core.schemas import SecurityAuditRequest, SecurityAuditResponse
 
 # Importar lógica metacognitiva centralizada
-from ..security.metacognitive_logic import SecurityMetacognition, audit_resource
+from ..security.metacognitive_logic import audit_resource
 from ..security.governance import GovernanceManager
 
 logger = logging.getLogger(__name__)
@@ -71,7 +69,7 @@ class PurpleSecurityAgent:
         Returns:
             SecurityAuditResponse validado con Pydantic.
         """
-        summary = result.get('summary', {})
+        result.get('summary', {})
         findings = result.get('findings', [])
         
         # Calcular risk_score basado en la confianza y severidad de hallazgos
@@ -98,7 +96,7 @@ class PurpleSecurityAgent:
     def _format_audit_findings(self, result: Dict[str, Any]) -> str:
         """Formatea el resultado de auditoría en el formato metacognitivo solicitado."""
         confidence_str = f"{result['confidence']:.2f}"
-        status = result.get('status', 'IDLE')
+        result.get('status', 'IDLE')
         summary = result.get('summary', {})
         num_findings = summary.get('findings_count', 0)
         
@@ -111,7 +109,7 @@ class PurpleSecurityAgent:
             "**🧠 RAZONAMIENTO ABRIL 2026:**",
             "1. **DESCOMPONER**: He analizado la estructura de archivos buscando trust boundaries y puntos de entrada de datos.",
             f"2. **RESOLVER**: He aplicado escaneos AST y de texto buscando sinks de ejecución (`exec/eval/system`) e inyección indirecta (Prompt Injection). Se detectaron **{num_findings}** hallazgos potenciales.",
-            f"3. **VERIFICAR**: He cruzado los resultados con la base de firmas local y la whitelist. Se han penalizado los hallazgos críticos.",
+            "3. **VERIFICAR**: He cruzado los resultados con la base de firmas local y la whitelist. Se han penalizado los hallazgos críticos.",
             "4. **SINTETIZAR**: Resumen consolidado de riesgos. El nivel de amenaza se encuentra bajo el umbral de tolerancia.",
             f"5. **REFLEXIONAR**: {'No se requiere acción inmediata' if summary.get('is_safe') else '¡ALERTA! El código presenta patrones altamente sospechosos (posible ofuscación extrema o inyección maliciosa).'}\n"
         ]

@@ -16,7 +16,6 @@ Refactorizado: 2026-04-03 (Ticket 1.1 — C-03)
 from __future__ import annotations
 
 import functools
-import inspect
 import logging
 from typing import Any, Callable, Dict, Optional, Type
 

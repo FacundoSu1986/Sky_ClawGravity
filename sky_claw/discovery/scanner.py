@@ -13,13 +13,10 @@ Every search has a hard timeout to keep startup fast (<5s total).
 from __future__ import annotations
 
 import asyncio
-import configparser
 import logging
 import os
 import pathlib
-import struct
 import shutil
-from typing import Any
 
 from sky_claw.discovery.environment import (
     EnvironmentSnapshot,

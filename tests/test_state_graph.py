@@ -11,7 +11,6 @@ Tests verify:
 
 import os
 import sys
-import asyncio
 import pytest
 
 # Insert project root at start of path to avoid conflicts

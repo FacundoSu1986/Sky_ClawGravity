@@ -2,7 +2,6 @@ import os
 import asyncio
 import logging
 import pathlib
-from typing import TYPE_CHECKING
 
 from sky_claw.core.database import DatabaseAgent
 from sky_claw.scraper.scraper_agent import ScraperAgent
@@ -15,7 +14,7 @@ from sky_claw.orchestrator.ws_event_streamer import LangGraphEventStreamer
 # FASE 1.5: Imports de componentes de rollback
 from sky_claw.db.journal import OperationJournal
 from sky_claw.db.rollback_manager import RollbackManager
-from sky_claw.db.snapshot_manager import FileSnapshotManager
+from sky_claw.db.snapshot_manager import FileSnapshotManager, SnapshotInfo
 # FASE 2: Imports de componentes de parcheo transaccional
 from sky_claw.xedit.patch_orchestrator import (
     PatchOrchestrator,
@@ -39,13 +38,11 @@ from sky_claw.tools.synthesis_runner import (
 )
 from sky_claw.tools.patcher_pipeline import (
     PatcherPipeline,
-    PatcherDefinition,
 )
 # FASE 6: Imports de componentes de Wrye Bash
 from sky_claw.tools.wrye_bash_runner import (
     WryeBashRunner,
     WryeBashConfig,
-    WryeBashResult,
     WryeBashExecutionError,
 )
 from sky_claw.xedit.conflict_analyzer import ConflictAnalyzer
@@ -1161,7 +1158,6 @@ class SupervisorAgent:
         Returns:
             DynDOLODPipelineResult con resultados completos
         """
-        snapshot_id: str | None = None
         
         logger.info(
             "Iniciando pipeline DynDOLOD: preset=%s, texgen=%s, snapshot=%s",
@@ -1188,7 +1184,7 @@ class SupervisorAgent:
             # 2. Crear snapshot de los archivos de salida existentes si existen
             snapshot_info = None
             dyndolod_output_path = runner._config.mo2_mods_path / "DynDOLOD Output"
-            texgen_output_path = runner._config.mo2_mods_path / "TexGen Output"
+            runner._config.mo2_mods_path / "TexGen Output"
             
             if create_snapshot:
                 # Snapshot del DynDOLOD.esp si existe
@@ -1352,7 +1348,7 @@ class SupervisorAgent:
             logger.critical(
                 "ROLLBACK de DynDOLOD FALLÓ (snapshot: %s): %s. "
                 "Los archivos pueden estar en estado inconsistente!",
-                snapshot_id,
+                snapshot_info.snapshot_path,
                 rollback_error,
             )
     

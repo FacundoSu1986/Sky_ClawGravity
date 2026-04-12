@@ -11,7 +11,7 @@ import aiohttp
 import pytest
 
 from sky_claw.agent.providers import AnthropicProvider
-from sky_claw.agent.router import LLMRouter, MAX_CONTEXT_MESSAGES, MAX_TOOL_ROUNDS, _HISTORY_SCHEMA
+from sky_claw.agent.router import LLMRouter, MAX_CONTEXT_MESSAGES, MAX_TOOL_ROUNDS
 from sky_claw.agent.tools import AsyncToolRegistry
 from sky_claw.db.async_registry import AsyncModRegistry
 from sky_claw.mo2.vfs import MO2Controller

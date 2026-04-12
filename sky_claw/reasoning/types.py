@@ -19,8 +19,9 @@ import hashlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum, auto
+from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -28,14 +29,15 @@ from typing import (
     List,
     Optional,
     Protocol,
-    Set,
     Tuple,
     TypeVar,
-    Union,
     runtime_checkable,
 )
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from sky_claw.reasoning.engine import TreeOfThoughtEngine
 
 
 # ============================================================================

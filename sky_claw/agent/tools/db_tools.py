@@ -6,7 +6,6 @@ Extraído de tools.py como parte de la refactorización M-13.
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from sky_claw.db.async_registry import AsyncModRegistry
 from .schemas import SearchModParams, InstallModParams

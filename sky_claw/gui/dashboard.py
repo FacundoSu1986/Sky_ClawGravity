@@ -1,7 +1,6 @@
 """DashboardGUI — Nordic theme premium dashboard."""
 from __future__ import annotations
 
-import asyncio
 import logging
 import queue
 from typing import Any, Dict, List, Optional
@@ -9,9 +8,7 @@ from typing import Any, Dict, List, Optional
 from nicegui import ui
 
 from .icons import (
-    _ICON_LAYERS, _ICON_MOD, _ICON_PENDING, _ICON_CONFLICT,
-    _ICON_STORAGE, _ICON_CHAT, _ICON_SETTINGS, _ICON_SEARCH,
-    _ICON_ROCKET, _ICON_SERVER, _ICON_CHART, _ICON_ANVIL, _ICON_CART,
+    _ICON_LAYERS, _ICON_CHAT, _ICON_ANVIL, _ICON_CART,
 )
 from .message_handlers import (
     MessageHandlerStrategy,
@@ -22,6 +19,8 @@ from .message_handlers import (
 )
 from .setup_wizard import SetupWizardModal
 from .utils import _load_css, MAX_CHAT_MESSAGES
+from .views.actions import build_actions_panel
+from .views.advanced import build_advanced_panel
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +176,7 @@ class DashboardGUI:
                     else:
                         active_style = "color: var(--sky-text-secondary);"
 
-                    btn = ui.button(
+                    ui.button(
                         text,
                         on_click=lambda v=view: self._navigate(v),
                     ).classes(
@@ -563,7 +562,7 @@ class DashboardGUI:
                         ui.label("Asistente IA").style(
                             "color: var(--sky-text-primary); font-weight:700;"
                         )
-                        thinking_label = ui.label("Escribiendo...").style(
+                        ui.label("Escribiendo...").style(
                             "color: var(--sky-text-muted); font-size:0.75rem; display:none;"
                         )
 

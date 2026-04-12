@@ -594,7 +594,6 @@ class TestEndToEndHITLFlow:
     ) -> None:
         """Full flow: tool calls request_approval → webhook delivers /approve → enqueued."""
         from sky_claw.agent.tools import AsyncToolRegistry
-        from sky_claw.security.path_validator import PathValidator
 
         # ---- Setup ----
         gw = NetworkGateway(EgressPolicy(block_private_ips=False))
@@ -710,7 +709,6 @@ class TestEndToEndHITLFlow:
     ) -> None:
         """Flow: tool calls request_approval → /deny → tool returns denied status."""
         from sky_claw.agent.tools import AsyncToolRegistry
-        from sky_claw.security.path_validator import PathValidator
 
         gw = NetworkGateway(EgressPolicy(block_private_ips=False))
         validator = PathValidator(roots=[tmp_path])
