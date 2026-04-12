@@ -141,7 +141,7 @@ class TestWebhookHITLApprove:
 
         # Register a pending request manually.
         req_task = asyncio.create_task(
-            guard.request_approval("test_reason", request_id="download-10-20")
+            guard.request_approval(reason="test_reason", request_id="download-10-20")
         )
         await asyncio.sleep(0)  # Let the coroutine register the request.
 
@@ -167,7 +167,7 @@ class TestWebhookHITLApprove:
         webhook, router, sender = _make_webhook(hitl=guard)
 
         req_task = asyncio.create_task(
-            guard.request_approval("test_reason", request_id="download-5-6")
+            guard.request_approval(reason="test_reason", request_id="download-5-6")
         )
         await asyncio.sleep(0)
 
@@ -319,7 +319,7 @@ class TestHITLNotifyFn:
             await guard.respond("req-notify-test", approved=True)
 
         asyncio.create_task(_respond())
-        await guard.request_approval("Download mod X", detail="file.zip", request_id="req-notify-test")
+        await guard.request_approval(reason="Download mod X", detail="file.zip", request_id="req-notify-test")
 
         sender.send.assert_awaited_once()
         call = sender.send.call_args
@@ -346,7 +346,7 @@ class TestHITLNotifyFn:
             await guard.respond("safe-req", approved=False)
 
         asyncio.create_task(_respond())
-        decision = await guard.request_approval("test", request_id="safe-req")
+        decision = await guard.request_approval(reason="test", request_id="safe-req")
         assert decision is Decision.DENIED
 
     @pytest.mark.asyncio
@@ -367,7 +367,7 @@ class TestHITLNotifyFn:
             await guard.respond("no-chat-req", approved=True)
 
         asyncio.create_task(_respond())
-        decision = await guard.request_approval("test", request_id="no-chat-req")
+        decision = await guard.request_approval(reason="test", request_id="no-chat-req")
 
         assert decision is Decision.APPROVED
         sender.send.assert_not_awaited()
@@ -386,7 +386,7 @@ class TestHITLNotifyFn:
 
         asyncio.create_task(_respond())
         # It should not propagate the exception; it returns TIMEOUT.
-        decision = await guard.request_approval("test", request_id="bad-notify-req")
+        decision = await guard.request_approval(reason="test", request_id="bad-notify-req")
         assert decision is Decision.TIMEOUT
 
 
