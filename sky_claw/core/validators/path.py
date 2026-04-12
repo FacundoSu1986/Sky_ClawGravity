@@ -156,9 +156,13 @@ class PathTraversalValidator:
         try:
             decoded_once = urllib.parse.unquote(path)
             decoded_twice = urllib.parse.unquote(decoded_once)
-            for decoded_path in [decoded_once, decoded_twice]:
-                if decoded_path == path:
-                    continue
+            # Only check each decoded form that differs from the previous step
+            candidates = []
+            if decoded_once != path:
+                candidates.append(decoded_once)
+            if decoded_twice != decoded_once:
+                candidates.append(decoded_twice)
+            for decoded_path in candidates:
                 for pattern in PATH_TRAVERSAL_PATTERNS:
                     if pattern.search(decoded_path):
                         logger.warning(
@@ -191,8 +195,8 @@ class PathTraversalValidator:
                             error_message="Patrón de path Windows detectado en path codificado",
                             is_absolute=True,
                         )
-        except (ValueError, UnicodeDecodeError):
-            pass  # Si el decode falla, continuar con la validación original
+        except (ValueError, UnicodeDecodeError) as exc:
+            logger.warning(f"Path traversal: decode falló para {original_path!r}: {exc}")
 
         # Paso 3: Verificar si es ruta absoluta
         is_absolute = any(path.startswith(p) for p in DANGEROUS_PREFIXES)

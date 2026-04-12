@@ -5,6 +5,7 @@ import logging
 import os
 import pathlib
 import queue
+import tempfile
 import uuid
 from typing import Any
 
@@ -129,6 +130,16 @@ class AppContext:
         """True when the full stack (provider + router) is ready."""
         return self.router is not None
 
+    @property
+    def registry(self):
+        """Shortcut to the database registry."""
+        return self.database.registry
+
+    @property
+    def session(self):
+        """Shortcut to the network session."""
+        return self.network.session
+
     def _track_task(self, coro, *, name: str = "") -> asyncio.Task:
         """Create a background task and track it for cleanup on shutdown."""
         task = asyncio.create_task(coro, name=name)
@@ -227,7 +238,7 @@ class AppContext:
         if local_cfg.install_dir:
             install_dir = pathlib.Path(local_cfg.install_dir)
 
-        sandbox_roots: list[pathlib.Path] = [mo2_root, pathlib.Path("/tmp/sky_claw")]
+        sandbox_roots: list[pathlib.Path] = [mo2_root, pathlib.Path(tempfile.gettempdir()) / "sky_claw"]
         if install_dir and install_dir not in sandbox_roots:
             sandbox_roots.append(install_dir)
         # --- DESPUÉS (Seguro - Zero Trust) ---

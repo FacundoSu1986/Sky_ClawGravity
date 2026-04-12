@@ -60,10 +60,10 @@ class TestMasterlistClientCircuitBreaker:
         mock_resp = AsyncMock()
         mock_resp.status = 500
         mock_resp.text = AsyncMock(return_value="Server Error")
-        mock_resp.release = MagicMock()
+        mock_resp.release = AsyncMock()
         gw.request = AsyncMock(return_value=mock_resp)
 
-        session = MagicMock(spec=aiohttp.ClientSession)
+        session = AsyncMock(spec=aiohttp.ClientSession)
 
         with pytest.raises(MasterlistFetchError):
             await client.fetch_mod_info(1234, session)
@@ -81,10 +81,10 @@ class TestMasterlistClientCircuitBreaker:
         mock_resp = AsyncMock()
         mock_resp.status = 200
         mock_resp.json = AsyncMock(return_value={"mod_id": 42, "name": "TestMod"})
-        mock_resp.release = MagicMock()
+        mock_resp.release = AsyncMock()
         gw.request = AsyncMock(return_value=mock_resp)
 
-        session = MagicMock(spec=aiohttp.ClientSession)
+        session = AsyncMock(spec=aiohttp.ClientSession)
 
         result = await client.fetch_mod_info(42, session)
         assert result["mod_id"] == 42

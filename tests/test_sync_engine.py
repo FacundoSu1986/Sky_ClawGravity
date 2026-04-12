@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from tenacity import wait_none
 
 from sky_claw.db.async_registry import AsyncModRegistry
 from sky_claw.mo2.vfs import MO2Controller
@@ -102,6 +103,7 @@ class TestSyncEngineRun:
             masterlist=masterlist,
             registry=adb,
             config=SyncConfig(worker_count=2, batch_size=2, max_retries=1),
+            fetch_retry_wait=wait_none(),
         )
 
         session = MagicMock(spec=aiohttp.ClientSession)
@@ -129,6 +131,7 @@ class TestSyncEngineRun:
             masterlist=masterlist,
             registry=adb,
             config=SyncConfig(worker_count=1, batch_size=10, max_retries=1),
+            fetch_retry_wait=wait_none(),
         )
 
         session = MagicMock(spec=aiohttp.ClientSession)
@@ -152,6 +155,7 @@ class TestSyncEngineRun:
             masterlist=masterlist,
             registry=adb,
             config=SyncConfig(worker_count=1, batch_size=10, max_retries=1),
+            fetch_retry_wait=wait_none(),
         )
 
         mock_fetch = AsyncMock(side_effect=AssertionError("should not be called"))
@@ -174,6 +178,7 @@ class TestSyncEngineRun:
             masterlist=masterlist,
             registry=adb,
             config=SyncConfig(worker_count=2, batch_size=5),
+            fetch_retry_wait=wait_none(),
         )
 
         session = MagicMock(spec=aiohttp.ClientSession)
