@@ -20,6 +20,9 @@ from .contracts import (
     list_registered_schemas,
     verify_contract,
 )
+from .event_bus import CoreEventBus, Event
+from .event_payloads import ModlistChangedPayload
+from .path_resolver import PathResolver, PathResolutionService
 from .validators import (
     SSRFValidator,
     SSRFValidationResult,
@@ -52,6 +55,13 @@ __all__ = [
     "get_schema_class",
     "list_registered_schemas",
     "verify_contract",
+    # Event Bus
+    "CoreEventBus",
+    "Event",
+    "ModlistChangedPayload",
+    # Path Resolution
+    "PathResolver",
+    "PathResolutionService",
     # Validators
     "SSRFValidator",
     "SSRFValidationResult",

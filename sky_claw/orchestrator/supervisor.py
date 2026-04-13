@@ -33,6 +33,8 @@ from sky_claw.orchestrator.maintenance_daemon import (
     MaintenanceDaemon,
     get_max_backup_size_mb,
 )
+from sky_claw.core.event_bus import CoreEventBus, Event
+from sky_claw.core.path_resolver import PathResolutionService
 from sky_claw.orchestrator.telemetry_daemon import TelemetryDaemon
 from sky_claw.orchestrator.watcher_daemon import WatcherDaemon
 
@@ -86,24 +88,35 @@ class SupervisorAgent:
 
         # FASE 1.5: Inicializar componentes de rollback (también inicializa _path_validator)
         self._init_rollback_components()
+
+        # Sprint-1.5: PathResolutionService — resolución stateless de rutas
+        self._path_resolver = PathResolutionService(
+            path_validator=self._path_validator,
+            profile_name=self.profile_name,
+        )
+
+        # Resolver ruta de modlist: MO2_PATH env var > auto-detección > fallback WSL2
+        self.modlist_path = str(
+            self._path_resolver.resolve_modlist_path(self.profile_name)
+        )
+
+        # Sprint-1: Core event bus (instanciable, no singleton)
+        self._event_bus = CoreEventBus()
         # ARC-01: Demonios extraídos del Supervisor
         self._maintenance_daemon = MaintenanceDaemon(
             snapshot_manager=self.snapshot_manager,
         )
         self._telemetry_daemon = TelemetryDaemon(
-            emit_event=self.interface.send_event,
+            event_bus=self._event_bus,
         )
         self._watcher_daemon = WatcherDaemon(
             modlist_path=self.modlist_path,
             profile_name=self.profile_name,
             db=self.db,
-            on_change=self._trigger_proactive_analysis,
+            event_bus=self._event_bus,
         )
         # FASE 2: Inicializar orquestador de parches
         self._init_patch_orchestrator()
-
-        # Resolver ruta de modlist: MO2_PATH env var > auto-detección > fallback WSL2
-        self.modlist_path = str(self._resolve_modlist_path(self.profile_name))
 
     def _init_rollback_components(self) -> None:
         """FASE 1.5: Inicializa los componentes de resiliencia para rollback.
@@ -162,34 +175,6 @@ class SupervisorAgent:
 
         logger.info("PatchOrchestrator será inicializado lazy bajo demanda")
 
-    def _validate_env_path(self, path_str: str, var_name: str) -> pathlib.Path | None:
-        """Valida un path de variable de entorno con PathValidator.
-
-        CRIT-003: Mitigación para variables de entorno sin validación.
-
-        Args:
-            path_str: String del path a validar.
-            var_name: Nombre de la variable de entorno (para logging).
-
-        Returns:
-            Path validado o None si la validación falla.
-        """
-        if not path_str:
-            return None
-
-        try:
-            # Intentar validar con PathValidator
-            validated_path = self._path_validator.validate(path_str)
-            return validated_path
-        except (ValueError, OSError) as e:
-            security_logger.warning(
-                "%s inválido (posible intento de path traversal): %s - Error: %s",
-                var_name,
-                path_str,
-                e,
-            )
-            return None
-
     def _ensure_patch_orchestrator(self) -> PatchOrchestrator:
         """Asegura que el PatchOrchestrator esté inicializado.
 
@@ -212,8 +197,8 @@ class SupervisorAgent:
         game_path_str = os.environ.get("SKYRIM_PATH", "")
 
         # CRIT-003: Validar paths antes de usar
-        xedit_path = self._validate_env_path(xedit_path_str, "XEDIT_PATH")
-        game_path = self._validate_env_path(game_path_str, "SKYRIM_PATH")
+        xedit_path = self._path_resolver.validate_env_path(xedit_path_str, "XEDIT_PATH")
+        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
 
         # Si la validación falla, no continuar
         if not xedit_path or not game_path:
@@ -260,6 +245,17 @@ class SupervisorAgent:
             "SupervisorAgent inicializado: IPC y Watcher listos. Lanzando TaskGroup de fondo..."
         )
 
+        # Sprint-1: Iniciar event bus y suscribir bridge de telemetría
+        await self._event_bus.start()
+        self._event_bus.subscribe(
+            "system.telemetry.*",
+            self._bridge_telemetry_to_ws,
+        )
+        # Sprint-1.5: Suscribir al evento de cambio en modlist
+        self._event_bus.subscribe(
+            "system.modlist.changed",
+            self._trigger_proactive_analysis,
+        )
         # ARC-01: Iniciar demonios extraídos
         await self._maintenance_daemon.start()
         await self._telemetry_daemon.start()
@@ -278,15 +274,33 @@ class SupervisorAgent:
             await self._watcher_daemon.stop()
             await self._telemetry_daemon.stop()
             await self._maintenance_daemon.stop()
+            # Sprint-1: Detener event bus después de los demonios
+            await self._event_bus.stop()
             # FASE 1.5: Cerrar journal al terminar
             await self.journal.close()
             await self.db.close()
 
-    async def _trigger_proactive_analysis(self):
-        """Lógica inyectada al flujo ReAct sin prompt del usuario."""
-        logger.info("Analizando topología del Load Order por cambio detectado...")
+    async def _bridge_telemetry_to_ws(self, event: Event) -> None:
+        """Strangler Fig: reenvía eventos del bus al transporte WebSocket legacy."""
+        await self.interface.send_event("telemetry", event.payload)
+
+    async def _trigger_proactive_analysis(self, event: Event) -> None:
+        """Maneja eventos de cambio en modlist publicados por WatcherDaemon.
+
+        Suscrito al tópico ``system.modlist.changed`` del CoreEventBus.
+        Extrae el payload estructurado para logging y futura lógica de análisis.
+
+        Args:
+            event: Evento con payload :class:`ModlistChangedPayload`.
+        """
+        logger.info(
+            "Analizando topología del Load Order por cambio detectado — "
+            "profile=%s, mtime=%.1f->%.1f",
+            event.payload.get("profile_name", "unknown"),
+            event.payload.get("previous_mtime", 0.0),
+            event.payload.get("current_mtime", 0.0),
+        )
         # Aquí se inyectaría la llamada real a la herramienta de parsing local.
-        pass
 
     async def handle_execution_signal(self, payload: dict):
         """Reacciona a la señal de ignición forzada desde la GUI."""
@@ -421,9 +435,11 @@ class SupervisorAgent:
         synthesis_exe_str = os.environ.get("SYNTHESIS_EXE", "")
 
         # CRIT-003: Validar paths antes de usar
-        game_path = self._validate_env_path(game_path_str, "SKYRIM_PATH")
-        mo2_path = self._validate_env_path(mo2_path_str, "MO2_PATH")
-        synthesis_exe = self._validate_env_path(synthesis_exe_str, "SYNTHESIS_EXE")
+        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
+        mo2_path = self._path_resolver.validate_env_path(mo2_path_str, "MO2_PATH")
+        synthesis_exe = self._path_resolver.validate_env_path(
+            synthesis_exe_str, "SYNTHESIS_EXE"
+        )
 
         # Si la validación falla, no continuar
         if not game_path or not mo2_path or not synthesis_exe:
@@ -515,12 +531,16 @@ class SupervisorAgent:
         texgen_exe_str = os.environ.get("TEXGEN_EXE", "")
 
         # CRIT-003: Validar paths antes de usar
-        game_path = self._validate_env_path(game_path_str, "SKYRIM_PATH")
-        mo2_path = self._validate_env_path(mo2_path_str, "MO2_PATH")
-        mo2_mods_path = self._validate_env_path(mo2_mods_path_str, "MO2_MODS_PATH")
-        dyndolod_exe = self._validate_env_path(dyndolod_exe_str, "DYNDLOD_EXE")
+        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
+        mo2_path = self._path_resolver.validate_env_path(mo2_path_str, "MO2_PATH")
+        mo2_mods_path = self._path_resolver.validate_env_path(
+            mo2_mods_path_str, "MO2_MODS_PATH"
+        )
+        dyndolod_exe = self._path_resolver.validate_env_path(
+            dyndolod_exe_str, "DYNDLOD_EXE"
+        )
         texgen_exe = (
-            self._validate_env_path(texgen_exe_str, "TEXGEN_EXE")
+            self._path_resolver.validate_env_path(texgen_exe_str, "TEXGEN_EXE")
             if texgen_exe_str
             else None
         )
@@ -581,9 +601,11 @@ class SupervisorAgent:
         mo2_path_str = os.environ.get("MO2_PATH", "")
         wrye_bash_path_str = os.environ.get("WRYE_BASH_PATH", "")
 
-        game_path = self._validate_env_path(game_path_str, "SKYRIM_PATH")
-        mo2_path = self._validate_env_path(mo2_path_str, "MO2_PATH")
-        wrye_bash_path = self._validate_env_path(wrye_bash_path_str, "WRYE_BASH_PATH")
+        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
+        mo2_path = self._path_resolver.validate_env_path(mo2_path_str, "MO2_PATH")
+        wrye_bash_path = self._path_resolver.validate_env_path(
+            wrye_bash_path_str, "WRYE_BASH_PATH"
+        )
 
         if not game_path or not mo2_path or not wrye_bash_path:
             raise WryeBashExecutionError(
@@ -630,7 +652,7 @@ class SupervisorAgent:
         )
         try:
             active_plugins: list[str] = []
-            modlist_path = self._resolve_modlist_path(profile)
+            modlist_path = self._path_resolver.resolve_modlist_path(profile)
             # Leer modlist (si existe) para extraer plugins habilitados
             if modlist_path.exists():
                 with open(modlist_path, encoding="utf-8") as fh:
@@ -790,8 +812,8 @@ class SupervisorAgent:
             RuntimeError: Si no se puede detectar la ruta de MO2.
         """
         if self._asset_detector is None:
-            mo2_mods_path = self._get_mo2_mods_path()
-            profile = self._get_active_profile()
+            mo2_mods_path = self._path_resolver.get_mo2_mods_path()
+            profile = self._path_resolver.get_active_profile()
             self._asset_detector = AssetConflictDetector(mo2_mods_path, profile)
             logger.info(
                 "AssetConflictDetector inicializado: mods=%s, profile=%s",
@@ -799,139 +821,6 @@ class SupervisorAgent:
                 profile,
             )
         return self._asset_detector
-
-    def _sync_detect_mo2_path(self):
-        """Versión síncrona de auto-detección de MO2.
-
-        Best-effort detection for common Windows installations.  Returns the
-        first directory that contains ``ModOrganizer.exe``, or ``None`` if no
-        installation could be found.
-        """
-        for raw in [
-            r"C:\Modding\MO2",
-            r"D:\Modding\MO2",
-            r"E:\Modding\MO2",
-            r"C:\MO2Portable",
-            r"D:\MO2Portable",
-            r"C:\Games\MO2",
-            r"D:\Games\MO2",
-        ]:
-            p = pathlib.Path(raw)
-            if (p / "ModOrganizer.exe").exists():
-                return p
-        la = os.environ.get("LOCALAPPDATA")
-        if la:
-            md = pathlib.Path(la) / "ModOrganizer"
-            if md.is_dir():
-                for c in md.iterdir():
-                    if c.is_dir() and (c / "ModOrganizer.exe").exists():
-                        return c
-        for pf in [r"C:\Program Files", r"C:\Program Files (x86)"]:
-            c = pathlib.Path(pf) / "Mod Organizer 2"
-            if (c / "ModOrganizer.exe").exists():
-                return c
-        return None
-
-    def _resolve_modlist_path(self, profile: str) -> pathlib.Path:
-        """Resolves the modlist.txt path for a given MO2 profile.
-
-        Priority order:
-        1. ``MO2_PATH`` environment variable (validated with PathValidator for
-           CRIT-003 compliance).
-        2. Auto-detection via :meth:`_sync_detect_mo2_path` (best-effort for
-           common Windows installations).
-        3. WSL2 path ``/mnt/c/Modding/MO2`` as last-resort fallback.
-
-        Args:
-            profile: MO2 profile name.
-
-        Returns:
-            Path to the ``modlist.txt`` file for the given profile.
-        """
-        # 1. MO2_PATH environment variable takes precedence
-        mo2_base_str = os.environ.get("MO2_PATH", "")
-        if mo2_base_str:
-            validated_base = self._validate_env_path(mo2_base_str, "MO2_PATH")
-            if validated_base:
-                return validated_base / "profiles" / profile / "modlist.txt"
-            logger.warning(
-                "MO2_PATH='%s' rechazado por validación de seguridad (CRIT-003). "
-                "Intentando auto-detección.",
-                mo2_base_str,
-            )
-
-        # 2. Best-effort auto-detection for common Windows installations
-        mo2_base = self._sync_detect_mo2_path()
-        if mo2_base:
-            return pathlib.Path(mo2_base) / "profiles" / profile / "modlist.txt"
-
-        # 3. Fallback: WSL2 default path as last resort
-        logger.warning(
-            "MO2_PATH no configurado y auto-detección falló para perfil '%s'. "
-            "Usando fallback WSL2. Configure la variable de entorno MO2_PATH "
-            "para evitar este aviso.",
-            profile,
-        )
-        return pathlib.Path("/mnt/c/Modding/MO2") / "profiles" / profile / "modlist.txt"
-
-    def _get_mo2_mods_path(self) -> pathlib.Path:
-        """FASE 5: Obtiene la ruta al directorio de mods de MO2.
-
-        Intenta obtener la ruta desde variables de entorno o usar auto-detección.
-
-        Returns:
-            Path al directorio de mods de MO2.
-
-        Raises:
-            RuntimeError: Si no se puede detectar la ruta de MO2.
-        """
-
-        # Intentar obtener desde variable de entorno MO2_MODS_PATH
-        mo2_mods_path_str = os.environ.get("MO2_MODS_PATH", "")
-        if mo2_mods_path_str:
-            validated_path = self._validate_env_path(mo2_mods_path_str, "MO2_MODS_PATH")
-            if validated_path and validated_path.exists():
-                return validated_path
-
-        # Intentar construir desde MO2_PATH
-        mo2_base_str = os.environ.get("MO2_PATH", "")
-        if mo2_base_str:
-            validated_base = self._validate_env_path(mo2_base_str, "MO2_PATH")
-            if validated_base and validated_base.exists():
-                mods_path = validated_base / "mods"
-                if mods_path.exists():
-                    return mods_path
-
-        # Fallback: usar auto-detección síncrona.
-        # Both inside and outside a running event loop we use the sync path
-        # to avoid the deprecated get_event_loop() / run_until_complete() trap.
-        mo2_base = self._sync_detect_mo2_path()
-        if mo2_base:
-            mods_path = mo2_base / "mods"
-            if mods_path.exists():
-                return mods_path
-
-        raise RuntimeError(
-            "No se pudo detectar la ruta de MO2. "
-            "Configure MO2_PATH o MO2_MODS_PATH en las variables de entorno."
-        )
-
-    def _get_active_profile(self) -> str:
-        """FASE 5: Obtiene el nombre del perfil activo de MO2.
-
-        Returns:
-            Nombre del perfil activo o 'Default' si no se puede determinar.
-        """
-        # Intentar obtener desde variable de entorno
-        profile = os.environ.get("MO2_PROFILE", "")
-        if profile:
-            return profile
-
-        # Usar el perfil almacenado en la instancia
-        if hasattr(self, "profile_name") and self.profile_name:
-            return self.profile_name
-
-        return "Default"
 
     def scan_asset_conflicts(self) -> list[AssetConflictReport]:
         """FASE 5: Herramienta READ-ONLY para escanear conflictos de assets.
