@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import pathlib
+import sqlite3
 
 from sky_claw.core.database import DatabaseAgent
 from sky_claw.scraper.scraper_agent import ScraperAgent
@@ -180,7 +181,7 @@ class SupervisorAgent:
             # Intentar validar con PathValidator
             validated_path = self._path_validator.validate(path_str)
             return validated_path
-        except Exception as e:
+        except (ValueError, OSError) as e:
             security_logger.warning(
                 "%s inválido (posible intento de path traversal): %s - Error: %s",
                 var_name,
@@ -386,7 +387,7 @@ class SupervisorAgent:
                 "errors": result.errors,
             }
 
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.exception("Error crítico durante rollback: %s", e)
             return {"success": False, "error": str(e)}
 
@@ -655,9 +656,9 @@ class SupervisorAgent:
                 "limit": 254,
                 "error": str(exc),
             }
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             logger.error(
-                "[M-04] Error inesperado durante validación de plugins: %s", exc
+                "[M-04] Error inesperado durante validación de plugins: %s", exc, exc_info=True
             )
             return {"valid": False, "error": str(exc)}
 
@@ -746,7 +747,7 @@ class SupervisorAgent:
                     "profile": active_profile,
                 },
             )
-        except Exception as journal_exc:
+        except (OSError, sqlite3.Error) as journal_exc:
             logger.warning(
                 "[FASE-6] No se pudo registrar Bashed Patch en journal: %s",
                 journal_exc,
@@ -946,8 +947,8 @@ class SupervisorAgent:
             conflicts = self.asset_detector.detect_conflicts()
             logger.info(f"Detectados {len(conflicts)} conflictos de assets")
             return conflicts
-        except Exception as e:
-            logger.error(f"Error durante escaneo de conflictos: {e}")
+        except (OSError, RuntimeError) as e:
+            logger.error(f"Error durante escaneo de conflictos: {e}", exc_info=True)
             raise
 
     def scan_asset_conflicts_json(self) -> str:
@@ -963,8 +964,8 @@ class SupervisorAgent:
             json_report = self.asset_detector.scan_to_json()
             logger.info("Reporte JSON de conflictos generado exitosamente")
             return json_report
-        except Exception as e:
-            logger.error(f"Error generando reporte JSON de conflictos: {e}")
+        except (OSError, RuntimeError) as e:
+            logger.error(f"Error generando reporte JSON de conflictos: {e}", exc_info=True)
             raise
 
     async def execute_synthesis_pipeline(
@@ -1040,7 +1041,7 @@ class SupervisorAgent:
                     metadata={"source": "synthesis_pipeline", "patchers": patcher_ids},
                 )
                 logger.debug("Snapshot creado: %s", snapshot_path)
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.warning("No se pudo crear snapshot: %s", e)
                 # Continuar sin snapshot - no es fatal
 
@@ -1115,12 +1116,13 @@ class SupervisorAgent:
         try:
             await self.snapshot_manager.restore_snapshot(snapshot_path, target)
             logger.info("Rollback de Synthesis completado exitosamente")
-        except Exception as rollback_error:
+        except (OSError, RuntimeError) as rollback_error:
             # Esto es CRÍTICO - el archivo puede estar corrupto
             logger.critical(
                 "ROLLBACK de Synthesis FALLÓ para %s: %s. El archivo puede estar corrupto!",
                 target.name,
                 rollback_error,
+                exc_info=True,
             )
 
     async def _log_synthesis_result(
@@ -1148,7 +1150,7 @@ class SupervisorAgent:
                 },
             )
             logger.debug("Operación de Synthesis registrada en journal")
-        except Exception as e:
+        except (OSError, sqlite3.Error) as e:
             # No fallar la operación si el logging falla
             logger.warning(
                 "No se pudo registrar operación de Synthesis en journal: %s", e
@@ -1209,9 +1211,10 @@ class SupervisorAgent:
                 )
 
             # 2. Crear snapshot de los archivos de salida existentes si existen
-            snapshot_info = None
+            snapshot_info: SnapshotInfo | None = None
+            texgen_snapshot_info: SnapshotInfo | None = None
             dyndolod_output_path = runner._config.mo2_mods_path / "DynDOLOD Output"
-            runner._config.mo2_mods_path / "TexGen Output"
+            texgen_output_path = runner._config.mo2_mods_path / "TexGen Output"
 
             if create_snapshot:
                 # Snapshot del DynDOLOD.esp si existe
@@ -1225,8 +1228,22 @@ class SupervisorAgent:
                         logger.debug(
                             "Snapshot creado para DynDOLOD.esp: %s", snapshot_info
                         )
-                    except Exception as e:
-                        logger.warning("No se pudo crear snapshot: %s", e)
+                    except (OSError, RuntimeError) as e:
+                        logger.warning("No se pudo crear snapshot de DynDOLOD.esp: %s", e)
+                        # Continuar sin snapshot - no es fatal
+
+                # Snapshot del directorio TexGen Output si existe
+                if texgen_output_path.exists():
+                    try:
+                        texgen_snapshot_info = await self.snapshot_manager.create_snapshot(
+                            texgen_output_path,
+                            metadata={"source": "dyndolod_pipeline_texgen", "preset": preset},
+                        )
+                        logger.debug(
+                            "Snapshot creado para TexGen Output: %s", texgen_snapshot_info
+                        )
+                    except (OSError, RuntimeError) as e:
+                        logger.warning("No se pudo crear snapshot de TexGen Output: %s", e)
                         # Continuar sin snapshot - no es fatal
 
             # 3. Registrar inicio de operación en journal
@@ -1260,7 +1277,7 @@ class SupervisorAgent:
                             source="sky_claw_dyndolod_pipeline",
                         )
                         logger.info("TexGen Output registered in database")
-                    except Exception as e:
+                    except (OSError, sqlite3.Error) as e:
                         logger.warning(
                             "Could not register TexGen Output in database: %s", e
                         )
@@ -1278,7 +1295,7 @@ class SupervisorAgent:
                             source="sky_claw_dyndolod_pipeline",
                         )
                         logger.info("DynDOLOD Output registered in database")
-                    except Exception as e:
+                    except (OSError, sqlite3.Error) as e:
                         logger.warning(
                             "Could not register DynDOLOD Output in database: %s", e
                         )
@@ -1299,24 +1316,36 @@ class SupervisorAgent:
             return result
 
         except DynDOLODTimeoutError as e:
-            logger.error("DynDOLOD pipeline timeout: %s", e)
+            logger.error("DynDOLOD pipeline timeout: %s", e, exc_info=True)
             if snapshot_info:
                 await self._rollback_dyndolod_on_failure(
                     snapshot_info, "dyndolod_timeout"
                 )
+            if texgen_snapshot_info:
+                await self._rollback_dyndolod_on_failure(
+                    texgen_snapshot_info, "texgen_timeout"
+                )
             raise
         except DynDOLODExecutionError as e:
-            logger.error("DynDOLOD execution error: %s", e)
+            logger.error("DynDOLOD execution error: %s", e, exc_info=True)
             if snapshot_info:
                 await self._rollback_dyndolod_on_failure(
                     snapshot_info, "dyndolod_execution_error"
                 )
+            if texgen_snapshot_info:
+                await self._rollback_dyndolod_on_failure(
+                    texgen_snapshot_info, "texgen_execution_error"
+                )
             raise
-        except Exception as e:
-            logger.exception("Unexpected error in DynDOLOD pipeline: %s", e)
+        except (OSError, sqlite3.Error) as e:
+            logger.error("Unexpected error in DynDOLOD pipeline: %s", e, exc_info=True)
             if snapshot_info:
                 await self._rollback_dyndolod_on_failure(
                     snapshot_info, "dyndolod_unexpected_error"
+                )
+            if texgen_snapshot_info:
+                await self._rollback_dyndolod_on_failure(
+                    texgen_snapshot_info, "texgen_unexpected_error"
                 )
             raise
 
@@ -1338,7 +1367,7 @@ class SupervisorAgent:
                 },
             )
             logger.debug("Inicio de DynDOLOD pipeline registrado en journal")
-        except Exception as e:
+        except (OSError, sqlite3.Error) as e:
             logger.warning("No se pudo registrar inicio de DynDOLOD en journal: %s", e)
 
     async def _log_dyndolod_result(
@@ -1382,7 +1411,7 @@ class SupervisorAgent:
                 },
             )
             logger.debug("Resultado de DynDOLOD registrado en journal")
-        except Exception as e:
+        except (OSError, sqlite3.Error) as e:
             logger.warning(
                 "No se pudo registrar resultado de DynDOLOD en journal: %s", e
             )
@@ -1408,13 +1437,14 @@ class SupervisorAgent:
                 dyndolod_esp,
             )
             logger.info("Rollback de DynDOLOD completado exitosamente")
-        except Exception as rollback_error:
+        except (OSError, RuntimeError) as rollback_error:
             # Esto es CRÍTICO - los archivos pueden estar corruptos
             logger.critical(
                 "ROLLBACK de DynDOLOD FALLÓ (snapshot: %s): %s. "
                 "Los archivos pueden estar en estado inconsistente!",
                 snapshot_info.snapshot_path,
                 rollback_error,
+                exc_info=True,
             )
 
     # =========================================================================
@@ -1467,8 +1497,8 @@ class SupervisorAgent:
         try:
             snapshot_path = await self.snapshot_manager.create_snapshot(target_plugin)
             logger.debug("Snapshot creado: %s", snapshot_path)
-        except Exception as e:
-            logger.error("Fallo al crear snapshot: %s", e)
+        except (OSError, RuntimeError) as e:
+            logger.error("Fallo al crear snapshot: %s", e, exc_info=True)
             raise PatchingError(f"Snapshot falló: {e}") from e
 
         # PASO B: Ejecutar parcheo
@@ -1520,8 +1550,8 @@ class SupervisorAgent:
                         if script_result.exit_code == 0
                         else script_result.stderr,
                     )
-                except Exception as script_error:
-                    logger.error("Error ejecutando script xEdit: %s", script_error)
+                except (OSError, RuntimeError) as script_error:
+                    logger.error("Error ejecutando script xEdit: %s", script_error, exc_info=True)
                     # PASO C (fallo): Rollback automático
                     await self._rollback_on_failure(snapshot_path, target_plugin)
                     raise PatchingError(
@@ -1531,8 +1561,8 @@ class SupervisorAgent:
         except PatchingError:
             # Re-lanzar errores de parcheo conocidos
             raise
-        except Exception as e:
-            logger.error("Error durante parcheo: %s", e)
+        except (OSError, RuntimeError) as e:
+            logger.error("Error durante parcheo: %s", e, exc_info=True)
             # PASO C (fallo): Rollback automático
             await self._rollback_on_failure(snapshot_path, target_plugin)
             raise PatchingError(f"Parcheo falló, rollback ejecutado: {e}") from e
@@ -1578,12 +1608,13 @@ class SupervisorAgent:
         try:
             await self.snapshot_manager.restore_snapshot(snapshot_path, target)
             logger.info("Rollback completado exitosamente")
-        except Exception as rollback_error:
+        except (OSError, RuntimeError) as rollback_error:
             # Esto es CRÍTICO - el archivo puede estar corrupto
             logger.critical(
                 "ROLLBACK FALLÓ para %s: %s. El archivo puede estar corrupto!",
                 target.name,
                 rollback_error,
+                exc_info=True,
             )
             # Re-lanzar para notificar al caller
             raise PatchingError(
@@ -1620,7 +1651,7 @@ class SupervisorAgent:
                 },
             )
             logger.debug("Operación de parcheo registrada en journal")
-        except Exception as e:
+        except (OSError, sqlite3.Error) as e:
             # No fallar la operación si el logging falla
             logger.warning("No se pudo registrar operación en journal: %s", e)
 
