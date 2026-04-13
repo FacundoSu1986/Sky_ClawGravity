@@ -1924,7 +1924,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.3,<4" },
     { name = "aiosqlite", specifier = ">=0.19,<1" },
     { name = "certifi" },
-    { name = "cryptography", specifier = ">=46.0.7" },
+    { name = "cryptography", specifier = ">=41.0.0" },
     { name = "defusedxml", specifier = ">=0.7.1,<1" },
     { name = "keyring", specifier = ">=24.0" },
     { name = "langchain-core", specifier = ">=0.1,<1" },
