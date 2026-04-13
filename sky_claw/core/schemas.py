@@ -86,18 +86,20 @@ class SecurityAuditRequest(BaseModel):
         validate_path_strict() para confinar la ruta al sandbox autorizado.
         Registra cualquier intento de violación de seguridad.
         """
+        # Truncate logged value to 120 chars to prevent log injection / flooding.
+        _logged_v = repr(v[:120]) if len(v) > 120 else repr(v)
         if "\x00" in v or "%00" in v:
             logger.warning(
-                "Security violation blocked: null byte detected in target_path %r",
-                v,
+                "Security violation blocked: null byte detected in target_path %s",
+                _logged_v,
             )
             raise ValueError("Byte nulo detectado en path")
         try:
             return validate_path_strict(v)
         except ValueError as exc:
             logger.warning(
-                "Security violation blocked: path traversal attempt in target_path %r – %s",
-                v,
+                "Security violation blocked: path traversal attempt in target_path %s – %s",
+                _logged_v,
                 exc,
             )
             raise

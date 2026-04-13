@@ -456,15 +456,21 @@ class TestShouldRetry:
         assert _should_retry(exc) is True
 
     def test_retries_on_429(self) -> None:
-        exc = aiohttp.ClientResponseError(request_info=None, history=(), status=429)
+        from unittest.mock import Mock
+
+        exc = aiohttp.ClientResponseError(request_info=Mock(), history=(), status=429)
         assert _should_retry(exc) is True
 
     def test_retries_on_503(self) -> None:
-        exc = aiohttp.ClientResponseError(request_info=None, history=(), status=503)
+        from unittest.mock import Mock
+
+        exc = aiohttp.ClientResponseError(request_info=Mock(), history=(), status=503)
         assert _should_retry(exc) is True
 
     def test_no_retry_on_400(self) -> None:
-        exc = aiohttp.ClientResponseError(request_info=None, history=(), status=400)
+        from unittest.mock import Mock
+
+        exc = aiohttp.ClientResponseError(request_info=Mock(), history=(), status=400)
         assert _should_retry(exc) is False
 
     def test_no_retry_on_generic_exception(self) -> None:
