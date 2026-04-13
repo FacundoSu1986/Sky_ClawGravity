@@ -13,10 +13,25 @@ import os
 import pathlib
 from typing import Any
 
+from sky_claw.config import (
+    LOOT_SEARCH_PATHS,
+    MO2_COMMON_PATHS,
+    SEARCH_TIMEOUT_SECONDS,
+    SKYRIM_COMMON_PATHS,
+    STEAM_DEFAULT_PATHS,
+    XEDIT_SEARCH_PATHS,
+)
+
 logger = logging.getLogger(__name__)
 
-# Maximum seconds per individual search.
-_SEARCH_TIMEOUT = 5.0
+# Module-level aliases — used directly by AutoDetector methods so that
+# tests can patch them via patch("sky_claw.auto_detect._MO2_COMMON", ...).
+_MO2_COMMON: tuple[str, ...] = MO2_COMMON_PATHS
+_STEAM_DEFAULT_PATHS: tuple[str, ...] = STEAM_DEFAULT_PATHS
+_SKYRIM_COMMON: tuple[str, ...] = SKYRIM_COMMON_PATHS
+_LOOT_COMMON: tuple[str, ...] = LOOT_SEARCH_PATHS
+_XEDIT_COMMON: tuple[str, ...] = XEDIT_SEARCH_PATHS
+_SEARCH_TIMEOUT: float = SEARCH_TIMEOUT_SECONDS
 
 # ---------------------------------------------------------------------------
 # Windows registry helper (stdlib winreg, Windows-only)
@@ -45,17 +60,6 @@ def _read_registry_value(hive: int, subkey: str, value_name: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Steam library folders parser
 # ---------------------------------------------------------------------------
-
-_STEAM_DEFAULT_PATHS: tuple[str, ...] = (
-    r"C:\Program Files (x86)\Steam",
-    r"C:\Program Files\Steam",
-    r"D:\Steam",
-    r"D:\SteamLibrary",
-    r"E:\Steam",
-    r"E:\SteamLibrary",
-)
-
-_SKYRIM_SE_APPID = "489830"
 
 
 def _parse_steam_library_folders(vdf_path: pathlib.Path) -> list[pathlib.Path]:
@@ -91,39 +95,6 @@ def _find_skyrim_in_steam_libraries(
 # ---------------------------------------------------------------------------
 # Common search paths
 # ---------------------------------------------------------------------------
-
-_MO2_COMMON: tuple[str, ...] = (
-    r"C:\Modding\MO2",
-    r"D:\Modding\MO2",
-    r"E:\Modding\MO2",
-    r"C:\MO2Portable",
-    r"D:\MO2Portable",
-    r"C:\Games\MO2",
-    r"D:\Games\MO2",
-)
-
-_SKYRIM_COMMON: tuple[str, ...] = (
-    r"C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition",
-    r"C:\Program Files\Steam\steamapps\common\Skyrim Special Edition",
-    r"D:\SteamLibrary\steamapps\common\Skyrim Special Edition",
-    r"D:\Steam\steamapps\common\Skyrim Special Edition",
-    r"E:\SteamLibrary\steamapps\common\Skyrim Special Edition",
-)
-
-_LOOT_COMMON: tuple[str, ...] = (
-    r"C:\Modding\LOOT",
-    r"D:\Modding\LOOT",
-    r"C:\Program Files\LOOT",
-    r"C:\Program Files (x86)\LOOT",
-)
-
-_XEDIT_COMMON: tuple[str, ...] = (
-    r"C:\Modding\SSEEdit",
-    r"D:\Modding\SSEEdit",
-    r"C:\Modding\xEdit",
-    r"D:\Modding\xEdit",
-    r"C:\Program Files\SSEEdit",
-)
 
 
 # ---------------------------------------------------------------------------
