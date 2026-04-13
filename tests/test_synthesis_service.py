@@ -20,11 +20,8 @@ from sky_claw.db.locks import (
 )
 from sky_claw.db.snapshot_manager import FileSnapshotManager
 from sky_claw.tools.synthesis_runner import (
-    SynthesisConfig,
-    SynthesisExecutionError,
     SynthesisResult,
     SynthesisRunner,
-    SynthesisValidationError,
 )
 from sky_claw.tools.synthesis_service import SynthesisPipelineService
 
@@ -259,8 +256,8 @@ async def test_no_patchers_early_return(
     tmp_path: pathlib.Path,
 ) -> None:
     """Empty patcher list returns error without acquiring lock or journal."""
-    with patch.dict("os.environ", {"SKYRIM_PATH": str(tmp_path / "Skyrim"), "MO2_PATH": str(tmp_path / "MO2"), "SYNTHESIS_EXE": str(tmp_path / "Synthesis.exe")}):
-        out = await synthesis_service.execute_pipeline(patcher_ids=[])
+    with patch.dict("os.environ", {"SKYRIM_PATH": str(tmp_path / "Skyrim"), "MO2_PATH": str(tmp_path / "MO2"), "SYNTHESIS_EXE": str(tmp_path / "Synthesis.exe")}) :
+        out = await synthesis_service.execute_pipeline(patcher_ids=[])   
 
     assert out["success"] is False
     assert "No patchers" in out["errors"][0]
