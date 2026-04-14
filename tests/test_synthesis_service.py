@@ -624,3 +624,76 @@ async def test_journal_transaction_lifecycle_failure(
     )
     mock_journal.mark_transaction_rolled_back.assert_awaited_once_with(1)
     mock_journal.commit_transaction.assert_not_awaited()
+
+
+# =============================================================================
+# T11: Unexpected exception marks journal rolled back
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_unexpected_exception_marks_journal_rolled_back(
+    synthesis_service: SynthesisPipelineService,
+    mock_journal: AsyncMock,
+    event_bus: CoreEventBus,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An unexpected OSError inside the lock context marks journal rolled back.
+
+    Regression test for the journal transaction leak: if run_pipeline() or
+    validate_synthesis_esp() raises an exception that is NOT a domain error
+    (SynthesisExecutionError / SynthesisValidationError / LockAcquisitionError),
+    the journal transaction must still be marked rolled back and the service
+    must return an error dict instead of propagating the exception.
+    Additionally, synthesis.pipeline.completed must always be published (success=False).
+    """
+    output_esp = tmp_path / "MO2" / "overwrite" / "Synthesis.esp"
+    output_esp.touch()
+
+    received: list[Event] = []
+    completed_event = asyncio.Event()
+
+    async def _capture_event(e: Event) -> None:
+        received.append(e)
+        if e.topic == "synthesis.pipeline.completed":
+            completed_event.set()
+
+    event_bus.subscribe("synthesis.pipeline.*", _capture_event)
+
+    with (
+        patch.object(
+            SynthesisRunner,
+            "run_pipeline",
+            new_callable=AsyncMock,
+            return_value=_make_success_result(output_esp),
+        ),
+        patch.object(
+            SynthesisRunner,
+            "validate_synthesis_esp",
+            new_callable=AsyncMock,
+            side_effect=OSError("disk read error"),
+        ),
+        patch.dict(
+            "os.environ",
+            {
+                "SKYRIM_PATH": str(tmp_path / "Skyrim"),
+                "MO2_PATH": str(tmp_path / "MO2"),
+                "SYNTHESIS_EXE": str(tmp_path / "Synthesis.exe"),
+            },
+        ),
+    ):
+        out = await synthesis_service.execute_pipeline(patcher_ids=["patcher_a"])
+
+    # Service must return an error dict — not propagate the exception
+    assert out["success"] is False
+    assert "Unexpected error" in out["errors"][0]
+
+    # Journal transaction started inside the lock MUST be marked rolled back
+    mock_journal.begin_transaction.assert_awaited_once()
+    mock_journal.mark_transaction_rolled_back.assert_awaited_once_with(1)
+    mock_journal.commit_transaction.assert_not_awaited()
+
+    # synthesis.pipeline.completed MUST always be published, even on unexpected errors
+    await asyncio.wait_for(completed_event.wait(), timeout=5.0)
+    completed = next(e for e in received if e.topic == "synthesis.pipeline.completed")
+    assert completed.payload["success"] is False
