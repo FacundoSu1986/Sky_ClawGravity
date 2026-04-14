@@ -10,6 +10,7 @@ Sprint 1: Migrado de callback directo a CoreEventBus.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass
 from typing import Final
@@ -52,7 +53,9 @@ class TelemetryDaemon:
     async def start(self) -> None:
         """Inicia el loop de telemetría como tarea de fondo."""
         if self._task is not None:
-            logger.warning("TelemetryDaemon ya está corriendo, ignorando start() duplicado")
+            logger.warning(
+                "TelemetryDaemon ya está corriendo, ignorando start() duplicado"
+            )
             return
         self._task = asyncio.create_task(self._telemetry_loop(), name="telemetry-1hz")
         logger.info("TelemetryDaemon iniciado (interval=%.1fs)", self._interval)
@@ -62,10 +65,8 @@ class TelemetryDaemon:
         if self._task is None:
             return
         self._task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await self._task
-        except asyncio.CancelledError:
-            pass
         self._task = None
         logger.info("TelemetryDaemon detenido")
 

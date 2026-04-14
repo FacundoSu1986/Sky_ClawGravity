@@ -16,17 +16,21 @@ import json
 import logging
 import pathlib
 import sys
-from typing import Any, Awaitable, Callable
+import uuid
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from aiohttp import web
 
-from sky_claw.agent.router import LLMRouter
 from sky_claw.auto_detect import AutoDetector
-from sky_claw.local_config import load as load_local_config, save as save_local_config
+from sky_claw.local_config import load as load_local_config
+from sky_claw.local_config import save as save_local_config
 from sky_claw.logging_config import correlation_id_var
-from sky_claw.security.auth_token_manager import AuthTokenManager
-import uuid
+
+if TYPE_CHECKING:
+    from sky_claw.agent.router import LLMRouter
+    from sky_claw.security.auth_token_manager import AuthTokenManager
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +130,9 @@ class WebApp:
             peer = request.remote or ""
             if peer not in ("127.0.0.1", "::1", "localhost"):
                 logger.warning("Setup endpoint blocked for non-local peer: %s", peer)
-                return web.Response(status=403, text="Forbidden: setup only accessible from localhost")
+                return web.Response(
+                    status=403, text="Forbidden: setup only accessible from localhost"
+                )
 
         if path == "/api/chat" and self._auth_manager is not None:
             auth_header = request.headers.get("Authorization", "")
@@ -134,7 +140,9 @@ class WebApp:
                 return web.Response(status=401, text="Unauthorized")
             token = auth_header[len("Bearer ") :]
             if not self._auth_manager.validate(token):
-                logger.warning("Invalid auth token on /api/chat from %s", request.remote)
+                logger.warning(
+                    "Invalid auth token on /api/chat from %s", request.remote
+                )
                 return web.Response(status=401, text="Unauthorized")
 
         return await handler(request)
@@ -199,29 +207,29 @@ class WebApp:
 
         cfg = load_local_config(self._config_path)
         # Update fields from the wizard.
-        if "mo2_root" in data and data["mo2_root"]:
+        if data.get("mo2_root"):
             cfg.mo2_root = str(data["mo2_root"])
-        if "install_dir" in data and data["install_dir"]:
+        if data.get("install_dir"):
             cfg.install_dir = str(data["install_dir"])
-        if "loot_exe" in data and data["loot_exe"]:
+        if data.get("loot_exe"):
             cfg.loot_exe = str(data["loot_exe"])
-        if "xedit_exe" in data and data["xedit_exe"]:
+        if data.get("xedit_exe"):
             cfg.xedit_exe = str(data["xedit_exe"])
-        if "pandora_exe" in data and data["pandora_exe"]:
+        if data.get("pandora_exe"):
             cfg.pandora_exe = str(data["pandora_exe"])
-        if "bodyslide_exe" in data and data["bodyslide_exe"]:
+        if data.get("bodyslide_exe"):
             cfg.bodyslide_exe = str(data["bodyslide_exe"])
 
-        if "api_key" in data and data["api_key"]:
+        if data.get("api_key"):
             cfg.set_api_key(data["api_key"])
-        if "nexus_api_key" in data and data["nexus_api_key"]:
+        if data.get("nexus_api_key"):
             cfg.set_nexus_api_key(data["nexus_api_key"])
-        if "telegram_bot_token" in data and data["telegram_bot_token"]:
+        if data.get("telegram_bot_token"):
             cfg.set_telegram_bot_token(data["telegram_bot_token"])
-        if "telegram_chat_id" in data and data["telegram_chat_id"]:
+        if data.get("telegram_chat_id"):
             cfg.telegram_chat_id = str(data["telegram_chat_id"])
 
-        if "skyrim_path" in data and data["skyrim_path"]:
+        if data.get("skyrim_path"):
             cfg.skyrim_path = str(data["skyrim_path"])
 
         cfg.first_run = False
@@ -235,7 +243,9 @@ class WebApp:
             except Exception as exc:
                 logger.exception("on_setup_complete callback failed: %s", exc)
                 return web.json_response(
-                    {"error": "Configuration saved but initialization failed. Please restart the application."},
+                    {
+                        "error": "Configuration saved but initialization failed. Please restart the application."
+                    },
                     status=500,
                 )
 
@@ -248,24 +258,32 @@ class WebApp:
             return web.json_response(result)
         except Exception as exc:
             logger.error("Auto-detect error: %s", exc)
-            return web.json_response({"error": "Auto-detection failed. Check server logs."}, status=500)
+            return web.json_response(
+                {"error": "Auto-detection failed. Check server logs."}, status=500
+            )
 
     async def _handle_install_tools(self, request: web.Request) -> web.Response:
         """Install missing LOOT / SSEEdit via ToolsInstaller."""
         if self._tools_installer is None:
-            return web.json_response({"error": "ToolsInstaller not available"}, status=503)
+            return web.json_response(
+                {"error": "ToolsInstaller not available"}, status=503
+            )
 
         try:
             data: dict[str, Any] = await request.json()
         except json.JSONDecodeError:
             data = {}
 
-        install_dir = pathlib.Path(data.get("install_dir", "") or str(self._config_path.parent / "tools"))
+        install_dir = pathlib.Path(
+            data.get("install_dir", "") or str(self._config_path.parent / "tools")
+        )
         results: dict[str, str] = {}
 
         if data.get("install_loot", True):
             try:
-                loot_result = await self._tools_installer.ensure_loot(session=self._session, install_dir=install_dir)
+                loot_result = await self._tools_installer.ensure_loot(
+                    session=self._session, install_dir=install_dir
+                )
                 results["loot"] = str(loot_result.exe_path)
                 # Persist to config.
                 cfg = load_local_config(self._config_path)
@@ -277,7 +295,9 @@ class WebApp:
 
         if data.get("install_xedit", True):
             try:
-                xedit_result = await self._tools_installer.ensure_xedit(session=self._session, install_dir=install_dir)
+                xedit_result = await self._tools_installer.ensure_xedit(
+                    session=self._session, install_dir=install_dir
+                )
                 results["xedit"] = str(xedit_result.exe_path)
                 cfg = load_local_config(self._config_path)
                 cfg.xedit_exe = str(xedit_result.exe_path)
@@ -296,7 +316,9 @@ class WebApp:
         """
         if self._router is None:
             return web.json_response(
-                {"error": "Sky-Claw no está configurado todavía. Completá el setup wizard primero."},
+                {
+                    "error": "Sky-Claw no está configurado todavía. Completá el setup wizard primero."
+                },
                 status=503,
             )
 
@@ -310,11 +332,15 @@ class WebApp:
             return web.json_response({"error": "Empty message"}, status=400)
 
         try:
-            response = await self._router.chat(message, self._session, chat_id=self._chat_id)
+            response = await self._router.chat(
+                message, self._session, chat_id=self._chat_id
+            )
             return web.json_response({"response": response})
         except Exception as exc:
             logger.exception("Chat error: %s", exc)
             return web.json_response(
-                {"error": "Error del Agente. Revisa tu API Key en la config inicial y consulta los logs del servidor."},
+                {
+                    "error": "Error del Agente. Revisa tu API Key en la config inicial y consulta los logs del servidor."
+                },
                 status=500,
             )

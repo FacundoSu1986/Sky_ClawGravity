@@ -20,18 +20,18 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from nicegui import ui, app
+from nicegui import app, ui
 
 # ── Core imports ───────────────────────────────────────────────────────────────
 from sky_claw.core.database import DatabaseAgent
 from sky_claw.gui.agent_communication import AgentCommunicationClient
-from sky_claw.gui.models.app_state import get_app_state, AppState
-from sky_claw.gui.event_bus import EventBus, EventType, SkyClawEvent, event_bus
 
 # ── Controller imports ─────────────────────────────────────────────────────────
 from sky_claw.gui.controllers import ChatController, ModController, NavigationController
+from sky_claw.gui.event_bus import EventBus, EventType, SkyClawEvent, event_bus
+from sky_claw.gui.models.app_state import AppState, get_app_state
 
 # ── View imports ───────────────────────────────────────────────────────────────
 from sky_claw.gui.views import render_dashboard
@@ -49,7 +49,7 @@ _ASSETS_PATH = Path(__file__).resolve().parent / "assets"
 # CAPA DE ACCESO A DATOS — DB AGENT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_db_agent: Optional[DatabaseAgent] = None
+_db_agent: DatabaseAgent | None = None
 
 
 def get_db_agent() -> DatabaseAgent:
@@ -98,8 +98,8 @@ class ReactiveState:
 
     def __init__(
         self,
-        app_state: Optional[AppState] = None,
-        event_bus_instance: Optional[EventBus] = None,
+        app_state: AppState | None = None,
+        event_bus_instance: EventBus | None = None,
     ) -> None:
         self._app_state = app_state or get_app_state_instance()
 
@@ -115,9 +115,15 @@ class ReactiveState:
         # Suscribirse al EventBus para sincronizar la UI
         if event_bus_instance:
             event_bus_instance.subscribe(EventType.MOD_ADDED, self.handle_mod_added)
-            event_bus_instance.subscribe(EventType.CONFLICT_DETECTED, self.handle_conflict_detected)
-            event_bus_instance.subscribe(EventType.LLM_RESPONSE, self._handle_llm_notification)
-            event_bus_instance.subscribe(EventType.AGENT_STATUS_CHANGE, self._handle_agent_status)
+            event_bus_instance.subscribe(
+                EventType.CONFLICT_DETECTED, self.handle_conflict_detected
+            )
+            event_bus_instance.subscribe(
+                EventType.LLM_RESPONSE, self._handle_llm_notification
+            )
+            event_bus_instance.subscribe(
+                EventType.AGENT_STATUS_CHANGE, self._handle_agent_status
+            )
 
     # ── Properties ─────────────────────────────────────────────────────────────
 
@@ -143,7 +149,7 @@ class ReactiveState:
     def clear_chat_messages(self) -> None:
         self._app_state.clear_chat_messages()
 
-    def get_chat_messages(self) -> List[Dict[str, str]]:
+    def get_chat_messages(self) -> list[dict[str, str]]:
         return self._app_state._chat_messages.copy()
 
     def get_message_count(self) -> int:
@@ -158,7 +164,9 @@ class ReactiveState:
             conflicts = await get_db_agent().get_conflicts(resolved=False)
             self.active_mods.set(len(mods))
             self.conflicts_count.set(len(conflicts))
-            self.pending_updates.set(sum(1 for m in mods if m.get("needs_update", False)))
+            self.pending_updates.set(
+                sum(1 for m in mods if m.get("needs_update", False))
+            )
             total_size = sum(m.get("size_mb", 0) for m in mods)
             self.storage_used.set(round(total_size / 1024, 1))
         except Exception as exc:
@@ -199,11 +207,11 @@ class ReactiveState:
 # SINGLETON INSTANCES — ASSEMBLY POINT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_app_state: Optional[AppState] = None
-_state: Optional[ReactiveState] = None
-_chat_controller: Optional[ChatController] = None
-_mod_controller: Optional[ModController] = None
-_nav_controller: Optional[NavigationController] = None
+_app_state: AppState | None = None
+_state: ReactiveState | None = None
+_chat_controller: ChatController | None = None
+_mod_controller: ModController | None = None
+_nav_controller: NavigationController | None = None
 
 
 def get_app_state_instance() -> AppState:
@@ -229,7 +237,7 @@ def get_state() -> ReactiveState:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _handle_daemon_message(data: Dict[str, Any]) -> None:
+def _handle_daemon_message(data: dict[str, Any]) -> None:
     """Traduce mensajes WS del daemon a eventos EventBus."""
     msg_type = data.get("type", "")
 
@@ -271,7 +279,7 @@ def _handle_daemon_message(data: Dict[str, Any]) -> None:
 
 DAEMON_WS_URL = os.environ.get("SKY_CLAW_DAEMON_WS_URL", "ws://localhost:8765/ws/ui")
 
-agent_client: Optional[AgentCommunicationClient] = None
+agent_client: AgentCommunicationClient | None = None
 
 
 def get_agent_client() -> AgentCommunicationClient:
@@ -332,11 +340,15 @@ def main_page():
         {"name": "Ordinator", "status": "conflict", "size_mb": 45},
     ]
 
-    chat_messages = _chat_controller.prepare_messages_for_view(state._app_state._chat_messages)
+    chat_messages = _chat_controller.prepare_messages_for_view(
+        state._app_state._chat_messages
+    )
 
     # Inyección de dependencias: métodos de controladores como callbacks de vistas
     callbacks = {
-        "on_send_message": lambda msg: asyncio.create_task(_chat_controller.handle_send_message(msg)),
+        "on_send_message": lambda msg: asyncio.create_task(
+            _chat_controller.handle_send_message(msg)
+        ),
         "on_view_all_mods": _mod_controller.handle_view_all_mods,
         "on_mod_click": _mod_controller.handle_mod_click,
         "on_navigate": _nav_controller.handle_navigation,

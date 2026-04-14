@@ -11,16 +11,12 @@ import asyncio
 import collections
 import logging
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from aiohttp import web
 
-from sky_claw.agent.router import LLMRouter
-from sky_claw.comms.telegram_sender import TelegramSender
-from sky_claw.security.hitl import HITLGuard
 from sky_claw.logging_config import correlation_id_var
-from sky_claw.orchestrator.sync_engine import UpdatePayload
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +45,12 @@ def _parse_hitl_command(text: str) -> tuple[bool, str] | None:
 
 import html  # noqa: E402
 
+if TYPE_CHECKING:
+    from sky_claw.agent.router import LLMRouter
+    from sky_claw.comms.telegram_sender import TelegramSender
+    from sky_claw.orchestrator.sync_engine import UpdatePayload
+    from sky_claw.security.hitl import HITLGuard
+
 
 def escape_html(text: str) -> str:
     if not text:
@@ -64,7 +66,9 @@ def _format_update_payload(payload: UpdatePayload) -> str:
     ]
 
     if payload.updated_mods:
-        lines.append(f"✅ <b>Actualizados exitosamente:</b> ({len(payload.updated_mods)})")
+        lines.append(
+            f"✅ <b>Actualizados exitosamente:</b> ({len(payload.updated_mods)})"
+        )
         for mod in payload.updated_mods:
             name = escape_html(mod["name"])
             old_v = escape_html(mod.get("old_version", "?"))
@@ -110,7 +114,9 @@ class TelegramWebhook:
         self._session = session
         self._hitl = hitl
         self._secret_token = secret_token
-        self._seen_updates: collections.OrderedDict[int, None] = collections.OrderedDict()
+        self._seen_updates: collections.OrderedDict[int, None] = (
+            collections.OrderedDict()
+        )
         self._tasks: set[asyncio.Task[None]] = set()
         # Asignamos directamente desde la inyección de dependencias
         self._allowed_user_id = authorized_user_id
@@ -127,7 +133,9 @@ class TelegramWebhook:
             True si el remitente está autorizado y el mensaje no es reenviado.
         """
         if self._allowed_user_id is None:
-            logger.warning("TELEGRAM_ALLOWED_USER_ID no configurado - rechazando comando HITL")
+            logger.warning(
+                "TELEGRAM_ALLOWED_USER_ID no configurado - rechazando comando HITL"
+            )
             return False
 
         # Obtener usuario del mensaje/callback
@@ -153,10 +161,17 @@ class TelegramWebhook:
                 return False
 
         # Verificar reply_to_message — un reply a un mensaje reenviado también es sospechoso
-        reply_msg = message_or_callback.get("reply_to_message") or message.get("reply_to_message")
+        reply_msg = message_or_callback.get("reply_to_message") or message.get(
+            "reply_to_message"
+        )
         if reply_msg:
-            if reply_msg.get("forward_date") is not None or reply_msg.get("forward_from") is not None:
-                logger.warning("Blocked: reply to forwarded message from potentially unauthorized source")
+            if (
+                reply_msg.get("forward_date") is not None
+                or reply_msg.get("forward_from") is not None
+            ):
+                logger.warning(
+                    "Blocked: reply to forwarded message from potentially unauthorized source"
+                )
                 return False
 
         return True
@@ -221,7 +236,11 @@ class TelegramWebhook:
             parsed = _parse_hitl_command(text)
             if parsed is not None:
                 approved, request_id = parsed
-                task = asyncio.create_task(self._handle_hitl_command(chat_id, approved, request_id, update_id, message))
+                task = asyncio.create_task(
+                    self._handle_hitl_command(
+                        chat_id, approved, request_id, update_id, message
+                    )
+                )
                 self._tasks.add(task)
                 task.add_done_callback(self._tasks.discard)
                 return
@@ -245,12 +264,18 @@ class TelegramWebhook:
         """
         try:
             if self._router is None:
-                logger.warning("Telegram update received but router is not initialized yet")
-                await self._sender.send(chat_id, "Sky-Claw is still starting up. Please wait a moment.")
+                logger.warning(
+                    "Telegram update received but router is not initialized yet"
+                )
+                await self._sender.send(
+                    chat_id, "Sky-Claw is still starting up. Please wait a moment."
+                )
                 return
 
             try:
-                response = await self._router.chat(text, self._session, chat_id=str(chat_id))
+                response = await self._router.chat(
+                    text, self._session, chat_id=str(chat_id)
+                )
                 await self._sender.send(chat_id, response)
             except Exception as e:
                 logger.exception("Critical Router Failure: %s", e)
@@ -259,11 +284,17 @@ class TelegramWebhook:
                     "⚠️ El agente ha sufrido un error interno en la orquestación. Reiniciando subsistema...",
                 )
         except Exception as exc:
-            logger.exception("Error processing update_id=%d, chat_id=%d: %s", update_id, chat_id, exc)
+            logger.exception(
+                "Error processing update_id=%d, chat_id=%d: %s", update_id, chat_id, exc
+            )
             try:
-                await self._sender.send(chat_id, "An internal error occurred. Please try again.")
+                await self._sender.send(
+                    chat_id, "An internal error occurred. Please try again."
+                )
             except Exception as exc:
-                logger.exception("Failed to send error message to chat_id=%d: %s", chat_id, exc)
+                logger.exception(
+                    "Failed to send error message to chat_id=%d: %s", chat_id, exc
+                )
 
     async def _handle_update_mods_command(self, chat_id: int) -> None:
         await self._sender.send(
@@ -279,13 +310,17 @@ class TelegramWebhook:
             import logging
 
             logging.getLogger(__name__).exception("Falla en /update_mods: %s", exc)
-            await self._sender.send(chat_id, "❌ Ocurrió un error crítico durante la actualización.")
+            await self._sender.send(
+                chat_id, "❌ Ocurrió un error crítico durante la actualización."
+            )
 
     async def _handle_callback_query(self, query: dict[str, Any]) -> None:
         """Handle an operator clicking an inline button (Approve/Deny)."""
         # H-03: Validación anti-spoofing
         if not self._validate_sender(query):
-            logger.warning("Intento de spoofing HITL detectado y bloqueado en callback_query.")
+            logger.warning(
+                "Intento de spoofing HITL detectado y bloqueado en callback_query."
+            )
             callback_id = query.get("id")
             if callback_id:
                 # CORRECCIÓN: Garantizar correcta concatenación de la URL
@@ -332,7 +367,9 @@ class TelegramWebhook:
 
             if found:
                 text = f"Request '{request_id}' {verb.lower()} by operator."
-                await self._sender.edit_message(chat_id, message_id, text, reply_markup=None)
+                await self._sender.edit_message(
+                    chat_id, message_id, text, reply_markup=None
+                )
             else:
                 await self._sender.send(
                     chat_id,
@@ -354,10 +391,9 @@ class TelegramWebhook:
         "not found" message is sent instead.
         """
         # H-03: Validación anti-spoofing
-        if message is not None:
-            if not self._validate_sender(message):
-                logger.warning("Intento de spoofing HITL detectado y bloqueado.")
-                return
+        if message is not None and not self._validate_sender(message):
+            logger.warning("Intento de spoofing HITL detectado y bloqueado.")
+            return
 
         assert self._hitl is not None
         found = await self._hitl.respond(request_id, approved)
@@ -371,4 +407,6 @@ class TelegramWebhook:
                     f"No pending HITL request found for ID '{request_id}'.",
                 )
         except Exception as exc:
-            logger.exception("Failed to send HITL confirmation for update_id=%d: %s", update_id, exc)
+            logger.exception(
+                "Failed to send HITL confirmation for update_id=%d: %s", update_id, exc
+            )

@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import pathlib
 import sys
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pathlib
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +65,9 @@ class PandoraRunner:
                 **kwargs,
             )
 
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.config.timeout_seconds)
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(), timeout=self.config.timeout_seconds
+            )
 
             duration = time.monotonic() - start_time
             success = process.returncode == 0
@@ -75,7 +80,7 @@ class PandoraRunner:
                 duration_seconds=duration,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Pandora execution timed out.")
             return PandoraResult(
                 success=False,

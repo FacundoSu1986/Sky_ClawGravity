@@ -8,11 +8,10 @@ integration, and proper journal lifecycle.
 from __future__ import annotations
 
 import asyncio
-import pathlib
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from sky_claw.core.event_bus import CoreEventBus, Event
 from sky_claw.db.locks import (
     DistributedLockManager,
@@ -25,6 +24,8 @@ from sky_claw.tools.synthesis_runner import (
 )
 from sky_claw.tools.synthesis_service import SynthesisPipelineService
 
+if TYPE_CHECKING:
+    import pathlib
 
 # =============================================================================
 # Fixtures
@@ -168,8 +169,15 @@ async def test_happy_path_pipeline_succeeds(
     result = _make_success_result(output_esp)
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result),
-        patch.object(SynthesisRunner, "validate_synthesis_esp", new_callable=AsyncMock, return_value=True),
+        patch.object(
+            SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result
+        ),
+        patch.object(
+            SynthesisRunner,
+            "validate_synthesis_esp",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
         patch.dict(
             "os.environ",
             {
@@ -179,7 +187,9 @@ async def test_happy_path_pipeline_succeeds(
             },
         ),
     ):
-        out = await synthesis_service.execute_pipeline(patcher_ids=["patcher_a", "patcher_b"])
+        out = await synthesis_service.execute_pipeline(
+            patcher_ids=["patcher_a", "patcher_b"]
+        )
 
     assert out["success"] is True
     assert out["patchers_executed"] == ["patcher_a", "patcher_b"]
@@ -211,7 +221,12 @@ async def test_pipeline_failure_triggers_rollback(
         return _make_failure_result()
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, side_effect=_corrupting_pipeline),
+        patch.object(
+            SynthesisRunner,
+            "run_pipeline",
+            new_callable=AsyncMock,
+            side_effect=_corrupting_pipeline,
+        ),
         patch.dict(
             "os.environ",
             {
@@ -246,14 +261,26 @@ async def test_esp_validation_failure_triggers_rollback(
     original_content = b"good ESP before run"
     output_esp.write_bytes(original_content)
 
-    async def _corrupting_success_pipeline(*args: object, **kwargs: object) -> SynthesisResult:
+    async def _corrupting_success_pipeline(
+        *args: object, **kwargs: object
+    ) -> SynthesisResult:
         """Simulate a pipeline that corrupts the file but reports success."""
         output_esp.write_bytes(b"CORRUPTED_ESP_OUTPUT")
         return _make_success_result(output_esp)
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, side_effect=_corrupting_success_pipeline),
-        patch.object(SynthesisRunner, "validate_synthesis_esp", new_callable=AsyncMock, return_value=False),
+        patch.object(
+            SynthesisRunner,
+            "run_pipeline",
+            new_callable=AsyncMock,
+            side_effect=_corrupting_success_pipeline,
+        ),
+        patch.object(
+            SynthesisRunner,
+            "validate_synthesis_esp",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
         patch.dict(
             "os.environ",
             {
@@ -266,7 +293,10 @@ async def test_esp_validation_failure_triggers_rollback(
         out = await synthesis_service.execute_pipeline(patcher_ids=["patcher_a"])
 
     assert out["success"] is False
-    assert "validation failed" in out["errors"][0].lower() or "corrupted" in out["errors"][0].lower()
+    assert (
+        "validation failed" in out["errors"][0].lower()
+        or "corrupted" in out["errors"][0].lower()
+    )
     # File should be restored to original content after rollback
     assert output_esp.read_bytes() == original_content
     mock_journal.mark_transaction_rolled_back.assert_awaited_once_with(1)
@@ -313,7 +343,9 @@ async def test_runner_init_failure(
     """Invalid env paths return error dict without lock or journal."""
     mock_path_resolver.validate_env_path = MagicMock(return_value=None)
 
-    with patch.dict("os.environ", {"SKYRIM_PATH": "", "MO2_PATH": "", "SYNTHESIS_EXE": ""}):
+    with patch.dict(
+        "os.environ", {"SKYRIM_PATH": "", "MO2_PATH": "", "SYNTHESIS_EXE": ""}
+    ):
         out = await synthesis_service.execute_pipeline(patcher_ids=["patcher_a"])
 
     assert out["success"] is False
@@ -339,7 +371,12 @@ async def test_create_snapshot_false_no_rollback(
     fail_result = _make_failure_result()
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=fail_result),
+        patch.object(
+            SynthesisRunner,
+            "run_pipeline",
+            new_callable=AsyncMock,
+            return_value=fail_result,
+        ),
         patch.dict(
             "os.environ",
             {
@@ -378,8 +415,15 @@ async def test_first_run_esp_not_exists(
     result = _make_success_result(output_esp)
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result),
-        patch.object(SynthesisRunner, "validate_synthesis_esp", new_callable=AsyncMock, return_value=True),
+        patch.object(
+            SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result
+        ),
+        patch.object(
+            SynthesisRunner,
+            "validate_synthesis_esp",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
         patch.dict(
             "os.environ",
             {
@@ -419,8 +463,15 @@ async def test_events_published(
     result = _make_success_result(output_esp)
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result),
-        patch.object(SynthesisRunner, "validate_synthesis_esp", new_callable=AsyncMock, return_value=True),
+        patch.object(
+            SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result
+        ),
+        patch.object(
+            SynthesisRunner,
+            "validate_synthesis_esp",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
         patch.dict(
             "os.environ",
             {
@@ -465,8 +516,15 @@ async def test_lock_contention(
     result = _make_success_result(output_esp)
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result),
-        patch.object(SynthesisRunner, "validate_synthesis_esp", new_callable=AsyncMock, return_value=True),
+        patch.object(
+            SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result
+        ),
+        patch.object(
+            SynthesisRunner,
+            "validate_synthesis_esp",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
         patch.dict(
             "os.environ",
             {
@@ -475,9 +533,9 @@ async def test_lock_contention(
                 "SYNTHESIS_EXE": str(tmp_path / "Synthesis.exe"),
             },
         ),
+        pytest.raises(LockAcquisitionError),
     ):
-        with pytest.raises(LockAcquisitionError):
-            await synthesis_service.execute_pipeline(patcher_ids=["patcher_a"])
+        await synthesis_service.execute_pipeline(patcher_ids=["patcher_a"])
 
 
 # =============================================================================
@@ -497,8 +555,15 @@ async def test_journal_transaction_lifecycle_success(
     result = _make_success_result(output_esp)
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result),
-        patch.object(SynthesisRunner, "validate_synthesis_esp", new_callable=AsyncMock, return_value=True),
+        patch.object(
+            SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=result
+        ),
+        patch.object(
+            SynthesisRunner,
+            "validate_synthesis_esp",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
         patch.dict(
             "os.environ",
             {
@@ -529,7 +594,12 @@ async def test_journal_transaction_lifecycle_failure(
     fail_result = _make_failure_result()
 
     with (
-        patch.object(SynthesisRunner, "run_pipeline", new_callable=AsyncMock, return_value=fail_result),
+        patch.object(
+            SynthesisRunner,
+            "run_pipeline",
+            new_callable=AsyncMock,
+            return_value=fail_result,
+        ),
         patch.dict(
             "os.environ",
             {

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import pathlib
+from typing import TYPE_CHECKING
 
 import pytest
-
 from sky_claw.db.async_registry import AsyncModRegistry
+
+if TYPE_CHECKING:
+    import pathlib
 
 
 @pytest.fixture()
@@ -22,7 +24,9 @@ class TestAsyncSchemaCreation:
     @pytest.mark.asyncio
     async def test_tables_exist(self, adb: AsyncModRegistry) -> None:
         assert adb._conn is not None
-        async with adb._conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name") as cur:
+        async with adb._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        ) as cur:
             rows = await cur.fetchall()
             tables = {row[0] for row in rows}
         assert {"mods", "dependencies", "task_log"} <= tables
@@ -59,7 +63,7 @@ class TestMicroBatching:
             (1003, "ModC", "3.0", "auth3", "cat3", "", False, False),
         ]
         await adb.upsert_mods_batch(rows)
-        for nexus_id, name, *_ in rows:
+        for nexus_id, _name, *_ in rows:
             row = await adb.get_mod(nexus_id)
             assert row is not None
 
@@ -76,7 +80,9 @@ class TestMicroBatching:
         ]
         await adb.insert_deps_batch(deps)
         assert adb._conn is not None
-        async with adb._conn.execute("SELECT * FROM dependencies WHERE mod_id = ?", (mod_id,)) as cur:
+        async with adb._conn.execute(
+            "SELECT * FROM dependencies WHERE mod_id = ?", (mod_id,)
+        ) as cur:
             found = await cur.fetchall()
         assert len(found) == 2
 

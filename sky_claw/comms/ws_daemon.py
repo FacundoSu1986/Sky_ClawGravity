@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import websockets
-import uuid
-import time
-from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 import sys
+import time
+import uuid
 from pathlib import Path
-from typing import Set, Optional
+
+import websockets
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
 # Zero Trust AST Import (Local Repo Resolution)
 WORK_DIR = Path(__file__).resolve().parent.parent.parent
@@ -37,7 +37,7 @@ class TelegramDaemon:
         router,
         session,
         gateway_url="ws://localhost:8080",
-        ui_broadcast: Optional["UIBroadcastServer"] = None,
+        ui_broadcast: UIBroadcastServer | None = None,
     ):
         self.router = router
         self.session = session
@@ -62,7 +62,9 @@ class TelegramDaemon:
                 # Use a custom connection timeout to prevent hanging
                 async with websockets.connect(self.gateway_url, open_timeout=10) as ws:
                     self.ws = ws
-                    logger.info("✅ Enlace establecido con Telegram Gateway (Stateless Perimeter Layer).")
+                    logger.info(
+                        "✅ Enlace establecido con Telegram Gateway (Stateless Perimeter Layer)."
+                    )
                     backoff = 2.0  # Reset backoff upon successful connection
                     await self._listen_loop()
             except (
@@ -73,7 +75,9 @@ class TelegramDaemon:
             ) as e:
                 if not self._is_running:
                     break
-                logger.warning(f"⚠️ Enlace perdido con Gateway ({type(e).__name__}). Reconectando en {backoff:.1f}s...")
+                logger.warning(
+                    f"⚠️ Enlace perdido con Gateway ({type(e).__name__}). Reconectando en {backoff:.1f}s..."
+                )
                 self.ws = None
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 1.5, 60.0)
@@ -143,13 +147,17 @@ class TelegramDaemon:
             # Misión 2: Auditoría Zero-Trust Async
             is_safe = await self.guardian.execute_audit("telegram_payload", text)
             if not is_safe:
-                logger.warning("🚫 Auditoría AST falló. Comando descartado por políticas Zero-Trust.")
+                logger.warning(
+                    "🚫 Auditoría AST falló. Comando descartado por políticas Zero-Trust."
+                )
                 if self.ws and getattr(self.ws, "open", False):
                     err_msg = json.dumps(
                         {
                             "id": str(uuid.uuid4()),
                             "type": "error",
-                            "payload": {"text": "🛡️ Sistema: Payload inyectado fue bloqueado preventivamente."},
+                            "payload": {
+                                "text": "🛡️ Sistema: Payload inyectado fue bloqueado preventivamente."
+                            },
                         }
                     )
                     await self.ws.send(err_msg)
@@ -189,7 +197,9 @@ class TelegramDaemon:
                     },
                 }
                 await self.ws.send(json.dumps(res_payload))
-                logger.info(f"📤 Respuesta enviada al Gateway (ID Relacionado: {msg_id})")
+                logger.info(
+                    f"📤 Respuesta enviada al Gateway (ID Relacionado: {msg_id})"
+                )
 
             # ── NEW: Broadcast to NiceGUI UI clients ──
             if self.ui_broadcast:
@@ -207,7 +217,9 @@ class TelegramDaemon:
             if self.ws and self.ws.open:
                 err_payload = {
                     "type": "error",
-                    "payload": {"text": f"SISTEMA: Error en procesamiento del comando: {str(e)}"},
+                    "payload": {
+                        "text": f"SISTEMA: Error en procesamiento del comando: {e!s}"
+                    },
                 }
                 await self.ws.send(json.dumps(err_payload))
 
@@ -228,7 +240,7 @@ class UIBroadcastServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 8765):
         self.host = host
         self.port = port
-        self._clients: Set = set()
+        self._clients: set = set()
         self._server = None
         self._auth = AuthTokenManager()
         self._logger = logging.getLogger("SkyClaw.UIBroadcast")
@@ -241,7 +253,9 @@ class UIBroadcastServer:
             self.host,
             self.port,
         )
-        self._logger.info(f"🌐 UIBroadcastServer listening on ws://{self.host}:{self.port}/ws/ui")
+        self._logger.info(
+            f"🌐 UIBroadcastServer listening on ws://{self.host}:{self.port}/ws/ui"
+        )
 
     async def stop(self) -> None:
         """Shutdown the server and revoke the token."""
@@ -275,7 +289,9 @@ class UIBroadcastServer:
         # ── Auth gate ──
         token = websocket.request_headers.get("X-Auth-Token", "")
         if not self._auth.validate(token):
-            self._logger.warning(f"🚫 Rejected UI client — invalid token from {websocket.remote_address}")
+            self._logger.warning(
+                f"🚫 Rejected UI client — invalid token from {websocket.remote_address}"
+            )
             await websocket.close(4001, "Unauthorized")
             return
 
@@ -291,7 +307,9 @@ class UIBroadcastServer:
 
                     if msg_type == "command":
                         # Forward to router via an event or direct call
-                        self._logger.debug(f"📥 UI command received: {data.get('command')}")
+                        self._logger.debug(
+                            f"📥 UI command received: {data.get('command')}"
+                        )
                         # Emit ack
                         await websocket.send(
                             json.dumps(
@@ -311,4 +329,6 @@ class UIBroadcastServer:
             pass
         finally:
             self._clients.discard(websocket)
-            self._logger.info(f"UI client disconnected ({len(self._clients)} remaining)")
+            self._logger.info(
+                f"UI client disconnected ({len(self._clients)} remaining)"
+            )

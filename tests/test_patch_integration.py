@@ -9,28 +9,28 @@ Este módulo verifica la integración completa del sistema de parcheo transaccio
 Fase 2: Dynamic Patching & xEdit Integration
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+from sky_claw.xedit.conflict_analyzer import (
+    ConflictReport,
+    PluginConflictPair,
+    RecordConflict,
+)
 from sky_claw.xedit.patch_orchestrator import (
+    CreateMergedPatch,
+    ExecuteXEditScript,
+    PatchExecutionError,
+    PatchingError,
     PatchOrchestrator,
     PatchPlan,
     PatchResult,
     PatchStrategyType,
-    CreateMergedPatch,
-    ExecuteXEditScript,
-    PatchingError,
-    StrategySelectionError,
-    PatchExecutionError,
     ScriptGenerationError,
+    StrategySelectionError,
 )
-from sky_claw.xedit.conflict_analyzer import (
-    ConflictReport,
-    RecordConflict,
-    PluginConflictPair,
-)
-from sky_claw.xedit.runner import XEditRunner, ScriptExecutionResult
+from sky_claw.xedit.runner import ScriptExecutionResult, XEditRunner
 
 
 class TestPatchOrchestratorIntegration:
@@ -81,7 +81,9 @@ class TestPatchOrchestratorIntegration:
     def test_orchestrator_initialization(self, orchestrator):
         """Verifica que el orquestador se inicializa correctamente con 2 estrategias."""
         assert orchestrator is not None
-        assert len(orchestrator._strategies) == 2  # CreateMergedPatch + ExecuteXEditScript
+        assert (
+            len(orchestrator._strategies) == 2
+        )  # CreateMergedPatch + ExecuteXEditScript
 
         # Verificar que las estrategias están ordenadas por prioridad
         priorities = [s.get_priority() for s in orchestrator._strategies]
@@ -246,7 +248,9 @@ class TestPatchStrategies:
     def test_strategy_priorities(self, merged_patch_strategy, xedit_script_strategy):
         """Verifica que las prioridades están configuradas correctamente."""
         # ExecuteXEditScript debe tener mayor prioridad (20) que CreateMergedPatch (10)
-        assert xedit_script_strategy.get_priority() > merged_patch_strategy.get_priority()
+        assert (
+            xedit_script_strategy.get_priority() > merged_patch_strategy.get_priority()
+        )
         assert xedit_script_strategy.get_priority() == 20
         assert merged_patch_strategy.get_priority() == 10
 

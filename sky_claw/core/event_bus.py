@@ -10,6 +10,7 @@ Parte del Sprint 1: Strangler Fig — desacoplamiento de ``supervisor.py``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fnmatch
 import logging
 import time
@@ -59,10 +60,14 @@ class CoreEventBus:
     async def start(self) -> None:
         """Inicia el loop de dispatch como tarea de fondo."""
         if self._dispatch_task is not None:
-            logger.warning("CoreEventBus ya está corriendo, ignorando start() duplicado")
+            logger.warning(
+                "CoreEventBus ya está corriendo, ignorando start() duplicado"
+            )
             return
         self._running = True
-        self._dispatch_task = asyncio.create_task(self._dispatch_loop(), name="core-event-bus-dispatch")
+        self._dispatch_task = asyncio.create_task(
+            self._dispatch_loop(), name="core-event-bus-dispatch"
+        )
         logger.info("CoreEventBus iniciado (queue_max=%d)", self._queue.maxsize)
 
     async def stop(self) -> None:
@@ -71,10 +76,8 @@ class CoreEventBus:
             return
         self._running = False
         await self._queue.put(None)  # Sentinel de apagado
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await self._dispatch_task
-        except asyncio.CancelledError:
-            pass
         self._dispatch_task = None
         logger.info("CoreEventBus detenido")
 
@@ -89,10 +92,8 @@ class CoreEventBus:
 
     def unsubscribe(self, pattern: str, callback: Subscriber) -> None:
         """Elimina un suscriptor previamente registrado."""
-        try:
+        with contextlib.suppress(ValueError):
             self._subscriptions.remove((pattern, callback))
-        except ValueError:
-            pass
 
     async def publish(self, event: Event) -> None:
         """Publica un evento en la cola para dispatch asíncrono."""

@@ -12,15 +12,18 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
-from sky_claw.security.network_gateway import NetworkGateway
+if TYPE_CHECKING:
+    from sky_claw.security.network_gateway import NetworkGateway
 
 logger = logging.getLogger(__name__)
 
-NEXUS_MOD_API_URL = "https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/{mod_id}.json"
+NEXUS_MOD_API_URL = (
+    "https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/{mod_id}.json"
+)
 
 # Circuit breaker defaults.
 _CB_FAILURE_THRESHOLD = 5
@@ -69,9 +72,11 @@ class _CircuitBreaker:
     def state(self) -> str:
         """Return the current state, promoting OPEN → HALF-OPEN when the
         recovery timeout has elapsed."""
-        if self._state == "open":
-            if time.monotonic() - self._last_failure_time >= self._recovery_timeout:
-                self._state = "half-open"
+        if (
+            self._state == "open"
+            and time.monotonic() - self._last_failure_time >= self._recovery_timeout
+        ):
+            self._state = "half-open"
         return self._state
 
     def record_success(self) -> None:
@@ -146,7 +151,9 @@ class MasterlistClient:
         Raises :class:`MasterlistFetchError` on HTTP errors.
         """
         if not self._cb.allow_request():
-            raise CircuitOpenError("Circuit breaker is open — Nexus API calls are temporarily blocked")
+            raise CircuitOpenError(
+                "Circuit breaker is open — Nexus API calls are temporarily blocked"
+            )
 
         url = NEXUS_MOD_API_URL.format(mod_id=mod_id)
         headers = {"apikey": self._api_key}
@@ -161,7 +168,9 @@ class MasterlistClient:
             try:
                 if resp.status != 200:
                     body = await resp.text()
-                    raise MasterlistFetchError(f"HTTP {resp.status} for mod {mod_id}: {body[:200]}")
+                    raise MasterlistFetchError(
+                        f"HTTP {resp.status} for mod {mod_id}: {body[:200]}"
+                    )
                 data: dict[str, Any] = await resp.json()
             finally:
                 await resp.release()

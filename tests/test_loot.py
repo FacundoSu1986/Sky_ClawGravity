@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import pathlib
 import time
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from sky_claw.loot.cli import LOOTConfig, LOOTRunner, LOOTNotFoundError
+from sky_claw.loot.cli import LOOTConfig, LOOTNotFoundError, LOOTRunner
 from sky_claw.loot.masterlist import MasterlistDownloader
 from sky_claw.loot.parser import LOOTOutputParser, LOOTResult
 
+if TYPE_CHECKING:
+    import pathlib
 
 # ------------------------------------------------------------------
 # LOOTOutputParser
@@ -37,7 +38,9 @@ class TestLOOTOutputParser:
         assert "Requiem.esp" in result.warnings[0]
 
     def test_parse_errors_in_stderr(self) -> None:
-        result = LOOTOutputParser.parse(stdout="", stderr="Error: Game path not found\n", return_code=1)
+        result = LOOTOutputParser.parse(
+            stdout="", stderr="Error: Game path not found\n", return_code=1
+        )
         assert len(result.errors) == 1
         assert result.success is False
 
@@ -105,7 +108,9 @@ class TestLOOTRunner:
         mock_proc.returncode = 0
         mock_proc.kill = MagicMock()
 
-        with patch("sky_claw.loot.cli.asyncio.create_subprocess_exec", return_value=mock_proc):
+        with patch(
+            "sky_claw.loot.cli.asyncio.create_subprocess_exec", return_value=mock_proc
+        ):
             result = await runner.sort()
 
         assert result.success is True
@@ -124,8 +129,12 @@ class TestLOOTRunner:
 
         import asyncio
 
-        with patch("sky_claw.loot.cli.asyncio.create_subprocess_exec", return_value=mock_proc):
-            with patch("sky_claw.loot.cli.asyncio.wait_for", side_effect=asyncio.TimeoutError):
+        with patch(
+            "sky_claw.loot.cli.asyncio.create_subprocess_exec", return_value=mock_proc
+        ):
+            with patch(
+                "sky_claw.loot.cli.asyncio.wait_for", side_effect=asyncio.TimeoutError
+            ):
                 with pytest.raises(RuntimeError, match="timed out"):
                     await runner.sort()
 
@@ -135,11 +144,15 @@ class TestLOOTRunner:
         runner = LOOTRunner(config)
 
         mock_proc = AsyncMock()
-        mock_proc.communicate = AsyncMock(return_value=(b"", b"Error: Game path invalid\n"))
+        mock_proc.communicate = AsyncMock(
+            return_value=(b"", b"Error: Game path invalid\n")
+        )
         mock_proc.returncode = 1
         mock_proc.kill = MagicMock()
 
-        with patch("sky_claw.loot.cli.asyncio.create_subprocess_exec", return_value=mock_proc):
+        with patch(
+            "sky_claw.loot.cli.asyncio.create_subprocess_exec", return_value=mock_proc
+        ):
             result = await runner.sort()
 
         assert result.success is False
@@ -160,7 +173,9 @@ class TestMasterlistDownloader:
         cached.write_text("cached content")
 
         mock_gw = MagicMock()
-        downloader = MasterlistDownloader(gateway=mock_gw, cache_dir=cache_dir, ttl=3600)
+        downloader = MasterlistDownloader(
+            gateway=mock_gw, cache_dir=cache_dir, ttl=3600
+        )
         session = MagicMock()
         path = await downloader.get(session)
 
@@ -188,7 +203,9 @@ class TestMasterlistDownloader:
         mock_gw = MagicMock()
         mock_gw.request = AsyncMock(return_value=mock_resp)
 
-        downloader = MasterlistDownloader(gateway=mock_gw, cache_dir=cache_dir, ttl=3600)
+        downloader = MasterlistDownloader(
+            gateway=mock_gw, cache_dir=cache_dir, ttl=3600
+        )
         session = MagicMock()
         path = await downloader.get(session)
 
@@ -209,7 +226,9 @@ class TestMasterlistDownloader:
         mock_gw = MagicMock()
         mock_gw.request = AsyncMock(return_value=mock_resp)
 
-        downloader = MasterlistDownloader(gateway=mock_gw, cache_dir=cache_dir, ttl=3600)
+        downloader = MasterlistDownloader(
+            gateway=mock_gw, cache_dir=cache_dir, ttl=3600
+        )
         session = MagicMock()
         path = await downloader.get(session)
 
@@ -266,7 +285,9 @@ class TestLootSortTool:
             )
             import json
 
-            result = json.loads(await tool_reg.execute("run_loot_sort", {"profile": "Default"}))
+            result = json.loads(
+                await tool_reg.execute("run_loot_sort", {"profile": "Default"})
+            )
             assert "error" in result
             assert "not configured" in result["error"] or "not found" in result["error"]
         finally:
@@ -310,7 +331,9 @@ class TestLootSortTool:
             )
             import json
 
-            result = json.loads(await tool_reg.execute("run_loot_sort", {"profile": "Default"}))
+            result = json.loads(
+                await tool_reg.execute("run_loot_sort", {"profile": "Default"})
+            )
             assert result["success"] is True
             assert result["sorted_plugins"] == ["Skyrim.esm", "Requiem.esp"]
             assert result["warnings"] == ["Some warning"]

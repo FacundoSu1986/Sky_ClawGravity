@@ -108,7 +108,9 @@ class AutoDetector:
     @staticmethod
     async def find_mo2() -> pathlib.Path | None:
         """Locate Mod Organizer 2 (portable install with profiles)."""
-        return await asyncio.wait_for(AutoDetector._find_mo2_inner(), timeout=_SEARCH_TIMEOUT)
+        return await asyncio.wait_for(
+            AutoDetector._find_mo2_inner(), timeout=_SEARCH_TIMEOUT
+        )
 
     @staticmethod
     async def _find_mo2_inner() -> pathlib.Path | None:
@@ -141,7 +143,9 @@ class AutoDetector:
     @staticmethod
     async def find_skyrim() -> pathlib.Path | None:
         """Locate Skyrim Special Edition."""
-        return await asyncio.wait_for(AutoDetector._find_skyrim_inner(), timeout=_SEARCH_TIMEOUT)
+        return await asyncio.wait_for(
+            AutoDetector._find_skyrim_inner(), timeout=_SEARCH_TIMEOUT
+        )
 
     @staticmethod
     async def _find_skyrim_inner() -> pathlib.Path | None:
@@ -179,7 +183,9 @@ class AutoDetector:
     @staticmethod
     async def find_loot() -> pathlib.Path | None:
         """Locate the LOOT executable."""
-        return await asyncio.wait_for(AutoDetector._find_loot_inner(), timeout=_SEARCH_TIMEOUT)
+        return await asyncio.wait_for(
+            AutoDetector._find_loot_inner(), timeout=_SEARCH_TIMEOUT
+        )
 
     @staticmethod
     async def _find_loot_inner() -> pathlib.Path | None:
@@ -203,7 +209,9 @@ class AutoDetector:
     @staticmethod
     async def find_xedit() -> pathlib.Path | None:
         """Locate the SSEEdit executable."""
-        return await asyncio.wait_for(AutoDetector._find_xedit_inner(), timeout=_SEARCH_TIMEOUT)
+        return await asyncio.wait_for(
+            AutoDetector._find_xedit_inner(), timeout=_SEARCH_TIMEOUT
+        )
 
     @staticmethod
     async def _find_xedit_inner() -> pathlib.Path | None:

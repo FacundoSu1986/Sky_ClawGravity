@@ -40,11 +40,12 @@ import pathlib
 import sqlite3
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
-from sky_claw.db.snapshot_manager import FileSnapshotManager, SnapshotInfo
+if TYPE_CHECKING:
+    from sky_claw.db.snapshot_manager import FileSnapshotManager, SnapshotInfo
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,10 @@ class LockAcquisitionError(LockError):
     ) -> None:
         self.resource_id = resource_id
         self.agent_id = agent_id
-        super().__init__(message or f"Failed to acquire lock on '{resource_id}' for agent '{agent_id}'")
+        super().__init__(
+            message
+            or f"Failed to acquire lock on '{resource_id}' for agent '{agent_id}'"
+        )
 
 
 class LockReleaseError(LockError):
@@ -360,7 +364,9 @@ class DistributedLockManager:
                 exc,
                 extra={"resource_id": resource_id, "agent_id": agent_id},
             )
-            raise LockReleaseError(f"Failed to release lock '{resource_id}': {exc}") from exc
+            raise LockReleaseError(
+                f"Failed to release lock '{resource_id}': {exc}"
+            ) from exc
 
     async def force_release(self, resource_id: str) -> bool:
         """Force-release a lock regardless of agent ownership.
@@ -382,7 +388,9 @@ class DistributedLockManager:
                 )
             return deleted
         except sqlite3.OperationalError as exc:
-            raise LockReleaseError(f"Failed to force-release lock '{resource_id}': {exc}") from exc
+            raise LockReleaseError(
+                f"Failed to force-release lock '{resource_id}': {exc}"
+            ) from exc
 
     async def get_lock_info(self, resource_id: str) -> LockInfo | None:
         """Query current lock state for a resource (may be expired)."""

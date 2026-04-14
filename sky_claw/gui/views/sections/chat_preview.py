@@ -7,11 +7,12 @@ VIEW PURO - Sin lógica de negocio, solo presentación.
 Separada de la lógica de procesamiento de mensajes.
 """
 
-from typing import List, Dict, Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
+
 from nicegui import ui
 
 from ..components import create_chat_message
-
 
 # Colores del tema (extraídos del monolito para mantener invariante visual)
 COLORS = {
@@ -21,13 +22,13 @@ COLORS = {
 
 
 def create_chat_preview(
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     is_thinking: bool = False,
-    on_send_message: Optional[Callable[[str], None]] = None,
+    on_send_message: Callable[[str], None] | None = None,
     placeholder: str = "Ask me anything about your mods...",
     title: str = "AI Assistant",
     subtitle: str = "Powered by DeepSeek",
-    welcome_message: Optional[Dict[str, Any]] = None,
+    welcome_message: dict[str, Any] | None = None,
 ) -> ui.element:
     """Preview del chat con el agente.
 
@@ -73,7 +74,9 @@ def create_chat_preview(
         with (
             ui.element("div")
             .classes("p-4 border-b border-[#1f2937]")
-            .style(f"background: linear-gradient(135deg, {COLORS['accent_violet']}20, {COLORS['accent_cyan']}20);")
+            .style(
+                f"background: linear-gradient(135deg, {COLORS['accent_violet']}20, {COLORS['accent_cyan']}20);"
+            )
         ):
             with ui.row().classes("items-center gap-3"):
                 # Icono del agente
@@ -100,7 +103,9 @@ def create_chat_preview(
         # ═══════════════════════════════════════════════════════════════
         # ÁREA DE MENSAJES
         # ═══════════════════════════════════════════════════════════════
-        messages_container = ui.element("div").classes("p-4 h-48 overflow-y-auto sky-scrollbar")
+        messages_container = ui.element("div").classes(
+            "p-4 h-48 overflow-y-auto sky-scrollbar"
+        )
 
         with messages_container:
             # Mostrar mensaje de bienvenida si no hay mensajes

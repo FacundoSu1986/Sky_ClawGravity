@@ -1,8 +1,10 @@
 import asyncio
 import json
 import logging
+
 import websockets
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
+
 from sky_claw.core.models import HitlApprovalRequest
 
 logger = logging.getLogger("SkyClaw.Interface")
@@ -31,7 +33,7 @@ class InterfaceAgent:
                 OSError,
             ) as e:
                 logger.warning(
-                    f"RCA: Enlace con Gateway perdido ({type(e).__name__}: {str(e)}). Reconectando silenciosamente en {backoff}s..."
+                    f"RCA: Enlace con Gateway perdido ({type(e).__name__}: {e!s}). Reconectando silenciosamente en {backoff}s..."
                 )
                 self.ws_connection = None
                 await asyncio.sleep(backoff)
@@ -53,7 +55,9 @@ class InterfaceAgent:
     async def request_hitl(self, req: HitlApprovalRequest) -> str:
         # Si no hay conexión, aborta por seguridad en lugar de colgar el agente
         if not self.ws_connection:
-            logger.error("RCA: Intento de HITL sin conexión a Gateway. Abortando acción destructiva.")
+            logger.error(
+                "RCA: Intento de HITL sin conexión a Gateway. Abortando acción destructiva."
+            )
             return "denied"
 
         import uuid
@@ -73,7 +77,7 @@ class InterfaceAgent:
         try:
             await asyncio.wait_for(event.wait(), timeout=300.0)
             return self._pending_hitl[req_id]["decision"]
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"HITL Timeout ({req_id}). Asumiendo DENIED.")
             return "denied"
         finally:

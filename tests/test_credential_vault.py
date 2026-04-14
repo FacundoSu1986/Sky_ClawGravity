@@ -16,7 +16,6 @@ import logging
 from unittest.mock import patch
 
 import pytest
-
 from sky_claw.security.credential_vault import CredentialVault
 
 
@@ -56,7 +55,9 @@ class TestCredentialVaultDynamicSalt:
             # confirms the plumbing is wired correctly.
             assert vault.fernet is not None
 
-    def test_two_vaults_with_different_salts_produce_different_fernet_keys(self, tmp_path) -> None:
+    def test_two_vaults_with_different_salts_produce_different_fernet_keys(
+        self, tmp_path
+    ) -> None:
         """Different salts → different derived keys → different Fernet tokens."""
         db_path = str(tmp_path / "v.db")
         master_key = "shared-master-key"
@@ -80,6 +81,7 @@ class TestCredentialVaultDynamicSalt:
     def test_static_salt_not_used(self, tmp_path) -> None:
         """Ensure the old static salt constant is NOT present in the vault module."""
         import inspect
+
         import sky_claw.security.credential_vault as vault_module
 
         source = inspect.getsource(vault_module)
@@ -87,18 +89,22 @@ class TestCredentialVaultDynamicSalt:
             "Static hardcoded salt found in credential_vault — audit finding #4 regression"
         )
 
-    def test_salt_failure_raises_runtime_error_with_logging(self, tmp_path, caplog) -> None:
+    def test_salt_failure_raises_runtime_error_with_logging(
+        self, tmp_path, caplog
+    ) -> None:
         """When salt I/O fails, __init__ raises RuntimeError and logs CRITICAL."""
         db_path = str(tmp_path / "fail.db")
 
-        with patch.object(
-            CredentialVault,
-            "_get_or_create_salt",
-            side_effect=RuntimeError("disk full"),
+        with (
+            patch.object(
+                CredentialVault,
+                "_get_or_create_salt",
+                side_effect=RuntimeError("disk full"),
+            ),
+            caplog.at_level(logging.CRITICAL, logger="SkyClaw.CredentialVault"),
+            pytest.raises(RuntimeError),
         ):
-            with caplog.at_level(logging.CRITICAL, logger="SkyClaw.CredentialVault"):
-                with pytest.raises(RuntimeError):
-                    CredentialVault(db_path=db_path, master_key="key")
+            CredentialVault(db_path=db_path, master_key="key")
 
         assert any("SECURITY" in r.message for r in caplog.records), (
             "Expected a CRITICAL security log when salt generation fails"

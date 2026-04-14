@@ -11,9 +11,9 @@ Reference:
 
 from __future__ import annotations
 
-import contextlib
 import asyncio
 import configparser
+import contextlib
 import logging
 import pathlib
 import re
@@ -235,7 +235,9 @@ class DynDOLODRunner:
             config.timeout_seconds,
         )
 
-    async def run_texgen(self, extra_args: list[str] | None = None) -> ToolExecutionResult:
+    async def run_texgen(
+        self, extra_args: list[str] | None = None
+    ) -> ToolExecutionResult:
         """
         Ejecuta TexGen en modo headless.
 
@@ -273,7 +275,7 @@ class DynDOLODRunner:
             )
         except DynDOLODExecutionError:
             raise
-        except (OSError, asyncio.TimeoutError, RuntimeError) as e:
+        except (TimeoutError, OSError, RuntimeError) as e:
             logger.exception("Error inesperado ejecutando TexGen: %s", e)
             return ToolExecutionResult(
                 success=False,
@@ -351,7 +353,7 @@ class DynDOLODRunner:
             )
         except DynDOLODExecutionError:
             raise
-        except (OSError, asyncio.TimeoutError, RuntimeError) as e:
+        except (TimeoutError, OSError, RuntimeError) as e:
             logger.exception("Error inesperado ejecutando DynDOLOD: %s", e)
             return ToolExecutionResult(
                 success=False,
@@ -427,7 +429,9 @@ class DynDOLODRunner:
             DynDOLODTimeoutError: Si se excede el timeout.
             DynDOLODExecutionError: Si el proceso falla críticamente.
         """
-        effective_timeout = timeout if timeout is not None else self._config.timeout_seconds
+        effective_timeout = (
+            timeout if timeout is not None else self._config.timeout_seconds
+        )
         heartbeat_interval = self._config.heartbeat_interval
 
         # Windows: CREATE_NO_WINDOW to avoid console popups.
@@ -493,30 +497,30 @@ class DynDOLODRunner:
 
         try:
             await asyncio.wait_for(proc.wait(), timeout=effective_timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Global timeout exceeded — kill process and cancel tasks.
             proc.kill()
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=3.0)
-            except asyncio.TimeoutError:
-                pass
             heartbeat.cancel()
             drain_out.cancel()
             drain_err.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(heartbeat, drain_out, drain_err, return_exceptions=True)
+                await asyncio.gather(
+                    heartbeat, drain_out, drain_err, return_exceptions=True
+                )
             raise DynDOLODTimeoutError(effective_timeout, tool_name)
         except Exception as e:
             proc.kill()
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=3.0)
-            except asyncio.TimeoutError:
-                pass
             heartbeat.cancel()
             drain_out.cancel()
             drain_err.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(heartbeat, drain_out, drain_err, return_exceptions=True)
+                await asyncio.gather(
+                    heartbeat, drain_out, drain_err, return_exceptions=True
+                )
             raise DynDOLODExecutionError(
                 f"Unexpected error during {tool_name} execution: {e}",
                 return_code=proc.returncode,
@@ -736,7 +740,9 @@ class DynDOLODRunner:
             dyndolod_result is not None
             and dyndolod_result.success
             and dyndolod_mod_path is not None
-            and (not run_texgen or (texgen_result is not None and texgen_result.success))
+            and (
+                not run_texgen or (texgen_result is not None and texgen_result.success)
+            )
         )
 
         result = DynDOLODPipelineResult(
@@ -985,16 +991,16 @@ class DynDOLODRunner:
         except OSError as e:
             logger.error("Error de I/O validando output %s: %s", output_path, e)
             return False
-        except (OSError, RuntimeError) as e:
+        except RuntimeError as e:
             logger.exception("Error inesperado validando output %s: %s", output_path, e)
             return False
 
 
 __all__ = [
-    "DynDOLODRunner",
     "DynDOLODConfig",
-    "DynDOLODPipelineResult",
     "DynDOLODExecutionError",
-    "DynDOLODTimeoutError",
     "DynDOLODNotFoundError",
+    "DynDOLODPipelineResult",
+    "DynDOLODRunner",
+    "DynDOLODTimeoutError",
 ]

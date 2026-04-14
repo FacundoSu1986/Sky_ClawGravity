@@ -7,14 +7,14 @@ Implementación persistente en SQLite y JSON.
 import hashlib
 import hmac
 import json
-import aiosqlite
-import os
 import logging
-from datetime import datetime, timezone
-from typing import List, Dict, Optional, Set
-from pathlib import Path
-from pydantic import BaseModel
+import os
 import threading
+from datetime import UTC, datetime
+from pathlib import Path
+
+import aiosqlite
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class GovernanceManager:
         """Calcula HMAC-SHA256 del contenido dado."""
         return hmac.new(key, content, hashlib.sha256).hexdigest()
 
-    def _load_whitelist(self) -> Set[str]:
+    def _load_whitelist(self) -> set[str]:
         """Carga la lista blanca. Falla cerrado (fail-closed) si hay corrupción."""
         if self.whitelist_path.exists():
             try:
@@ -103,7 +103,9 @@ class GovernanceManager:
             except RuntimeError:
                 raise
             except Exception as e:
-                logger.critical(f"Error crítico cargando whitelist: {e}. Abortando para prevenir pérdida de datos.")
+                logger.critical(
+                    f"Error crítico cargando whitelist: {e}. Abortando para prevenir pérdida de datos."
+                )
                 # Evita que el framework inicie con una whitelist comprometida
                 raise RuntimeError(f"Integridad de whitelist comprometida: {e}")
         return set()
@@ -122,7 +124,7 @@ class GovernanceManager:
         except Exception as e:
             logger.error(f"Error guardando whitelist: {e}")
 
-    def get_file_hash(self, file_path: str) -> Optional[str]:
+    def get_file_hash(self, file_path: str) -> str | None:
         """Calcula el hash SHA-256 de un archivo. Retorna None si falla."""
         sha256_hash = hashlib.sha256()
         try:
@@ -147,7 +149,9 @@ class GovernanceManager:
         try:
             async with aiosqlite.connect(self.cache_db_path) as db:
                 await db.execute("PRAGMA journal_mode=WAL")
-                cursor = await db.execute("SELECT status FROM scan_cache WHERE file_hash = ?", (file_hash,))
+                cursor = await db.execute(
+                    "SELECT status FROM scan_cache WHERE file_hash = ?", (file_hash,)
+                )
                 row = await cursor.fetchone()
                 if row and row[0] == "CLEAN":
                     return True
@@ -155,7 +159,9 @@ class GovernanceManager:
             logger.error(f"Error consultando caché de escaneo: {e}")
         return False
 
-    async def update_scan_result(self, file_path: str, results: List[Dict], status: str):
+    async def update_scan_result(
+        self, file_path: str, results: list[dict], status: str
+    ):
         """Actualiza el estado de escaneo en la base de datos."""
         file_hash = self.get_file_hash(file_path)
         if file_hash is None:
@@ -173,7 +179,7 @@ class GovernanceManager:
                     (
                         file_hash,
                         str(file_path),
-                        datetime.now(timezone.utc).isoformat(),
+                        datetime.now(UTC).isoformat(),
                         json.dumps(results),
                         status,
                     ),

@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import json
-import pathlib
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from sky_claw.xedit.output_parser import XEditOutputParser, XEditResult, XEditConflict
+from sky_claw.xedit.output_parser import XEditConflict, XEditOutputParser, XEditResult
 from sky_claw.xedit.runner import (
-    XEditRunner,
-    XEditNotFoundError,
-    XEditValidationError,
     ScriptGenerator,
+    XEditNotFoundError,
+    XEditRunner,
+    XEditValidationError,
 )
 
+if TYPE_CHECKING:
+    import pathlib
 
 # ------------------------------------------------------------------
 # XEditOutputParser
@@ -51,7 +52,9 @@ class TestXEditOutputParser:
         assert result.success is False
 
     def test_parse_stderr_errors(self) -> None:
-        result = XEditOutputParser.parse(stdout="", stderr="Fatal: Out of memory\n", return_code=1)
+        result = XEditOutputParser.parse(
+            stdout="", stderr="Fatal: Out of memory\n", return_code=1
+        )
         assert len(result.errors) == 1
         assert "Out of memory" in result.errors[0]
 
@@ -176,16 +179,18 @@ class TestXEditRunnerExecution:
         mock_proc.communicate = AsyncMock(return_value=(b"", b""))
         mock_proc.kill = MagicMock()
 
-        with patch(
-            "sky_claw.xedit.runner.asyncio.create_subprocess_exec",
-            return_value=mock_proc,
-        ):
-            with patch(
+        with (
+            patch(
+                "sky_claw.xedit.runner.asyncio.create_subprocess_exec",
+                return_value=mock_proc,
+            ),
+            patch(
                 "sky_claw.xedit.runner.asyncio.wait_for",
                 side_effect=asyncio.TimeoutError,
-            ):
-                with pytest.raises(RuntimeError, match="timed out"):
-                    await runner.run_script("list_conflicts.pas", ["Skyrim.esm"])
+            ),
+            pytest.raises(RuntimeError, match="timed out"),
+        ):
+            await runner.run_script("list_conflicts.pas", ["Skyrim.esm"])
 
 
 # ------------------------------------------------------------------
@@ -252,7 +257,11 @@ class TestXEditTool:
                 return_value=XEditResult(
                     return_code=0,
                     processed_plugins=["Skyrim.esm"],
-                    conflicts=[XEditConflict(plugin="Requiem.esp", record="WEAP", detail="Damage")],
+                    conflicts=[
+                        XEditConflict(
+                            plugin="Requiem.esp", record="WEAP", detail="Damage"
+                        )
+                    ],
                     errors=[],
                 )
             )

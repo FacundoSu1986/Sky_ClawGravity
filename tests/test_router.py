@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import json
-import pathlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
-
 from sky_claw.agent.providers import AnthropicProvider
-from sky_claw.agent.router import LLMRouter, MAX_CONTEXT_MESSAGES, MAX_TOOL_ROUNDS
+from sky_claw.agent.router import MAX_CONTEXT_MESSAGES, MAX_TOOL_ROUNDS, LLMRouter
 from sky_claw.agent.tools import AsyncToolRegistry
 from sky_claw.db.async_registry import AsyncModRegistry
 from sky_claw.mo2.vfs import MO2Controller
@@ -20,6 +18,8 @@ from sky_claw.scraper.masterlist import MasterlistClient
 from sky_claw.security.network_gateway import EgressPolicy, NetworkGateway
 from sky_claw.security.path_validator import PathValidator
 
+if TYPE_CHECKING:
+    import pathlib
 
 # ------------------------------------------------------------------
 # Helpers
@@ -100,7 +100,9 @@ class TestHistorySchema:
     @pytest.mark.asyncio
     async def test_schema_created(self, router: LLMRouter) -> None:
         assert router._conn is not None
-        async with router._conn.execute("SELECT name FROM sqlite_master WHERE type='table'") as cur:
+        async with router._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ) as cur:
             tables = {row[0] for row in await cur.fetchall()}
         assert "chat_history" in tables
 
@@ -257,7 +259,9 @@ class TestChatEndTurn:
         router._gateway.request = AsyncMock(return_value=mock_cm)
         mock_session = MagicMock(spec=aiohttp.ClientSession)
 
-        result = await router.chat("Run nonexistent tool", mock_session, chat_id="test-err")
+        result = await router.chat(
+            "Run nonexistent tool", mock_session, chat_id="test-err"
+        )
         assert result == "Tool failed."
         # The error should have been caught and sent as tool_result
         assert call_count == 2

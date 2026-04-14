@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import json
 import logging
-import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import pathlib
+
     from sky_claw.security.path_validator import PathValidator
 
 from sky_claw.security.path_validator import PathViolation
@@ -199,7 +200,7 @@ class PatcherPipeline:
                 logger.error("Path traversal blocked for pipeline load: %s", path)
                 raise
 
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         if not isinstance(data, dict):
@@ -380,7 +381,9 @@ class PatcherPipeline:
 
         return {
             "patchers": [p.patcher_id for p in enabled_patchers],
-            "patcher_configs": {p.patcher_id: p.config for p in enabled_patchers if p.config},
+            "patcher_configs": {
+                p.patcher_id: p.config for p in enabled_patchers if p.config
+            },
             "total_enabled": len(enabled_patchers),
             "total_disabled": len(self._patchers) - len(enabled_patchers),
         }

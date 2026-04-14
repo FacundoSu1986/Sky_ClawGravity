@@ -6,9 +6,12 @@ RESTRICCIÓN: CERO NiceGUI. Solo manipula AppState y EventBus.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from sky_claw.gui.event_bus import EventBus, EventType, SkyClawEvent
-from sky_claw.gui.models.app_state import AppState
+
+if TYPE_CHECKING:
+    from sky_claw.gui.models.app_state import AppState
 
 _logger = logging.getLogger("SkyClaw.ModController")
 
@@ -49,4 +52,6 @@ class ModController:
 
     def handle_conflict_detected(self, event: SkyClawEvent) -> None:
         """Reacciona al evento CONFLICT_DETECTED desde el daemon."""
-        _logger.warning("Conflicto detectado: %s", event.data.get("description", "desconocido"))
+        _logger.warning(
+            "Conflicto detectado: %s", event.data.get("description", "desconocido")
+        )

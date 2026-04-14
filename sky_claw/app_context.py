@@ -12,25 +12,25 @@ from typing import Any
 import aiohttp
 import keyring
 
-from sky_claw.agent.providers import create_provider, ProviderConfigError
+from sky_claw.agent.animation_hub import AnimationHub, EngineConfig
+from sky_claw.agent.providers import ProviderConfigError, create_provider
 from sky_claw.agent.router import LLMRouter
 from sky_claw.agent.tools_facade import AsyncToolRegistry
+from sky_claw.auto_detect import AutoDetector
 from sky_claw.comms.telegram import TelegramWebhook
-from sky_claw.comms.telegram_sender import TelegramSender
 from sky_claw.comms.telegram_polling import TelegramPolling
+from sky_claw.comms.telegram_sender import TelegramSender
+from sky_claw.config import LOOT_COMMON_PATHS, XEDIT_COMMON_PATHS, Config, SystemPaths
 from sky_claw.db.async_registry import AsyncModRegistry
-from sky_claw.config import Config, XEDIT_COMMON_PATHS, LOOT_COMMON_PATHS, SystemPaths
+from sky_claw.local_config import load as _load_legacy_json
 from sky_claw.mo2.vfs import MO2Controller
 from sky_claw.orchestrator.sync_engine import SyncEngine
 from sky_claw.scraper.masterlist import MasterlistClient
 from sky_claw.scraper.nexus_downloader import NexusDownloader
 from sky_claw.security.hitl import HITLGuard, HITLRequest
-from sky_claw.security.network_gateway import NetworkGateway, GatewayTCPConnector
+from sky_claw.security.network_gateway import GatewayTCPConnector, NetworkGateway
 from sky_claw.security.path_validator import PathValidator
-from sky_claw.auto_detect import AutoDetector
 from sky_claw.tools_installer import ToolsInstaller, scan_common_paths
-from sky_claw.agent.animation_hub import AnimationHub, EngineConfig
-from sky_claw.local_config import load as _load_legacy_json
 
 logger = logging.getLogger("sky_claw")
 
@@ -60,7 +60,9 @@ class NetworkContext:
         self.gateway: NetworkGateway | None = None
         self.downloader: NexusDownloader | None = None
 
-    async def initialize(self, nexus_key: str, staging_dir: pathlib.Path | None) -> None:
+    async def initialize(
+        self, nexus_key: str, staging_dir: pathlib.Path | None
+    ) -> None:
         self.gateway = NetworkGateway()
         if self.session is None:
             self.session = aiohttp.ClientSession(
@@ -232,30 +234,43 @@ class AppContext:
                     config_changed = True
                     logger.info("Zero-config: Skyrim detected at %s", detected_skyrim)
 
-            provider_name = self._args.provider if self._args.provider else local_cfg.llm_provider
+            provider_name = (
+                self._args.provider if self._args.provider else local_cfg.llm_provider
+            )
             try:
                 # Extraer llave dinámicamente sin tocar os.environ
-                api_key = getattr(local_cfg, f"{provider_name}_api_key", None) or local_cfg.llm_api_key
+                api_key = (
+                    getattr(local_cfg, f"{provider_name}_api_key", None)
+                    or local_cfg.llm_api_key
+                )
 
                 provider = create_provider(
                     provider_name=provider_name,
                     model=local_cfg.llm_model,
                     api_key=api_key,
                 )
-                actual_model = getattr(provider, "model", local_cfg.llm_model) or "default"
+                actual_model = (
+                    getattr(provider, "model", local_cfg.llm_model) or "default"
+                )
                 logger.info(
                     "Provider created: %s (model: %s)",
                     type(provider).__name__,
                     actual_model,
                 )
             except ProviderConfigError as exc:
-                logger.warning("LLM provider config error: %s — falling back to Ollama", exc)
+                logger.warning(
+                    "LLM provider config error: %s — falling back to Ollama", exc
+                )
                 from sky_claw.agent.providers import OllamaProvider
 
                 provider = OllamaProvider()
 
             nexus_key = os.environ.get("NEXUS_API_KEY") or local_cfg.nexus_api_key or ""
-            bot_token = os.environ.get("TELEGRAM_BOT_TOKEN") or local_cfg.telegram_bot_token or ""
+            bot_token = (
+                os.environ.get("TELEGRAM_BOT_TOKEN")
+                or local_cfg.telegram_bot_token
+                or ""
+            )
             operator_chat_id: int | None = self._args.operator_chat_id
 
             if local_cfg.telegram_chat_id:
@@ -286,7 +301,9 @@ class AppContext:
 
             await self.network.initialize(nexus_key, self._args.staging_dir)
 
-            masterlist = MasterlistClient(gateway=self.network.gateway, api_key=nexus_key)
+            masterlist = MasterlistClient(
+                gateway=self.network.gateway, api_key=nexus_key
+            )
 
             if bot_token:
                 self.sender = TelegramSender(
@@ -325,7 +342,9 @@ class AppContext:
                     logger.exception("Failed to send HITL notification")
 
             self.hitl = HITLGuard(notify_fn=_hitl_notify)
-            sync_engine = SyncEngine(mo2, masterlist, self.database.registry, hitl=self.hitl)
+            sync_engine = SyncEngine(
+                mo2, masterlist, self.database.registry, hitl=self.hitl
+            )
 
             if await self.database.registry.is_empty():
                 logger.info("Database empty, initial Sync from MO2...")
@@ -379,8 +398,12 @@ class AppContext:
                 animation_hub=AnimationHub(
                     mo2=mo2,
                     config=EngineConfig(
-                        pandora_exe=pathlib.Path(local_cfg.pandora_exe) if local_cfg.pandora_exe else None,
-                        bodyslide_exe=pathlib.Path(local_cfg.bodyslide_exe) if local_cfg.bodyslide_exe else None,
+                        pandora_exe=pathlib.Path(local_cfg.pandora_exe)
+                        if local_cfg.pandora_exe
+                        else None,
+                        bodyslide_exe=pathlib.Path(local_cfg.bodyslide_exe)
+                        if local_cfg.bodyslide_exe
+                        else None,
                     ),
                     path_validator=validator,
                 ),
@@ -497,7 +520,9 @@ class AppContext:
         if not legacy_path.exists():
             return
 
-        logger.info("CFG-01: Legacy JSON detected at %s — migrating to TOML", legacy_path)
+        logger.info(
+            "CFG-01: Legacy JSON detected at %s — migrating to TOML", legacy_path
+        )
         legacy = _load_legacy_json(legacy_path)
 
         # Instantiate the TOML config (creates defaults if file doesn't exist)
@@ -544,7 +569,9 @@ class AppContext:
                     if not current:
                         toml_cfg._data[toml_key] = secret_val
             except Exception as exc:
-                logger.warning("CFG-01: Failed to migrate secret '%s': %s", toml_key, exc)
+                logger.warning(
+                    "CFG-01: Failed to migrate secret '%s': %s", toml_key, exc
+                )
 
         # Atomic: save TOML first, then delete JSON
         toml_cfg.save()

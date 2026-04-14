@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
-
 from sky_claw.security.hitl import HITLGuard
 from sky_claw.security.network_gateway import EgressPolicy, NetworkGateway
 from sky_claw.security.path_validator import PathValidator
@@ -20,7 +19,6 @@ from sky_claw.tools_installer import (
     find_exe_in_dir,
     scan_common_paths,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -43,7 +41,9 @@ def hitl_guard() -> HITLGuard:
 
 
 @pytest.fixture
-def installer(hitl_guard: HITLGuard, gateway: NetworkGateway, validator: PathValidator) -> ToolsInstaller:
+def installer(
+    hitl_guard: HITLGuard, gateway: NetworkGateway, validator: PathValidator
+) -> ToolsInstaller:
     return ToolsInstaller(hitl=hitl_guard, gateway=gateway, path_validator=validator)
 
 
@@ -135,7 +135,9 @@ class TestScanCommonPaths:
 
 class TestEnsureLoot:
     @pytest.mark.asyncio
-    async def test_returns_existing_without_download(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
+    async def test_returns_existing_without_download(
+        self, installer: ToolsInstaller, tmp_path: pathlib.Path
+    ) -> None:
         """When loot.exe already exists, return it immediately."""
         exe = tmp_path / "loot.exe"
         exe.write_text("fake", encoding="utf-8")
@@ -148,7 +150,9 @@ class TestEnsureLoot:
         assert result.tool_name == "LOOT"
 
     @pytest.mark.asyncio
-    async def test_downloads_and_extracts_when_missing(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
+    async def test_downloads_and_extracts_when_missing(
+        self, installer: ToolsInstaller, tmp_path: pathlib.Path
+    ) -> None:
         """When loot.exe is absent, download from GitHub and extract."""
         import zipfile
 
@@ -212,7 +216,9 @@ class TestEnsureLoot:
         assert result.exe_path.exists()
 
     @pytest.mark.asyncio
-    async def test_hitl_denial_raises(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
+    async def test_hitl_denial_raises(
+        self, installer: ToolsInstaller, tmp_path: pathlib.Path
+    ) -> None:
         """When operator denies, raise ToolInstallError."""
         install_dir = tmp_path / "install"
         install_dir.mkdir()
@@ -237,7 +243,9 @@ class TestEnsureLoot:
             await installer.ensure_loot(install_dir, session)
 
     @pytest.mark.asyncio
-    async def test_github_api_failure_raises(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
+    async def test_github_api_failure_raises(
+        self, installer: ToolsInstaller, tmp_path: pathlib.Path
+    ) -> None:
         """When GitHub API fails, raise ToolInstallError."""
         install_dir = tmp_path / "install"
         install_dir.mkdir()
@@ -261,7 +269,9 @@ class TestEnsureLoot:
 
 class TestEnsureXedit:
     @pytest.mark.asyncio
-    async def test_returns_existing_without_download(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
+    async def test_returns_existing_without_download(
+        self, installer: ToolsInstaller, tmp_path: pathlib.Path
+    ) -> None:
         exe = tmp_path / "SSEEdit.exe"
         exe.write_text("fake", encoding="utf-8")
 
@@ -273,7 +283,9 @@ class TestEnsureXedit:
         assert result.tool_name == "SSEEdit"
 
     @pytest.mark.asyncio
-    async def test_downloads_and_extracts_when_missing(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
+    async def test_downloads_and_extracts_when_missing(
+        self, installer: ToolsInstaller, tmp_path: pathlib.Path
+    ) -> None:
         import zipfile
 
         zip_path = tmp_path / "_fake_asset.zip"
@@ -287,7 +299,9 @@ class TestEnsureXedit:
         install_dir.mkdir()
 
         # Use a .zip asset name to match.
-        release_json = _xedit_release_json(asset_name="SSEEdit_4.1.5.zip", size=len(zip_bytes))
+        release_json = _xedit_release_json(
+            asset_name="SSEEdit_4.1.5.zip", size=len(zip_bytes)
+        )
 
         mock_api_resp = AsyncMock()
         mock_api_resp.status = 200
@@ -332,7 +346,9 @@ class TestEnsureXedit:
         assert result.exe_path.name == "SSEEdit.exe"
 
     @pytest.mark.asyncio
-    async def test_hitl_denial_raises(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
+    async def test_hitl_denial_raises(
+        self, installer: ToolsInstaller, tmp_path: pathlib.Path
+    ) -> None:
         install_dir = tmp_path / "install"
         install_dir.mkdir()
 
@@ -412,7 +428,9 @@ class TestSetupToolsTool:
         validator = PathValidator(roots=[tmp_path])
         mo2 = MO2Controller(tmp_path, path_validator=validator)
         (tmp_path / "profiles" / "Default").mkdir(parents=True)
-        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text("", encoding="utf-8")
+        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text(
+            "", encoding="utf-8"
+        )
 
         db = AsyncModRegistry(db_path=tmp_path / "test.db")
         await db.open()
@@ -455,7 +473,9 @@ class TestSetupToolsTool:
         await db.close()
 
     @pytest.mark.asyncio
-    async def test_setup_tools_no_installer_returns_error(self, tmp_path: pathlib.Path) -> None:
+    async def test_setup_tools_no_installer_returns_error(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         from sky_claw.agent.tools import AsyncToolRegistry
         from sky_claw.db.async_registry import AsyncModRegistry
         from sky_claw.mo2.vfs import MO2Controller
@@ -466,7 +486,9 @@ class TestSetupToolsTool:
         validator = PathValidator(roots=[tmp_path])
         mo2 = MO2Controller(tmp_path, path_validator=validator)
         (tmp_path / "profiles" / "Default").mkdir(parents=True)
-        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text("", encoding="utf-8")
+        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text(
+            "", encoding="utf-8"
+        )
 
         db = AsyncModRegistry(db_path=tmp_path / "test.db")
         await db.open()
@@ -500,7 +522,9 @@ class TestSetupToolsTool:
         validator = PathValidator(roots=[tmp_path])
         mo2 = MO2Controller(tmp_path, path_validator=validator)
         (tmp_path / "profiles" / "Default").mkdir(parents=True)
-        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text("", encoding="utf-8")
+        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text(
+            "", encoding="utf-8"
+        )
 
         db = AsyncModRegistry(db_path=tmp_path / "test.db")
         await db.open()
@@ -537,6 +561,7 @@ class TestAppContextToolsInstaller:
     @pytest.mark.asyncio
     async def test_tools_installer_wired(self, tmp_path: pathlib.Path) -> None:
         import argparse
+
         from sky_claw.__main__ import AppContext
 
         args = argparse.Namespace(

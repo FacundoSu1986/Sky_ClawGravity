@@ -6,13 +6,13 @@ install steps, groups, plugins, conditions, flags, and file installs.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 import pydantic
 
 
-class GroupType(str, Enum):
+class GroupType(StrEnum):
     """Selection constraint for a group of plugins."""
 
     SELECT_EXACTLY_ONE = "SelectExactlyOne"
@@ -22,7 +22,7 @@ class GroupType(str, Enum):
     SELECT_ANY = "SelectAny"
 
 
-class FileState(str, Enum):
+class FileState(StrEnum):
     """Expected state of a file dependency."""
 
     ACTIVE = "Active"
@@ -136,7 +136,9 @@ class ConditionalPattern(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(strict=True)
 
-    conditions: CompositeDependency = pydantic.Field(default_factory=CompositeDependency)
+    conditions: CompositeDependency = pydantic.Field(
+        default_factory=CompositeDependency
+    )
     files: list[FileInstall] = pydantic.Field(default_factory=list)
 
 
@@ -153,4 +155,6 @@ class FomodConfig(pydantic.BaseModel):
     module_name: str = ""
     required_files: list[FileInstall] = pydantic.Field(default_factory=list)
     install_steps: list[InstallStep] = pydantic.Field(default_factory=list)
-    conditional_installs: list[ConditionalPattern] = pydantic.Field(default_factory=list)
+    conditional_installs: list[ConditionalPattern] = pydantic.Field(
+        default_factory=list
+    )

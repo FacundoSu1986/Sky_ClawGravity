@@ -3,21 +3,22 @@
 from __future__ import annotations
 
 import json
-import pathlib
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from sky_claw.xedit.conflict_analyzer import (
     ConflictAnalyzer,
     ConflictReport,
-    RecordConflict,
     PluginConflictPair,
+    RecordConflict,
     parse_conflict_lines,
     parse_summary_line,
 )
 from sky_claw.xedit.output_parser import XEditOutputParser, XEditResult
 
+if TYPE_CHECKING:
+    import pathlib
 
 # ---------------------------------------------------------------------------
 # Sample xEdit output
@@ -302,7 +303,9 @@ class TestSuggestResolution:
         )
 
         suggestions = analyzer.suggest_resolution(report)
-        assert any("reorder" in s.lower() or "load order" in s.lower() for s in suggestions)
+        assert any(
+            "reorder" in s.lower() or "load order" in s.lower() for s in suggestions
+        )
 
     def test_leveled_list_suggests_bashed_patch(self) -> None:
         analyzer = ConflictAnalyzer()
@@ -334,7 +337,9 @@ class TestSuggestResolution:
         analyzer = ConflictAnalyzer()
         report = ConflictReport(total_conflicts=0, critical_conflicts=0)
         suggestions = analyzer.suggest_resolution(report)
-        assert any("clean" in s.lower() or "no conflict" in s.lower() for s in suggestions)
+        assert any(
+            "clean" in s.lower() or "no conflict" in s.lower() for s in suggestions
+        )
 
     def test_heavy_pair_suggests_dedicated_patch(self) -> None:
         analyzer = ConflictAnalyzer()
@@ -408,7 +413,9 @@ class TestConflictReportToDict:
 
 class TestAnalyzeEspConflictsTool:
     @pytest.mark.asyncio
-    async def test_xedit_not_configured_returns_error(self, tmp_path: pathlib.Path) -> None:
+    async def test_xedit_not_configured_returns_error(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         from sky_claw.agent.tools import AsyncToolRegistry
         from sky_claw.db.async_registry import AsyncModRegistry
         from sky_claw.mo2.vfs import MO2Controller
@@ -421,7 +428,9 @@ class TestAnalyzeEspConflictsTool:
         validator = PathValidator(roots=[tmp_path])
         mo2 = MO2Controller(tmp_path, path_validator=validator)
         (tmp_path / "profiles" / "Default").mkdir(parents=True)
-        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text("+Skyrim.esm\n+Requiem.esp\n", encoding="utf-8")
+        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text(
+            "+Skyrim.esm\n+Requiem.esp\n", encoding="utf-8"
+        )
 
         db = AsyncModRegistry(db_path=tmp_path / "test.db")
         await db.open()
@@ -436,10 +445,15 @@ class TestAnalyzeEspConflictsTool:
             # xedit_runner=None — not configured
         )
 
-        result_str = await registry.execute("analyze_esp_conflicts", {"profile": "Default"})
+        result_str = await registry.execute(
+            "analyze_esp_conflicts", {"profile": "Default"}
+        )
         result = json.loads(result_str)
         assert "error" in result
-        assert "setup_tools" in result["error"].lower() or "xedit" in result["error"].lower()
+        assert (
+            "setup_tools" in result["error"].lower()
+            or "xedit" in result["error"].lower()
+        )
 
         await db.close()
 
@@ -458,7 +472,9 @@ class TestAnalyzeEspConflictsTool:
         validator = PathValidator(roots=[tmp_path])
         mo2 = MO2Controller(tmp_path, path_validator=validator)
         (tmp_path / "profiles" / "Default").mkdir(parents=True)
-        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text("", encoding="utf-8")
+        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text(
+            "", encoding="utf-8"
+        )
 
         db = AsyncModRegistry(db_path=tmp_path / "test.db")
         await db.open()

@@ -1,11 +1,15 @@
 from __future__ import annotations
+
 import asyncio
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 from sky_claw.comms.telegram import TelegramWebhook
 from sky_claw.comms.telegram_polling import TelegramPolling
-from sky_claw.app_context import AppContext
+
+if TYPE_CHECKING:
+    from sky_claw.app_context import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +19,9 @@ async def _run_telegram(ctx: AppContext, host: str, port: int) -> None:
     if ctx.sender is None:
         logger.error("TELEGRAM_BOT_TOKEN required.")
         sys.exit(1)
-    webhook_handler = TelegramWebhook(router=ctx.router, sender=ctx.sender, session=ctx.session, hitl=ctx.hitl)
+    webhook_handler = TelegramWebhook(
+        router=ctx.router, sender=ctx.sender, session=ctx.session, hitl=ctx.hitl
+    )
     polling = TelegramPolling(
         token=ctx.sender._token,
         webhook_handler=webhook_handler,

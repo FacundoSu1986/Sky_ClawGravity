@@ -23,13 +23,11 @@ import pathlib
 import sys
 
 import pytest
-
 from sky_claw.security.path_validator import (
     PathValidator,
     PathViolation,
     sandboxed_io,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,7 +66,9 @@ class TestPathValidatorConstruction:
         for root in v.roots:
             assert root.is_absolute()
 
-    def test_non_existent_root_is_accepted_at_construction(self, tmp_path: pathlib.Path) -> None:
+    def test_non_existent_root_is_accepted_at_construction(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         # The validator does not require roots to exist at construction time;
         # it only resolves them.  (resolve() on a non-existent path still works
         # on Python 3.6+, returning a cleaned absolute path.)
@@ -147,7 +147,9 @@ class TestValidateOutsideSandbox:
         with pytest.raises(PathViolation, match="outside all sandbox roots"):
             v.validate(outside)
 
-    def test_sibling_directory_outside_root_raises(self, tmp_path: pathlib.Path) -> None:
+    def test_sibling_directory_outside_root_raises(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         sandbox = tmp_path / "sandbox"
         sandbox.mkdir()
         sibling = tmp_path / "sibling"
@@ -205,7 +207,9 @@ class TestValidatePathTraversal:
         with pytest.raises(PathViolation, match="traversal"):
             v.validate(traversal)
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="'...' is not a valid directory name on Windows")
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="'...' is not a valid directory name on Windows"
+    )
     def test_triple_dot_not_traversal(self, tmp_path: pathlib.Path) -> None:
         # "..." is a valid filename component on POSIX, not a traversal marker.
         d = tmp_path / "..."
@@ -248,7 +252,9 @@ def _is_symlink_creatable() -> bool:
     reason="Symlink creation requires elevated privileges on Windows",
 )
 class TestValidateSymlinks:
-    def test_symlink_pointing_inside_sandbox_strict_allowed(self, tmp_path: pathlib.Path) -> None:
+    def test_symlink_pointing_inside_sandbox_strict_allowed(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         target = tmp_path / "real_file.txt"
         target.touch()
         link = tmp_path / "link_to_real.txt"
@@ -258,7 +264,9 @@ class TestValidateSymlinks:
         result = v.validate(link, strict_symlink=True)
         assert result == link.resolve()
 
-    def test_symlink_pointing_outside_sandbox_strict_raises(self, tmp_path: pathlib.Path) -> None:
+    def test_symlink_pointing_outside_sandbox_strict_raises(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         # Create a second tmp dir to act as the "outside".
         outside_dir = tmp_path.parent / f"_outside_{tmp_path.name}"
         outside_dir.mkdir(exist_ok=True)
@@ -278,7 +286,9 @@ class TestValidateSymlinks:
         outside_file.unlink(missing_ok=True)
         outside_dir.rmdir()
 
-    def test_symlink_outside_sandbox_non_strict_allowed_if_resolves_inside(self, tmp_path: pathlib.Path) -> None:
+    def test_symlink_outside_sandbox_non_strict_allowed_if_resolves_inside(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         # With strict_symlink=False, the symlink check is skipped; only the
         # final resolved path is checked against the sandbox.
         real = tmp_path / "real.txt"
@@ -291,7 +301,9 @@ class TestValidateSymlinks:
         result = v.validate(link, strict_symlink=False)
         assert result == link.resolve()
 
-    def test_symlink_outside_sandbox_non_strict_blocked_if_resolves_outside(self, tmp_path: pathlib.Path) -> None:
+    def test_symlink_outside_sandbox_non_strict_blocked_if_resolves_outside(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         # With strict_symlink=False the symlink check is skipped, but the
         # final resolve() check still catches an escape.
         outside_dir = tmp_path.parent / f"_outside2_{tmp_path.name}"
@@ -314,7 +326,9 @@ class TestValidateSymlinks:
         outside_file.unlink(missing_ok=True)
         outside_dir.rmdir()
 
-    def test_broken_symlink_strict_raises_path_violation(self, tmp_path: pathlib.Path) -> None:
+    def test_broken_symlink_strict_raises_path_violation(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         link = tmp_path / "broken_link.txt"
         link.symlink_to(tmp_path / "nonexistent_target.txt")
 
@@ -372,7 +386,9 @@ class TestMultipleSandboxRoots:
         v = PathValidator(roots=roots)
         assert v.validate(f) == f.resolve()
 
-    def test_roots_property_returns_tuple_of_resolved_paths(self, tmp_path: pathlib.Path) -> None:
+    def test_roots_property_returns_tuple_of_resolved_paths(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         r1 = tmp_path / "a"
         r2 = tmp_path / "b"
         r1.mkdir()
@@ -390,7 +406,9 @@ class TestMultipleSandboxRoots:
 
 
 class TestSandboxedIODecorator:
-    def test_valid_positional_path_executes_function(self, tmp_path: pathlib.Path) -> None:
+    def test_valid_positional_path_executes_function(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         @sandboxed_io(roots=[tmp_path])
         def read_file(path: pathlib.Path) -> str:
             return "content"
@@ -399,7 +417,9 @@ class TestSandboxedIODecorator:
         valid.touch()
         assert read_file(valid) == "content"
 
-    def test_invalid_positional_path_raises_violation(self, tmp_path: pathlib.Path) -> None:
+    def test_invalid_positional_path_raises_violation(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         @sandboxed_io(roots=[tmp_path])
         def read_file(path: pathlib.Path) -> str:
             return "content"

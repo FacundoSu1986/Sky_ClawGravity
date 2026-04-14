@@ -9,16 +9,17 @@ Tests:
 """
 
 import asyncio
+import os
+import sys
+from unittest.mock import AsyncMock
+
 import pytest
 from tenacity import wait_none
-from unittest.mock import AsyncMock
-import sys
-import os
 
 # Add path to sky_claw module
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from sky_claw.orchestrator.sync_engine import SyncEngine, SyncConfig
+from sky_claw.orchestrator.sync_engine import SyncConfig, SyncEngine
 
 
 class TestSyncEngineResilience:
@@ -52,7 +53,9 @@ class TestSyncEngineResilience:
         return AsyncMock()
 
     @pytest.fixture
-    def sync_engine(self, mock_registry, mock_controller, mock_client, mock_downloader, mock_hitl):
+    def sync_engine(
+        self, mock_registry, mock_controller, mock_client, mock_downloader, mock_hitl
+    ):
         """Fixture que proporciona SyncEngine con todos los mocks."""
         engine = SyncEngine(
             mo2=mock_controller,
@@ -94,7 +97,7 @@ class TestSyncEngineResilience:
 
         async def timeout_download():
             await asyncio.sleep(0.1)  # Simulate timeout
-            raise asyncio.TimeoutError("Simulated timeout")
+            raise TimeoutError("Simulated timeout")
 
         tasks = [timeout_download() for _ in range(5)]
 
@@ -124,7 +127,9 @@ class TestSyncEngineResilience:
         assert await sync_engine.metrics.get_error_count() >= 3
 
     @pytest.mark.asyncio
-    async def test_orchestrator_remains_operational_after_all_failures(self, sync_engine, mock_registry):
+    async def test_orchestrator_remains_operational_after_all_failures(
+        self, sync_engine, mock_registry
+    ):
         """Test: El orquestador permanece operativo después de todos los fallos."""
 
         # Simulate multiple error types

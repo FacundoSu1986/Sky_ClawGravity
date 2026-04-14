@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Awaitable
+from typing import TYPE_CHECKING, Any
 
 from nicegui import ui
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from sky_claw.mo2.vfs import MO2Controller  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -31,14 +33,18 @@ def build_mod_list(
         on_search: Callback(search_term) -> filtered mods.
     """
     # ── Header ────────────────────────────────────────────────────────
-    with ui.element("div").classes("sky-modlist-header"):
-        with ui.row().classes("items-center justify-between w-full"):
-            ui.label("MODS INSTALADOS").classes("sky-section-title")
-            ui.badge(str(len(mods))).classes("sky-badge-count")
+    with (
+        ui.element("div").classes("sky-modlist-header"),
+        ui.row().classes("items-center justify-between w-full"),
+    ):
+        ui.label("MODS INSTALADOS").classes("sky-section-title")
+        ui.badge(str(len(mods))).classes("sky-badge-count")
 
     # ── Search Bar ────────────────────────────────────────────────────
     search_input = (
-        ui.input(placeholder="🔍 Buscar mod...").classes("sky-modlist-search w-full").props("dense outlined dark")
+        ui.input(placeholder="🔍 Buscar mod...")
+        .classes("sky-modlist-search w-full")
+        .props("dense outlined dark")
     )
 
     # ── Mod List Container ────────────────────────────────────────────
@@ -79,7 +85,9 @@ def _build_mod_row(
     is_enabled = mod.get("enabled", True)
     version = mod.get("version", "")
 
-    with ui.element("div").classes("sky-mod-row" + (" sky-mod-row--disabled" if not is_enabled else "")):
+    with ui.element("div").classes(
+        "sky-mod-row" + (" sky-mod-row--disabled" if not is_enabled else "")
+    ):
         # Toggle
         switch = ui.switch(value=is_enabled).classes("sky-mod-toggle")
         if on_toggle:
@@ -98,4 +106,6 @@ def _build_mod_row(
         if is_enabled:
             ui.icon("check_circle", size="1.2rem").classes("sky-mod-status-ok")
         else:
-            ui.icon("remove_circle_outline", size="1.2rem").classes("sky-mod-status-off")
+            ui.icon("remove_circle_outline", size="1.2rem").classes(
+                "sky-mod-status-off"
+            )

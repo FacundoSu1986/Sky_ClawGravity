@@ -119,7 +119,9 @@ def _detect_skyrim_version(exe_path: pathlib.Path) -> tuple[str, SkyrimEdition]:
         import pefile  # type: ignore[import-untyped]
 
         pe = pefile.PE(str(exe_path), fast_load=True)
-        pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_RESOURCE"]])
+        pe.parse_data_directories(
+            directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_RESOURCE"]]
+        )
         if hasattr(pe, "FileInfo"):
             for fi_list in pe.FileInfo:
                 for fi in fi_list:
@@ -146,7 +148,11 @@ def _detect_skyrim_version(exe_path: pathlib.Path) -> tuple[str, SkyrimEdition]:
     if edition == SkyrimEdition.SE and version:
         try:
             major_minor = version.split(".")
-            if len(major_minor) >= 2 and int(major_minor[0]) >= 1 and int(major_minor[1]) >= AE_MIN_MINOR_VERSION:
+            if (
+                len(major_minor) >= 2
+                and int(major_minor[0]) >= 1
+                and int(major_minor[1]) >= AE_MIN_MINOR_VERSION
+            ):
                 edition = SkyrimEdition.AE
         except (ValueError, IndexError):
             pass
@@ -170,12 +176,16 @@ class EnvironmentScanner:
     async def scan(self) -> EnvironmentSnapshot:
         """Run all detectors concurrently and build an EnvironmentSnapshot."""
         try:
-            return await asyncio.wait_for(self._scan_inner(), timeout=SEARCH_TIMEOUT_SECONDS * 3)
-        except asyncio.TimeoutError:
+            return await asyncio.wait_for(
+                self._scan_inner(), timeout=SEARCH_TIMEOUT_SECONDS * 3
+            )
+        except TimeoutError:
             logger.warning("Environment scan timed out")
             snap = EnvironmentSnapshot()
             snap.health_status = HealthStatus.CRITICAL
-            snap.health_messages = ["⚠️ El escaneo del entorno tardó demasiado. Revisa los discos."]
+            snap.health_messages = [
+                "⚠️ El escaneo del entorno tardó demasiado. Revisa los discos."
+            ]
             return snap
 
     async def _scan_inner(self) -> EnvironmentSnapshot:
@@ -184,7 +194,11 @@ class EnvironmentScanner:
         # ── 1. Detect Skyrim ──────────────────────────────────────────
         skyrim_path = await self._find_skyrim()
         if skyrim_path:
-            exe_name = "SkyrimSE.exe" if (skyrim_path / "SkyrimSE.exe").exists() else "Skyrim.exe"
+            exe_name = (
+                "SkyrimSE.exe"
+                if (skyrim_path / "SkyrimSE.exe").exists()
+                else "Skyrim.exe"
+            )
             version, edition = _detect_skyrim_version(skyrim_path / exe_name)
             snap.skyrim = SkyrimInfo(
                 path=skyrim_path,
@@ -193,10 +207,15 @@ class EnvironmentScanner:
                 version=version,
                 store=self._detect_store(skyrim_path),
             )
-            snap.health_messages.append(f"✅ Skyrim {edition.value} detectado" + (f" (v{version})" if version else ""))
+            snap.health_messages.append(
+                f"✅ Skyrim {edition.value} detectado"
+                + (f" (v{version})" if version else "")
+            )
         else:
             snap.health_status = HealthStatus.CRITICAL
-            snap.health_messages.append("❌ No se encontró Skyrim. Selecciona la carpeta del juego manualmente.")
+            snap.health_messages.append(
+                "❌ No se encontró Skyrim. Selecciona la carpeta del juego manualmente."
+            )
             return snap
 
         # ── 2. Detect MO2 ─────────────────────────────────────────────
@@ -204,7 +223,9 @@ class EnvironmentScanner:
         if mo2_path:
             profiles = self._list_mo2_profiles(mo2_path)
             snap.mo2 = MO2Info(path=mo2_path, profiles=profiles)
-            snap.health_messages.append(f"✅ Mod Organizer 2 detectado ({len(profiles)} perfiles)")
+            snap.health_messages.append(
+                f"✅ Mod Organizer 2 detectado ({len(profiles)} perfiles)"
+            )
         else:
             snap.health_messages.append(
                 "⚠️ Mod Organizer 2 no encontrado. Los mods se gestionarán directamente en la carpeta Data."
@@ -278,9 +299,7 @@ class EnvironmentScanner:
 
         # ── 4. Compute Health ─────────────────────────────────────────
         critical_missing = [m for m in snap.missing if m.is_critical]
-        if critical_missing:
-            snap.health_status = HealthStatus.NEEDS_SETUP
-        elif snap.missing:
+        if critical_missing or snap.missing:
             snap.health_status = HealthStatus.NEEDS_SETUP
         else:
             snap.health_status = HealthStatus.READY
@@ -288,7 +307,9 @@ class EnvironmentScanner:
         if snap.health_status == HealthStatus.READY:
             snap.health_messages.insert(0, "🟢 Todo listo para jugar")
         elif snap.health_status == HealthStatus.NEEDS_SETUP:
-            snap.health_messages.insert(0, "🟡 Algunas herramientas faltan — puedes instalarlas abajo")
+            snap.health_messages.insert(
+                0, "🟡 Algunas herramientas faltan — puedes instalarlas abajo"
+            )
 
         return snap
 
@@ -483,8 +504,12 @@ class EnvironmentScanner:
         if not profiles_dir.is_dir():
             return ["Default"]
         try:
-            return sorted([p.name for p in profiles_dir.iterdir() if p.is_dir() and (p / "modlist.txt").exists()]) or [
-                "Default"
-            ]
+            return sorted(
+                [
+                    p.name
+                    for p in profiles_dir.iterdir()
+                    if p.is_dir() and (p / "modlist.txt").exists()
+                ]
+            ) or ["Default"]
         except OSError:
             return ["Default"]

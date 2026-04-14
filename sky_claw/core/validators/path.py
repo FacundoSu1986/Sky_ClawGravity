@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Validador Anti-Path Traversal para prevenir ataques de recorrido de directorios.
 
@@ -11,7 +10,6 @@ import pathlib
 import re
 import urllib.parse
 from dataclasses import dataclass
-from typing import Optional, Set
 
 logger = logging.getLogger("SkyClaw.validators.path")
 
@@ -55,8 +53,8 @@ class PathValidationResult:
     """Resultado de validación de path."""
 
     is_valid: bool
-    normalized_path: Optional[str]
-    error_message: Optional[str]
+    normalized_path: str | None
+    error_message: str | None
     is_absolute: bool
 
 
@@ -77,7 +75,7 @@ class PathTraversalValidator:
 
     def __init__(
         self,
-        allowed_roots: Optional[Set[pathlib.Path]] = None,
+        allowed_roots: set[pathlib.Path] | None = None,
         allow_absolute: bool = False,
     ):
         """
@@ -134,7 +132,9 @@ class PathTraversalValidator:
 
         # Verificar byte nulo literal
         if "\x00" in path:
-            logger.warning(f"Path traversal blocked: null byte literal en {original_path}")
+            logger.warning(
+                f"Path traversal blocked: null byte literal en {original_path}"
+            )
             return PathValidationResult(
                 is_valid=False,
                 normalized_path=None,
@@ -145,7 +145,9 @@ class PathTraversalValidator:
         # Paso 2: Verificar patrones de traversal en el path original
         for pattern in PATH_TRAVERSAL_PATTERNS:
             if pattern.search(path):
-                logger.warning(f"Path traversal blocked: patrón {pattern.pattern} en {original_path}")
+                logger.warning(
+                    f"Path traversal blocked: patrón {pattern.pattern} en {original_path}"
+                )
                 return PathValidationResult(
                     is_valid=False,
                     normalized_path=None,
@@ -177,7 +179,9 @@ class PathTraversalValidator:
                             is_absolute=False,
                         )
                 if any(decoded_path.startswith(p) for p in DANGEROUS_PREFIXES):
-                    logger.warning(f"Path traversal blocked: path absoluto codificado - {original_path}")
+                    logger.warning(
+                        f"Path traversal blocked: path absoluto codificado - {original_path}"
+                    )
                     return PathValidationResult(
                         is_valid=False,
                         normalized_path=None,
@@ -186,7 +190,9 @@ class PathTraversalValidator:
                     )
                 for wp in DANGEROUS_WINDOWS_PATTERNS:
                     if wp.search(decoded_path):
-                        logger.warning(f"Path traversal blocked: patrón Windows codificado en {original_path}")
+                        logger.warning(
+                            f"Path traversal blocked: patrón Windows codificado en {original_path}"
+                        )
                         return PathValidationResult(
                             is_valid=False,
                             normalized_path=None,
@@ -194,14 +200,18 @@ class PathTraversalValidator:
                             is_absolute=True,
                         )
         except (ValueError, UnicodeDecodeError) as exc:
-            logger.warning(f"Path traversal: decode falló para {original_path!r}: {exc}")
+            logger.warning(
+                f"Path traversal: decode falló para {original_path!r}: {exc}"
+            )
 
         # Paso 3: Verificar si es ruta absoluta
         is_absolute = any(path.startswith(p) for p in DANGEROUS_PREFIXES)
         is_windows_absolute = any(p.search(path) for p in DANGEROUS_WINDOWS_PATTERNS)
 
         if (is_absolute or is_windows_absolute) and not self.allow_absolute:
-            logger.warning(f"Path traversal blocked: path absoluto no permitido - {original_path}")
+            logger.warning(
+                f"Path traversal blocked: path absoluto no permitido - {original_path}"
+            )
             return PathValidationResult(
                 is_valid=False,
                 normalized_path=None,
@@ -236,7 +246,9 @@ class PathTraversalValidator:
                         continue
 
                 if not in_allowed_root:
-                    logger.warning(f"Path traversal blocked: path fuera de roots - {original_path}")
+                    logger.warning(
+                        f"Path traversal blocked: path fuera de roots - {original_path}"
+                    )
                     return PathValidationResult(
                         is_valid=False,
                         normalized_path=None,
@@ -259,7 +271,9 @@ class PathTraversalValidator:
         )
 
 
-def validate_path_traversal(path: str, allowed_roots: Optional[Set[pathlib.Path]] = None) -> str:
+def validate_path_traversal(
+    path: str, allowed_roots: set[pathlib.Path] | None = None
+) -> str:
     """
     Función de conveniencia para usar como field_validator.
 
@@ -276,7 +290,9 @@ def validate_path_traversal(path: str, allowed_roots: Optional[Set[pathlib.Path]
     Raises:
         ValueError: Si el path es inválido o representa riesgo de traversal
     """
-    validator = PathTraversalValidator(allowed_roots=allowed_roots, allow_absolute=allowed_roots is not None)
+    validator = PathTraversalValidator(
+        allowed_roots=allowed_roots, allow_absolute=allowed_roots is not None
+    )
     result = validator.validate(path)
 
     if not result.is_valid:

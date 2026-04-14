@@ -1,9 +1,12 @@
 import asyncio
+import contextlib
 import logging
 import pathlib
-from typing import Callable, Coroutine, List, Optional, Any
-from sky_claw.core.windows_interop import ModdingToolsAgent
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from sky_claw.config import SystemPaths
+from sky_claw.core.windows_interop import ModdingToolsAgent
 from sky_claw.security.path_validator import PathValidator, PathViolation
 
 # Standard 2026 Process Orchestration
@@ -21,14 +24,14 @@ class ManagedToolExecutor:
 
     def __init__(self, timeout: float = 300.0):
         self.timeout: float = timeout
-        self.proc: Optional[asyncio.subprocess.Process] = None
+        self.proc: asyncio.subprocess.Process | None = None
         self._abort_event: asyncio.Event = asyncio.Event()
 
     async def execute(
         self,
         binary_path: str,
-        args: List[str],
-        on_output_callback: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None,
+        args: list[str],
+        on_output_callback: Callable[[str], Coroutine[Any, Any, None]] | None = None,
     ) -> int:
         """
         Executes binary with WSL->Win interop. Captures output line-by-line.
@@ -36,7 +39,7 @@ class ManagedToolExecutor:
         self._abort_event.clear()
 
         # Interop Layer: Translate argument paths to ensure Windows binaries receive valid C:\... strings
-        win_args: List[str] = []
+        win_args: list[str] = []
         # Validator setup based on SystemPaths modding root bounds for strict safety
         try:
             validator = PathValidator([SystemPaths.modding_root()])
@@ -48,7 +51,9 @@ class ManagedToolExecutor:
             if arg.startswith("/mnt/") or arg.startswith("/"):
                 # WSL path — must translate AND pass validation. No fallback.
                 try:
-                    translated_path = await ModdingToolsAgent.translate_path_wsl_to_win(arg)
+                    translated_path = await ModdingToolsAgent.translate_path_wsl_to_win(
+                        arg
+                    )
                 except Exception as te:
                     logger.error(
                         "🚨 ABORT: WSL path translation failed for arg — rejecting. %s",
@@ -58,14 +63,18 @@ class ManagedToolExecutor:
                 try:
                     validator.validate(translated_path)
                 except PathViolation as pv:
-                    logger.error("🚨 ABORT (Fail-Safe): Path Traversal Detected! %s", pv)
+                    logger.error(
+                        "🚨 ABORT (Fail-Safe): Path Traversal Detected! %s", pv
+                    )
                     return -1
                 win_args.append(translated_path)
             elif pathlib.Path(arg).is_absolute():
                 # Windows absolute path — apply base-directory jailing via pathlib
                 try:
                     resolved = pathlib.Path(arg).resolve(strict=False)
-                    modding_root = pathlib.Path(SystemPaths.modding_root()).resolve(strict=False)
+                    modding_root = pathlib.Path(SystemPaths.modding_root()).resolve(
+                        strict=False
+                    )
                     if not resolved.is_relative_to(modding_root):
                         logger.error(
                             "🚨 ABORT: Base-dir jail violation — '%s' is outside '%s'",
@@ -74,7 +83,9 @@ class ManagedToolExecutor:
                         )
                         return -1
                 except Exception as je:
-                    logger.error("🚨 ABORT: Path resolution failed during jailing: %s", je)
+                    logger.error(
+                        "🚨 ABORT: Path resolution failed during jailing: %s", je
+                    )
                     return -1
                 win_args.append(arg)
             else:
@@ -94,13 +105,15 @@ class ManagedToolExecutor:
             )
 
             # Start monitoring tasks
-            monitor_task = asyncio.create_task(self._stream_telemetry(on_output_callback))
+            monitor_task = asyncio.create_task(
+                self._stream_telemetry(on_output_callback)
+            )
 
             try:
                 # Wait for completion OR timeout OR abort signal
                 await asyncio.wait_for(self.proc.wait(), timeout=self.timeout)
                 await monitor_task
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.error(f"⚠️ WATCHDOG: Timeout de {self.timeout}s alcanzado.")
                 await self.abort()
                 raise
@@ -118,7 +131,9 @@ class ManagedToolExecutor:
             await self.abort()
             return -1
 
-    async def _stream_telemetry(self, callback: Optional[Callable[[str], Coroutine[Any, Any, None]]]):
+    async def _stream_telemetry(
+        self, callback: Callable[[str], Coroutine[Any, Any, None]] | None
+    ):
         """Streams stdout and stderr concurrently to the provided telemetry callback."""
         if not self.proc or not self.proc.stdout or not self.proc.stderr:
             return
@@ -145,10 +160,8 @@ class ManagedToolExecutor:
         """Triggers the emergency stop from an external thread or task."""
         self._abort_event.set()
         if self.proc:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 self.proc.terminate()
-            except ProcessLookupError:
-                pass
 
     async def abort(self):
         """Forcefully terminates the managed sub-process and its family."""
@@ -161,8 +174,10 @@ class ManagedToolExecutor:
             # Wait for death
             try:
                 await asyncio.wait_for(self.proc.wait(), timeout=3.0)
-            except asyncio.TimeoutError:
-                logger.warning("💀 ABORT: El proceso no responde a terminate(). Usando kill().")
+            except TimeoutError:
+                logger.warning(
+                    "💀 ABORT: El proceso no responde a terminate(). Usando kill()."
+                )
                 self.proc.kill()
                 await self.proc.wait()
         except ProcessLookupError:

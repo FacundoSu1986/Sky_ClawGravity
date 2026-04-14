@@ -45,7 +45,9 @@ logger = logging.getLogger(__name__)
 def _should_retry(exc: BaseException) -> bool:
     if isinstance(exc, (aiohttp.ClientConnectionError, asyncio.TimeoutError)):
         return True
-    return isinstance(exc, aiohttp.ClientResponseError) and (exc.status == 429 or exc.status >= 500)
+    return isinstance(exc, aiohttp.ClientResponseError) and (
+        exc.status == 429 or exc.status >= 500
+    )
 
 
 class LLMProvider(ABC):
@@ -114,7 +116,9 @@ class AnthropicProvider(LLMProvider):
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
-        async with await gateway.request("POST", self.API_URL, session, json=body, headers=headers) as resp:
+        async with await gateway.request(
+            "POST", self.API_URL, session, json=body, headers=headers
+        ) as resp:
             if resp.status >= 400:
                 text = await resp.text()
                 logger.error("Anthropic error %d: %s", resp.status, text)
@@ -163,43 +167,44 @@ def _convert_messages_to_openai(messages: list[dict[str, Any]]) -> list[dict[str
         if isinstance(content, str):
             result.append({"role": role, "content": content})
             continue
-        if isinstance(content, list):
-            if content and isinstance(content[0], dict):
-                first_type = content[0].get("type", "")
-                if first_type == "tool_result":
-                    for block in content:
-                        result.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": block.get("tool_use_id", ""),
-                                "content": block.get("content", ""),
-                            }
-                        )
-                    continue
-                text_parts = []
-                tool_calls = []
+        if isinstance(content, list) and content and isinstance(content[0], dict):
+            first_type = content[0].get("type", "")
+            if first_type == "tool_result":
                 for block in content:
-                    if block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-                    elif block.get("type") == "tool_use":
-                        tool_calls.append(
-                            {
-                                "id": block.get("id", uuid.uuid4().hex),
-                                "type": "function",
-                                "function": {
-                                    "name": block["name"],
-                                    "arguments": json.dumps(block.get("input", {})),
-                                },
-                            }
-                        )
-                msg_dict: dict[str, Any] = {
-                    "role": role,
-                    "content": "\n".join(text_parts) if text_parts else ("..." if not tool_calls else None),
-                }
-                if tool_calls:
-                    msg_dict["tool_calls"] = tool_calls
-                result.append(msg_dict)
+                    result.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": block.get("tool_use_id", ""),
+                            "content": block.get("content", ""),
+                        }
+                    )
                 continue
+            text_parts = []
+            tool_calls = []
+            for block in content:
+                if block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif block.get("type") == "tool_use":
+                    tool_calls.append(
+                        {
+                            "id": block.get("id", uuid.uuid4().hex),
+                            "type": "function",
+                            "function": {
+                                "name": block["name"],
+                                "arguments": json.dumps(block.get("input", {})),
+                            },
+                        }
+                    )
+            msg_dict: dict[str, Any] = {
+                "role": role,
+                "content": "\n".join(text_parts)
+                if text_parts
+                else ("..." if not tool_calls else None),
+            }
+            if tool_calls:
+                msg_dict["tool_calls"] = tool_calls
+            result.append(msg_dict)
+            continue
         result.append({"role": role, "content": str(content)})
     return result
 
@@ -232,7 +237,9 @@ def _parse_openai_response(data: dict[str, Any]) -> dict[str, Any]:
                     "input": args,
                 }
             )
-    stop_reason = "tool_use" if tool_calls or finish_reason == "tool_calls" else "end_turn"
+    stop_reason = (
+        "tool_use" if tool_calls or finish_reason == "tool_calls" else "end_turn"
+    )
     usage = data.get("usage", {})
     return {
         "stop_reason": stop_reason,
@@ -257,7 +264,9 @@ class DeepSeekProvider(LLMProvider):
         stop=stop_after_attempt(5),
         retry=retry_if_exception(_should_retry),
     )
-    async def chat(self, messages, tools, session, gateway, *, system_prompt="", model=""):
+    async def chat(
+        self, messages, tools, session, gateway, *, system_prompt="", model=""
+    ):
         model = model or self.DEFAULT_MODEL
         oai_messages = _convert_messages_to_openai(messages)
         if system_prompt:
@@ -270,7 +279,9 @@ class DeepSeekProvider(LLMProvider):
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-        async with await gateway.request("POST", self.API_URL, session, json=body, headers=headers) as resp:
+        async with await gateway.request(
+            "POST", self.API_URL, session, json=body, headers=headers
+        ) as resp:
             if resp.status >= 400:
                 text = await resp.text()
                 logger.error(
@@ -295,7 +306,9 @@ class OllamaProvider(LLMProvider):
         stop=stop_after_attempt(5),
         retry=retry_if_exception(_should_retry),
     )
-    async def chat(self, messages, tools, session, gateway, *, system_prompt="", model=""):
+    async def chat(
+        self, messages, tools, session, gateway, *, system_prompt="", model=""
+    ):
         model = model or self.DEFAULT_MODEL
         oai_messages = _convert_messages_to_openai(messages)
         if system_prompt:

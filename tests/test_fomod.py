@@ -6,13 +6,12 @@ import pathlib
 import textwrap
 
 import pytest
-
+from sky_claw.core.errors import FomodParserSecurityError
 from sky_claw.fomod.models import (
     FomodConfig,
     GroupType,
 )
-from sky_claw.core.errors import FomodParserSecurityError
-from sky_claw.fomod.parser import parse_fomod, parse_fomod_string, FomodParseError
+from sky_claw.fomod.parser import FomodParseError, parse_fomod, parse_fomod_string
 from sky_claw.fomod.resolver import FomodResolver
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "fomod"

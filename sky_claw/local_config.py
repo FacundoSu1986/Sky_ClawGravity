@@ -17,10 +17,11 @@ import json
 import logging
 import pathlib
 import sys
+from dataclasses import asdict, dataclass
+from typing import Any, Protocol, cast
+
 import keyring
 import keyring.errors
-from dataclasses import dataclass, asdict
-from typing import Any, cast, Protocol
 
 
 class DataclassInstance(Protocol):
@@ -158,7 +159,7 @@ def load(path: pathlib.Path = _DEFAULT_PATH) -> LocalConfig:
 
 def save(config: LocalConfig, path: pathlib.Path = _DEFAULT_PATH) -> None:
     """Persist *config* to *path* as pretty-printed JSON."""
-    data = asdict(cast(DataclassInstance, config))
+    data = asdict(cast("DataclassInstance", config))
     path.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

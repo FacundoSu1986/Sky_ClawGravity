@@ -1,8 +1,8 @@
-import aiosqlite
 import json
 import logging
 import sqlite3
-from typing import Optional, List, Dict
+
+import aiosqlite
 
 logger = logging.getLogger("SkyClaw.Database")
 
@@ -17,7 +17,7 @@ class DatabaseAgent:
 
     def __init__(self, db_path: str = "sky_claw_state.db"):
         self.db_path = db_path
-        self._conn: Optional[aiosqlite.Connection] = None
+        self._conn: aiosqlite.Connection | None = None
 
     async def init_db(self):
         """Inicializa esquemas con modo WAL y pragmas de concurrencia."""
@@ -108,18 +108,22 @@ class DatabaseAgent:
 
     async def get_circuit_breaker_state(self, domain: str) -> dict:
         conn = await self._get_conn()
-        async with conn.execute("SELECT * FROM scraper_state WHERE domain = ?", (domain,)) as cursor:
+        async with conn.execute(
+            "SELECT * FROM scraper_state WHERE domain = ?", (domain,)
+        ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else {"failures": 0, "locked_until": 0}
 
-    async def update_circuit_breaker(self, domain: str, failures: int, locked_until: float):
+    async def update_circuit_breaker(
+        self, domain: str, failures: int, locked_until: float
+    ):
         conn = await self._get_conn()
         try:
             await conn.execute(
                 """
-                INSERT INTO scraper_state (domain, failures, locked_until) 
+                INSERT INTO scraper_state (domain, failures, locked_until)
                 VALUES (?, ?, ?)
-                ON CONFLICT(domain) DO UPDATE SET 
+                ON CONFLICT(domain) DO UPDATE SET
                 failures=excluded.failures, locked_until=excluded.locked_until
             """,
                 (domain, failures, locked_until),
@@ -133,9 +137,11 @@ class DatabaseAgent:
     # Agent Memory (Key-Value)
     # ─────────────────────────────────────────────────────────────────────
 
-    async def get_memory(self, key: str) -> Optional[str]:
+    async def get_memory(self, key: str) -> str | None:
         conn = await self._get_conn()
-        async with conn.execute("SELECT value FROM agent_memory WHERE key = ?", (key,)) as cursor:
+        async with conn.execute(
+            "SELECT value FROM agent_memory WHERE key = ?", (key,)
+        ) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
 
@@ -144,9 +150,9 @@ class DatabaseAgent:
         try:
             await conn.execute(
                 """
-                INSERT INTO agent_memory (key, value, updated_at) 
+                INSERT INTO agent_memory (key, value, updated_at)
                 VALUES (?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET 
+                ON CONFLICT(key) DO UPDATE SET
                 value=excluded.value, updated_at=excluded.updated_at
             """,
                 (key, value, updated_at),
@@ -160,17 +166,25 @@ class DatabaseAgent:
     # Mods Repository (consumed by NiceGUI ReactiveState)
     # ─────────────────────────────────────────────────────────────────────
 
-    async def get_mods(self, status: Optional[str] = None) -> List[Dict]:
+    async def get_mods(self, status: str | None = None) -> list[dict]:
         """Obtiene lista de mods con filtro opcional por status."""
         conn = await self._get_conn()
         if status:
-            async with conn.execute("SELECT * FROM mods WHERE status = ? ORDER BY name", (status,)) as cursor:
+            async with conn.execute(
+                "SELECT * FROM mods WHERE status = ? ORDER BY name", (status,)
+            ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
         else:
             async with conn.execute("SELECT * FROM mods ORDER BY name") as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
 
-    async def add_mod(self, name: str, version: str = None, size_mb: float = 0, source: str = None) -> int:
+    async def add_mod(
+        self,
+        name: str,
+        version: str | None = None,
+        size_mb: float = 0,
+        source: str | None = None,
+    ) -> int:
         """Añade o actualiza un mod y devuelve su ID."""
         conn = await self._get_conn()
         try:
@@ -186,7 +200,7 @@ class DatabaseAgent:
             row = await cursor.fetchone()
             return row[0] if row else 0
 
-    async def get_conflicts(self, resolved: Optional[bool] = None) -> List[Dict]:
+    async def get_conflicts(self, resolved: bool | None = None) -> list[dict]:
         """Obtiene conflictos con filtro opcional."""
         conn = await self._get_conn()
         if resolved is not None:
@@ -196,10 +210,14 @@ class DatabaseAgent:
             ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
         else:
-            async with conn.execute("SELECT * FROM conflicts ORDER BY detected_at DESC") as cursor:
+            async with conn.execute(
+                "SELECT * FROM conflicts ORDER BY detected_at DESC"
+            ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
 
-    async def log_activity(self, event_type: str, message: str, details: Optional[Dict] = None) -> None:
+    async def log_activity(
+        self, event_type: str, message: str, details: dict | None = None
+    ) -> None:
         """Registra actividad en el log."""
         conn = await self._get_conn()
         try:

@@ -2,27 +2,28 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import queue
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from nicegui import ui
 
 from .icons import (
-    _ICON_LAYERS,
-    _ICON_CHAT,
     _ICON_ANVIL,
     _ICON_CART,
+    _ICON_CHAT,
+    _ICON_LAYERS,
 )
 from .message_handlers import (
-    MessageHandlerStrategy,
-    ResponseHandler,
-    ModlistHandler,
-    SuccessHandler,
     ErrorHandler,
+    MessageHandlerStrategy,
+    ModlistHandler,
+    ResponseHandler,
+    SuccessHandler,
 )
 from .setup_wizard import SetupWizardModal
-from .utils import _load_css, MAX_CHAT_MESSAGES
+from .utils import MAX_CHAT_MESSAGES, _load_css
 from .views.actions import build_actions_panel
 from .views.advanced import build_advanced_panel
 
@@ -41,21 +42,21 @@ class DashboardGUI:
         self.ctx = ctx
         self._running = True
         self._message_elements: list = []
-        self._thinking_el: Optional[ui.element] = None
-        self._chat_container: Optional[ui.column] = None
-        self._chat_scroll: Optional[ui.scroll_area] = None
-        self._mod_container: Optional[ui.column] = None
-        self._chat_input: Optional[ui.input] = None
+        self._thinking_el: ui.element | None = None
+        self._chat_container: ui.column | None = None
+        self._chat_scroll: ui.scroll_area | None = None
+        self._mod_container: ui.column | None = None
+        self._chat_input: ui.input | None = None
         self._bg_tasks: set = set()
         self._env_snapshot = None  # EnvironmentSnapshot (set on scan)
 
-        self._stat_labels: Dict[str, ui.label] = {}
-        self._status_dot: Optional[ui.element] = None
-        self._status_label: Optional[ui.label] = None
-        self._thinking_label: Optional[ui.label] = None
+        self._stat_labels: dict[str, ui.label] = {}
+        self._status_dot: ui.element | None = None
+        self._status_label: ui.label | None = None
+        self._thinking_label: ui.label | None = None
         self._is_thinking = False
 
-        self.handlers: Dict[str, MessageHandlerStrategy] = {
+        self.handlers: dict[str, MessageHandlerStrategy] = {
             "response": ResponseHandler(),
             "modlist": ModlistHandler(),
             "success": SuccessHandler(),
@@ -72,7 +73,9 @@ class DashboardGUI:
         ):
             self._build_sidebar()
 
-            with ui.column().classes("flex-1 min-h-screen overflow-auto sky-main-content"):
+            with ui.column().classes(
+                "flex-1 min-h-screen overflow-auto sky-main-content"
+            ):
                 self._build_header()
 
                 with ui.column().classes("p-6 gap-6 flex-1"):
@@ -84,7 +87,9 @@ class DashboardGUI:
                     # Row 2: Stats cards (PROCESADOR + CARGA TAREAS)
                     with ui.row().classes("w-full gap-6"):
                         self._build_stat_summary("PROCESADOR", "116", _ICON_ANVIL)
-                        self._build_stat_summary("CARGA TAREAS", "3,130 ops/s", _ICON_CART)
+                        self._build_stat_summary(
+                            "CARGA TAREAS", "3,130 ops/s", _ICON_CART
+                        )
 
                     # Row 3: Bar chart with metrics
                     self._build_bar_chart_widget()
@@ -143,10 +148,16 @@ class DashboardGUI:
         with (
             ui.element("div")
             .classes("w-64 min-h-screen flex flex-col shrink-0 sky-sidebar")
-            .style("background: var(--sky-bg-secondary); border-right: 1px solid var(--sky-border);")
+            .style(
+                "background: var(--sky-bg-secondary); border-right: 1px solid var(--sky-border);"
+            )
         ):
             # Logo
-            with ui.element("div").classes("p-6").style("border-bottom: 1px solid var(--sky-border);"):
+            with (
+                ui.element("div")
+                .classes("p-6")
+                .style("border-bottom: 1px solid var(--sky-border);")
+            ):
                 with ui.row().classes("items-center gap-3"):
                     ui.html(f"""
                         <div style="width:40px;height:40px;border-radius:12px;display:flex;
@@ -160,7 +171,9 @@ class DashboardGUI:
                         ui.label("SKY-CLAW").style(
                             "color: var(--sky-gold); font-weight:800; font-size:1.1rem; letter-spacing:0.15em;"
                         )
-                        ui.label("Technical Operations").style("color: var(--sky-text-muted); font-size:0.65rem;")
+                        ui.label("Technical Operations").style(
+                            "color: var(--sky-text-muted); font-size:0.65rem;"
+                        )
 
             # Nav
             with ui.column().classes("flex-1 p-4 gap-1"):
@@ -185,15 +198,23 @@ class DashboardGUI:
                     ui.button(
                         text,
                         on_click=lambda v=view: self._navigate(v),
-                    ).classes("w-full text-left px-4 py-3 rounded-xl transition-all duration-200").props(
-                        "ripple flat no-caps"
-                    ).style(active_style)
+                    ).classes(
+                        "w-full text-left px-4 py-3 rounded-xl transition-all duration-200"
+                    ).props("ripple flat no-caps").style(active_style)
 
             # Status LLM
-            with ui.element("div").classes("p-4").style("border-top: 1px solid var(--sky-border);"):
+            with (
+                ui.element("div")
+                .classes("p-4")
+                .style("border-top: 1px solid var(--sky-border);")
+            ):
                 with ui.row().classes("items-center gap-2"):
-                    self._status_dot = ui.element("div").classes("sky-status-dot sky-status-dot--connected")
-                    self._status_label = ui.label("Conectado").style("color: var(--sky-text-muted); font-size:0.75rem;")
+                    self._status_dot = ui.element("div").classes(
+                        "sky-status-dot sky-status-dot--connected"
+                    )
+                    self._status_label = ui.label("Conectado").style(
+                        "color: var(--sky-text-muted); font-size:0.75rem;"
+                    )
 
     def _navigate(self, view: str) -> None:
         if view == "settings":
@@ -204,7 +225,9 @@ class DashboardGUI:
         with (
             ui.element("div")
             .classes("h-16 flex items-center justify-between px-6 shrink-0")
-            .style("background: var(--sky-bg-secondary); border-bottom: 1px solid var(--sky-border);")
+            .style(
+                "background: var(--sky-bg-secondary); border-bottom: 1px solid var(--sky-border);"
+            )
         ):
             with ui.column().classes("gap-0"):
                 ui.label("OPERACIONES TÉCNICAS").style(
@@ -214,7 +237,9 @@ class DashboardGUI:
             # Header actions
             with ui.row().classes("items-center gap-3"):
                 for label_text in ["Protocolos", "Alerta", "Ayuda"]:
-                    ui.button(label_text).classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
+                    ui.button(label_text).classes("px-3 py-1 rounded-lg text-xs").props(
+                        "ripple flat no-caps"
+                    ).style(
                         "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
                     )
 
@@ -232,11 +257,17 @@ class DashboardGUI:
         with ui.element("div").classes("sky-widget-panel flex-1"):
             with ui.element("div").classes("sky-widget-header"):
                 ui.label("RENDIMIENTO").classes("sky-widget-title")
-                ui.button("Real time").classes("px-2 py-1 rounded text-xs").props("ripple flat no-caps").style(
+                ui.button("Real time").classes("px-2 py-1 rounded text-xs").props(
+                    "ripple flat no-caps"
+                ).style(
                     "color: var(--sky-text-muted); border: 1px solid var(--sky-surface-border);"
                 )
 
-            with ui.element("div").classes("p-4").style("height:200px; position:relative;"):
+            with (
+                ui.element("div")
+                .classes("p-4")
+                .style("height:200px; position:relative;")
+            ):
                 # Simulated line chart via SVG
                 ui.html("""
                     <svg width="100%" height="100%" viewBox="0 0 400 160" preserveAspectRatio="none"
@@ -274,7 +305,11 @@ class DashboardGUI:
 
     # ── Server Status Widget ──────────────────────────────────────────
     def _build_server_status_widget(self) -> None:
-        with ui.element("div").classes("sky-widget-panel").style("width: 280px; flex-shrink:0;"):
+        with (
+            ui.element("div")
+            .classes("sky-widget-panel")
+            .style("width: 280px; flex-shrink:0;")
+        ):
             with ui.element("div").classes("sky-widget-header"):
                 ui.label("ESTADO SERVIDORES").classes("sky-widget-title")
 
@@ -288,7 +323,9 @@ class DashboardGUI:
                 for name, status, color in servers:
                     with (
                         ui.row()
-                        .classes("items-center justify-between w-full px-3 py-2 rounded-lg")
+                        .classes(
+                            "items-center justify-between w-full px-3 py-2 rounded-lg"
+                        )
                         .style("background: var(--sky-bg-elevated);")
                     ):
                         with ui.row().classes("items-center gap-2"):
@@ -297,8 +334,12 @@ class DashboardGUI:
                                             background:{color};
                                             box-shadow: 0 0 6px {color};"></div>
                             """)
-                            ui.label(name).style("color: var(--sky-text-primary); font-size:0.8rem; font-weight:600;")
-                        ui.label(status).style(f"color:{color}; font-size:0.7rem; font-weight:500;")
+                            ui.label(name).style(
+                                "color: var(--sky-text-primary); font-size:0.8rem; font-weight:600;"
+                            )
+                        ui.label(status).style(
+                            f"color:{color}; font-size:0.7rem; font-weight:500;"
+                        )
 
     # ── Stat Summary Cards ────────────────────────────────────────────
     def _build_stat_summary(self, title: str, value: str, icon_svg: str) -> None:
@@ -325,14 +366,22 @@ class DashboardGUI:
             with ui.element("div").classes("p-4"):
                 # Bar chart
                 bar_data = [72, 45, 88, 55, 92, 38, 78, 60, 85, 50, 95, 42]
-                with ui.row().classes("items-end justify-center gap-3").style("height:180px;"):
+                with (
+                    ui.row()
+                    .classes("items-end justify-center gap-3")
+                    .style("height:180px;")
+                ):
                     for height_pct in bar_data:
                         h = int(height_pct * 1.6)
-                        ui.element("div").classes("sky-bar").style(f"height:{h}px; width:24px;")
+                        ui.element("div").classes("sky-bar").style(
+                            f"height:{h}px; width:24px;"
+                        )
 
             # Metrics footer
             with (
-                ui.row().classes("w-full justify-around p-4").style("border-top: 1px solid var(--sky-surface-border);")
+                ui.row()
+                .classes("w-full justify-around p-4")
+                .style("border-top: 1px solid var(--sky-surface-border);")
             ):
                 metrics = [
                     ("MEDIA", "64.2%"),
@@ -342,15 +391,21 @@ class DashboardGUI:
                 ]
                 for label_text, val in metrics:
                     with ui.column().classes("items-center gap-1"):
-                        ui.label(val).style("color: var(--sky-text-primary); font-size:1.1rem; font-weight:700;")
+                        ui.label(val).style(
+                            "color: var(--sky-text-primary); font-size:1.1rem; font-weight:700;"
+                        )
                         ui.label(label_text).classes("sky-metric-label")
 
             # Bottom buttons
             with ui.row().classes("w-full justify-end gap-2 px-4 pb-3"):
-                ui.button("Menú").classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
+                ui.button("Menú").classes("px-3 py-1 rounded-lg text-xs").props(
+                    "ripple flat no-caps"
+                ).style(
                     "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
                 )
-                ui.button("Salir").classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
+                ui.button("Salir").classes("px-3 py-1 rounded-lg text-xs").props(
+                    "ripple flat no-caps"
+                ).style(
                     "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
                 )
 
@@ -362,7 +417,9 @@ class DashboardGUI:
                 ui.label("ᚦ").style("font-size:1.4rem; color: var(--sky-amber);")
                 ui.label("HERRAMIENTAS").classes("sky-section-title")
 
-            self._health_banner = ui.element("div").classes("sky-health-banner sky-health-banner--warning")
+            self._health_banner = ui.element("div").classes(
+                "sky-health-banner sky-health-banner--warning"
+            )
             with self._health_banner:
                 ui.label("🟡 Escaneando el entorno...").classes("sky-health-text")
 
@@ -462,31 +519,41 @@ class DashboardGUI:
 
     # ── Mod Panel ─────────────────────────────────────────────────────
     def _build_mod_panel(self) -> None:
-        with ui.column().classes("w-1/2 sky-widget-panel overflow-hidden sky-animate-in--delay-1 sky-animate-in"):
+        with ui.column().classes(
+            "w-1/2 sky-widget-panel overflow-hidden sky-animate-in--delay-1 sky-animate-in"
+        ):
             with (
                 ui.row()
                 .classes("items-center justify-between p-4")
                 .style("border-bottom: 1px solid var(--sky-surface-border);")
             ):
-                ui.label("Mods Instalados").style("color: var(--sky-text-primary); font-weight:700;")
+                ui.label("Mods Instalados").style(
+                    "color: var(--sky-text-primary); font-weight:700;"
+                )
                 with ui.row().classes("gap-2"):
                     ui.button(
                         "Actualizar",
                         on_click=self._update_all,
-                    ).classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
+                    ).classes("px-3 py-1 rounded-lg text-xs").props(
+                        "ripple flat no-caps"
+                    ).style(
                         "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
                     )
                     ui.button(
                         "Escanear",
                         on_click=self._scan_all,
-                    ).classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
+                    ).classes("px-3 py-1 rounded-lg text-xs").props(
+                        "ripple flat no-caps"
+                    ).style(
                         "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
                     )
 
-            with ui.scroll_area().classes("flex-1 sky-scrollbar").style("height: 300px;"):
+            with (
+                ui.scroll_area().classes("flex-1 sky-scrollbar").style("height: 300px;")
+            ):
                 self._mod_container = ui.column().classes("w-full")
 
-    def update_mod_list(self, mods: List[str]) -> None:
+    def update_mod_list(self, mods: list[str]) -> None:
         if not self._mod_container:
             return
         self._mod_container.clear()
@@ -512,21 +579,31 @@ class DashboardGUI:
                         </div>
                     """)
                     with ui.column().classes("flex-1 min-w-0 ml-3"):
-                        ui.label(mod).style("color: var(--sky-text-primary); font-size:0.875rem; font-weight:500;")
-                        ui.label(f"#{i:03d}").style("color: var(--sky-text-muted); font-size:0.7rem;")
+                        ui.label(mod).style(
+                            "color: var(--sky-text-primary); font-size:0.875rem; font-weight:500;"
+                        )
+                        ui.label(f"#{i:03d}").style(
+                            "color: var(--sky-text-muted); font-size:0.7rem;"
+                        )
                     ui.label("Activo").classes("sky-badge sky-badge--success shrink-0")
 
     def _update_all(self) -> None:
-        self.append_chat_message("Iniciando actualización de mods...", is_user=False, style="success")
+        self.append_chat_message(
+            "Iniciando actualización de mods...", is_user=False, style="success"
+        )
         self.ctx.logic_queue.put(("chat", "/update_mods"))
 
     def _scan_all(self) -> None:
-        self.append_chat_message("Iniciando escaneo de VFS...", is_user=False, style="success")
+        self.append_chat_message(
+            "Iniciando escaneo de VFS...", is_user=False, style="success"
+        )
         self.ctx.logic_queue.put(("chat", "/scan"))
 
     # ── Chat Panel ────────────────────────────────────────────────────
     def _build_chat_panel(self) -> None:
-        with ui.column().classes("w-1/2 sky-widget-panel overflow-hidden sky-animate-in--delay-2 sky-animate-in flex"):
+        with ui.column().classes(
+            "w-1/2 sky-widget-panel overflow-hidden sky-animate-in--delay-2 sky-animate-in flex"
+        ):
             # Header
             with (
                 ui.element("div")
@@ -534,10 +611,10 @@ class DashboardGUI:
                 .style(
                     "border-bottom: 1px solid var(--sky-surface-border); "
                     "background: linear-gradient(135deg, rgba(200,168,78,0.08), rgba(6,182,212,0.08));"
-                )
+                ),
+                ui.row().classes("items-center gap-3"),
             ):
-                with ui.row().classes("items-center gap-3"):
-                    ui.html(f"""
+                ui.html(f"""
                         <div style="width:40px;height:40px;border-radius:12px;display:flex;
                                     align-items:center;justify-content:center;
                                     background:linear-gradient(135deg, #C8A84E, #06b6d4);"
@@ -545,53 +622,73 @@ class DashboardGUI:
                             {_ICON_CHAT}
                         </div>
                     """)
-                    with ui.column().classes("gap-0"):
-                        ui.label("Asistente IA").style("color: var(--sky-text-primary); font-weight:700;")
-                        ui.label("Escribiendo...").style(
-                            "color: var(--sky-text-muted); font-size:0.75rem; display:none;"
-                        )
+                with ui.column().classes("gap-0"):
+                    ui.label("Asistente IA").style(
+                        "color: var(--sky-text-primary); font-weight:700;"
+                    )
+                    ui.label("Escribiendo...").style(
+                        "color: var(--sky-text-muted); font-size:0.75rem; display:none;"
+                    )
 
             # Messages
-            self._chat_scroll = ui.scroll_area().classes("flex-1 sky-scrollbar").style("height: 260px;")
+            self._chat_scroll = (
+                ui.scroll_area().classes("flex-1 sky-scrollbar").style("height: 260px;")
+            )
             with self._chat_scroll:
                 self._chat_container = ui.column().classes("w-full p-4 gap-2")
 
             # Thinking label
-            with ui.row().classes("px-4 py-2 items-center gap-2").style("min-height: 24px;"):
+            with (
+                ui.row()
+                .classes("px-4 py-2 items-center gap-2")
+                .style("min-height: 24px;")
+            ):
                 self._thinking_label = (
                     ui.label("Procesando...")
-                    .style("color: var(--sky-text-muted); font-size:0.75rem; display:none;")
+                    .style(
+                        "color: var(--sky-text-muted); font-size:0.75rem; display:none;"
+                    )
                     .classes("animate-pulse")
                 )
 
             # Input bar
-            with ui.row().classes("p-4 items-center gap-2").style("border-top: 1px solid var(--sky-surface-border);"):
+            with (
+                ui.row()
+                .classes("p-4 items-center gap-2")
+                .style("border-top: 1px solid var(--sky-surface-border);")
+            ):
                 self._chat_input = (
                     ui.input(
                         placeholder="Escribí tu mensaje...",
                     )
                     .classes("flex-1")
-                    .props('dark standout="bg-transparent" input-class="sky-input-spatial" color=amber')
+                    .props(
+                        'dark standout="bg-transparent" input-class="sky-input-spatial" color=amber'
+                    )
                 )
                 self._chat_input.on("keydown.enter", self._send_message)
 
                 ui.button(
                     "Enviar",
                     on_click=self._send_message,
-                ).classes("sky-wizard-cta px-5 py-2 rounded-xl font-semibold").props("ripple")
+                ).classes("sky-wizard-cta px-5 py-2 rounded-xl font-semibold").props(
+                    "ripple"
+                )
 
-    def append_chat_message(self, text: str, is_user: bool = False, style: str = "normal") -> None:
+    def append_chat_message(
+        self, text: str, is_user: bool = False, style: str = "normal"
+    ) -> None:
         self._hide_thinking()
 
         while len(self._message_elements) >= MAX_CHAT_MESSAGES:
             oldest = self._message_elements.pop(0)
-            try:
+            with contextlib.suppress(ValueError, KeyError):
                 self._chat_container.remove(oldest)
-            except (ValueError, KeyError):
-                pass
 
         style_map = {
-            "normal": "sky-chat-message--assistant" if not is_user else "sky-chat-message--user",
+            "normal": "sky-chat-message--assistant"
+            if not is_user
+            else "sky-chat-message--user",
             "success": "sky-chat-message--success",
             "error": "sky-chat-message--error",
         }
@@ -615,7 +712,9 @@ class DashboardGUI:
             return
         self._is_thinking = True
         if self._thinking_label:
-            self._thinking_label.style("color: var(--sky-text-muted); font-size:0.75rem; display:block;")
+            self._thinking_label.style(
+                "color: var(--sky-text-muted); font-size:0.75rem; display:block;"
+            )
         if self._chat_scroll:
             self._chat_scroll.scroll_to(percent=1.0)
 
@@ -624,7 +723,9 @@ class DashboardGUI:
             return
         self._is_thinking = False
         if self._thinking_label:
-            self._thinking_label.style("color: var(--sky-text-muted); font-size:0.75rem; display:none;")
+            self._thinking_label.style(
+                "color: var(--sky-text-muted); font-size:0.75rem; display:none;"
+            )
 
     def _send_message(self) -> None:
         if not self._chat_input:
@@ -645,9 +746,9 @@ class DashboardGUI:
             .classes("px-6 py-3 flex items-center justify-between")
             .style("border-top: 1px solid var(--sky-surface-border);")
         ):
-            ui.label("\u00a9 2026 Sky-Claw Technical Operations Hub. Todos los derechos reservados.").style(
-                "color: var(--sky-text-muted); font-size:0.7rem;"
-            )
+            ui.label(
+                "\u00a9 2026 Sky-Claw Technical Operations Hub. Todos los derechos reservados."
+            ).style("color: var(--sky-text-muted); font-size:0.7rem;")
 
             with ui.row().classes("gap-4"):
                 for link_text in [
@@ -655,7 +756,9 @@ class DashboardGUI:
                     "API Docs",
                     "Soporte Operativo",
                 ]:
-                    ui.label(link_text).style("color: var(--sky-text-muted); font-size:0.7rem; cursor:pointer;")
+                    ui.label(link_text).style(
+                        "color: var(--sky-text-muted); font-size:0.7rem; cursor:pointer;"
+                    )
 
     # ── Queue Polling ─────────────────────────────────────────────────
     def _poll_queue(self) -> None:
@@ -729,8 +832,10 @@ body {
             provider_input = (
                 ui.toggle(
                     ["anthropic", "deepseek", "ollama"],
-                    value=getattr(self.ctx, "_args", None)
-                    and getattr(self.ctx._args, "provider", "deepseek")
+                    value=(
+                        getattr(self.ctx, "_args", None)
+                        and getattr(self.ctx._args, "provider", "deepseek")
+                    )
                     or "deepseek",
                 )
                 .classes("w-full mb-3")
@@ -782,15 +887,19 @@ body {
                     placeholder="Nuevo chat ID",
                 )
                 .classes("w-full mb-4")
-                .props('dark standout="bg-transparent" input-class="sky-wizard-input" color=amber maxlength=512')
+                .props(
+                    'dark standout="bg-transparent" input-class="sky-wizard-input" color=amber maxlength=512'
+                )
             )
 
             status_label = ui.label("").classes("text-sm mb-2")
 
             with ui.row().classes("w-full justify-end gap-3"):
-                ui.button("Cancelar", on_click=dialog.close).classes("px-4 py-2 rounded-lg").props(
-                    "ripple flat no-caps"
-                ).style("color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);")
+                ui.button("Cancelar", on_click=dialog.close).classes(
+                    "px-4 py-2 rounded-lg"
+                ).props("ripple flat no-caps").style(
+                    "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
+                )
 
                 async def _save_settings() -> None:
                     try:
@@ -812,12 +921,16 @@ body {
                         import keyring
 
                         if new_api_key:
-                            keyring.set_password("sky_claw", f"{new_provider}_api_key", new_api_key)
+                            keyring.set_password(
+                                "sky_claw", f"{new_provider}_api_key", new_api_key
+                            )
                             keyring.set_password("sky_claw", "llm_api_key", new_api_key)
                         if new_nexus:
                             keyring.set_password("sky_claw", "nexus_api_key", new_nexus)
                         if new_tg_token:
-                            keyring.set_password("sky_claw", "telegram_bot_token", new_tg_token)
+                            keyring.set_password(
+                                "sky_claw", "telegram_bot_token", new_tg_token
+                            )
 
                         from sky_claw.config import Config
 
@@ -871,10 +984,12 @@ body {
             if self.ctx.polling:
                 await self.ctx.polling.stop()
 
-            from sky_claw.comms.telegram_sender import TelegramSender
             from sky_claw.comms.telegram_polling import TelegramPolling
+            from sky_claw.comms.telegram_sender import TelegramSender
 
-            self.ctx.sender = TelegramSender(bot_token=token, gateway=self.ctx.gateway, session=self.ctx.session)
+            self.ctx.sender = TelegramSender(
+                bot_token=token, gateway=self.ctx.gateway, session=self.ctx.session
+            )
             cid = int(chat_id) if chat_id else None
             if cid:
                 from sky_claw.comms.telegram import TelegramWebhook

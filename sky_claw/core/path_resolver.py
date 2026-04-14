@@ -20,9 +20,7 @@ import pathlib
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    pass
-
-from sky_claw.security.path_validator import PathValidator
+    from sky_claw.security.path_validator import PathValidator
 
 logger = logging.getLogger("SkyClaw.PathResolution")
 security_logger = logging.getLogger("SkyClaw.Security")
@@ -308,7 +306,9 @@ class PathResolutionService:
             return mo2_base / "profiles" / profile / "modlist.txt"
 
         # 3. Fallback: WSL2 default path — también validado
-        fallback_path = pathlib.Path("/mnt/c/Modding/MO2") / "profiles" / profile / "modlist.txt"
+        fallback_path = (
+            pathlib.Path("/mnt/c/Modding/MO2") / "profiles" / profile / "modlist.txt"
+        )
         try:
             validated_fallback = self._path_validator.validate(fallback_path)
             logger.warning(

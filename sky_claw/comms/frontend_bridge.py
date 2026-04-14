@@ -31,13 +31,13 @@ import logging
 import os
 import time
 import uuid
-from typing import TYPE_CHECKING, Any, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import keyring
 import websockets
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
-from sky_claw.agent.providers import create_provider, ProviderConfigError
+from sky_claw.agent.providers import ProviderConfigError, create_provider
 from sky_claw.config import Config
 
 if TYPE_CHECKING:
@@ -91,7 +91,7 @@ class WebSocketClient(Protocol):
         """Close the WebSocket connection."""
         ...
 
-    def __aenter__(self) -> "WebSocketClient":
+    def __aenter__(self) -> WebSocketClient:
         """Context manager entry."""
         ...
 
@@ -131,7 +131,7 @@ class FrontendBridge:
         router: Any,
         session: Any,
         config: Config,
-        app_context: "AppContext",
+        app_context: AppContext,
         gateway_url: str = "ws://127.0.0.1:18789",
         keyring_client: Any = None,
     ) -> None:
@@ -151,7 +151,7 @@ class FrontendBridge:
         self.config = config
         self.ctx = app_context
         self.gateway_url = gateway_url
-        self.ws: Optional[WebSocketClient] = None
+        self.ws: WebSocketClient | None = None
         self._is_running = False
         self._running_lock = asyncio.Lock()
         self._active_queries: set[asyncio.Task[Any]] = set()
@@ -228,7 +228,9 @@ class FrontendBridge:
                 self._check_reconnect_limit()
             except Exception as exc:
                 # Unexpected errors - log and retry
-                logger.error("❌ Fallo inesperado en FrontendBridge: %s", exc, exc_info=True)
+                logger.error(
+                    "❌ Fallo inesperado en FrontendBridge: %s", exc, exc_info=True
+                )
                 await asyncio.sleep(5)
 
     def _handle_reconnect_error(self, exc: Exception, msg: str, backoff: float) -> None:
@@ -353,7 +355,9 @@ class FrontendBridge:
 
                     msg_type = data.get("type", "")
                     if not isinstance(msg_type, str):
-                        logger.warning("Campo 'type' no es string: %s", type(msg_type).__name__)
+                        logger.warning(
+                            "Campo 'type' no es string: %s", type(msg_type).__name__
+                        )
                         continue
 
                     # ── Route by message type ──
@@ -414,7 +418,10 @@ class FrontendBridge:
         provider = getattr(fresh_cfg, "llm_provider", "deepseek")
         provider_key_name = PROVIDER_KEY_MAP.get(provider, "llm_api_key")
 
-        has_llm_key = bool(getattr(fresh_cfg, provider_key_name, "") or getattr(fresh_cfg, "llm_api_key", ""))
+        has_llm_key = bool(
+            getattr(fresh_cfg, provider_key_name, "")
+            or getattr(fresh_cfg, "llm_api_key", "")
+        )
         has_nexus_key = bool(getattr(fresh_cfg, "nexus_api_key", ""))
         has_telegram_token = bool(getattr(fresh_cfg, "telegram_bot_token", ""))
 
@@ -504,7 +511,9 @@ class FrontendBridge:
             # Telegram chat ID validation
             telegram_chat_id = content.get("telegram_chat_id", "").strip()
             if telegram_chat_id and len(telegram_chat_id) > self._max_chatid_len:
-                await self._send_config_result(msg_id, False, "El Chat ID es demasiado largo.")
+                await self._send_config_result(
+                    msg_id, False, "El Chat ID es demasiado largo."
+                )
                 return
             if telegram_chat_id:
                 try:
@@ -559,12 +568,18 @@ class FrontendBridge:
 
             # LLM Provider hot-swap
             if llm_provider or llm_api_key:
-                target_provider = llm_provider or getattr(self.config, "llm_provider", "deepseek")
+                target_provider = llm_provider or getattr(
+                    self.config, "llm_provider", "deepseek"
+                )
                 success = await self._do_llm_reload(target_provider, llm_api_key)
                 if success:
-                    reload_messages.append(f"LLM cambiado a {target_provider.capitalize()}")
+                    reload_messages.append(
+                        f"LLM cambiado a {target_provider.capitalize()}"
+                    )
                 else:
-                    reload_messages.append(f"LLM: no se pudo cambiar a {target_provider} (verifica la API key)")
+                    reload_messages.append(
+                        f"LLM: no se pudo cambiar a {target_provider} (verifica la API key)"
+                    )
 
             # Telegram hot-reload
             if telegram_token:
@@ -575,7 +590,9 @@ class FrontendBridge:
                 if tg_ok:
                     reload_messages.append("Telegram reconectado")
                 else:
-                    reload_messages.append("Telegram: token guardado, reinicia para activar")
+                    reload_messages.append(
+                        "Telegram: token guardado, reinicia para activar"
+                    )
 
             status_msg = "Configuración guardada."
             if reload_messages:
@@ -585,7 +602,9 @@ class FrontendBridge:
 
         except Exception as exc:
             logger.exception("❌ Error guardando configuración: %s", exc)
-            await self._send_config_result(msg_id, False, "Error interno al guardar configuracion.")
+            await self._send_config_result(
+                msg_id, False, "Error interno al guardar configuracion."
+            )
 
     # ── QUERY Handler (Chat forwarding) ─────────────────────────────────
 
@@ -675,7 +694,9 @@ class FrontendBridge:
                    No queries are interrupted during the swap.
         """
         try:
-            key = api_key or self._get_keyring(PROVIDER_KEY_MAP.get(provider_name, "llm_api_key"))
+            key = api_key or self._get_keyring(
+                PROVIDER_KEY_MAP.get(provider_name, "llm_api_key")
+            )
 
             # Ollama doesn't require an API key
             if not key and provider_name != "ollama":
@@ -782,7 +803,9 @@ class FrontendBridge:
         else:
             logger.debug("WebSocket no está disponible para envío")
 
-    async def _send_config_result(self, msg_id: str, success: bool, message: str) -> None:
+    async def _send_config_result(
+        self, msg_id: str, success: bool, message: str
+    ) -> None:
         """Send a CONFIG_UPDATED response to the frontend.
 
         Args:

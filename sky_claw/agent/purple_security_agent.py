@@ -4,14 +4,15 @@ Agente Experto en Ciberseguridad con Razonamiento Metacognitivo.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
 # Importar esquemas Pydantic para validación estricta
 from sky_claw.core.schemas import SecurityAuditRequest, SecurityAuditResponse
 
+from ..security.governance import GovernanceManager
+
 # Importar lógica metacognitiva centralizada
 from ..security.metacognitive_logic import audit_resource
-from ..security.governance import GovernanceManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,11 @@ class PurpleSecurityAgent:
         self.name = name
         self.role = "Cyber Security Expert (Purple Team)"
         self.version = "5.5 Titan"
-        self.last_audit: Optional[Dict[str, Any]] = None
+        self.last_audit: dict[str, Any] | None = None
 
-    async def audit_local_file(self, request: SecurityAuditRequest) -> SecurityAuditResponse:
+    async def audit_local_file(
+        self, request: SecurityAuditRequest
+    ) -> SecurityAuditResponse:
         """Audita un archivo local usando el esquema de validación Pydantic.
 
         Args:
@@ -42,7 +45,9 @@ class PurpleSecurityAgent:
         # Construir respuesta Pydantic
         return self._build_audit_response(target_path, result)
 
-    async def audit_repository(self, request: SecurityAuditRequest) -> SecurityAuditResponse:
+    async def audit_repository(
+        self, request: SecurityAuditRequest
+    ) -> SecurityAuditResponse:
         """Audita un directorio completo usando el esquema de validación Pydantic.
 
         Args:
@@ -60,7 +65,9 @@ class PurpleSecurityAgent:
         # Construir respuesta Pydantic
         return self._build_audit_response(target_path, result)
 
-    def _build_audit_response(self, target: str, result: Dict[str, Any]) -> SecurityAuditResponse:
+    def _build_audit_response(
+        self, target: str, result: dict[str, Any]
+    ) -> SecurityAuditResponse:
         """Construye una respuesta SecurityAuditResponse a partir del resultado de auditoría.
 
         Args:
@@ -75,7 +82,9 @@ class PurpleSecurityAgent:
 
         # Calcular risk_score basado en la confianza y severidad de hallazgos
         confidence = result.get("confidence", 1.0)
-        num_critical = sum(1 for f in findings if f.get("severity") in ("CRITICAL", "HIGH"))
+        num_critical = sum(
+            1 for f in findings if f.get("severity") in ("CRITICAL", "HIGH")
+        )
         risk_score = min(1.0, (num_critical * 0.2) + (1.0 - confidence))
 
         # Generar recomendaciones basadas en los hallazgos
@@ -96,7 +105,7 @@ class PurpleSecurityAgent:
             recommendations=recommendations,
         )
 
-    def _format_audit_findings(self, result: Dict[str, Any]) -> str:
+    def _format_audit_findings(self, result: dict[str, Any]) -> str:
         """Formatea el resultado de auditoría en el formato metacognitivo solicitado."""
         confidence_str = f"{result['confidence']:.2f}"
         result.get("status", "IDLE")
@@ -122,7 +131,9 @@ class PurpleSecurityAgent:
             response.append("**🔍 HALLAZGOS CRÍTICOS:**")
             for find in result.get("findings", [])[:5]:  # Mostrar solo los primeros 5
                 icon = "🔴" if find.get("severity") in ("CRITICAL", "HIGH") else "🟠"
-                response.append(f"- {icon} {find.get('message')} (Línea {find.get('line')}) en `{find.get('file')}`")
+                response.append(
+                    f"- {icon} {find.get('message')} (Línea {find.get('line')}) en `{find.get('file')}`"
+                )
 
             if num_findings > 5:
                 response.append(f"... y otros {num_findings - 5} hallazgos menores.")

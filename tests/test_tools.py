@@ -9,13 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import pathlib
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from sky_claw.agent.tools import AsyncToolRegistry
 from sky_claw.scraper.nexus_downloader import FileInfo, NexusDownloader
-from sky_claw.security.hitl import HITLGuard, Decision
+from sky_claw.security.hitl import Decision, HITLGuard
 
 
 class TestLootAutoInit:
@@ -38,7 +37,9 @@ class TestLootAutoInit:
         """Mock SyncEngine."""
         return MagicMock()
 
-    def test_p0_3_auto_initializes_loot_runner(self, mock_registry, mock_mo2, mock_sync_engine):
+    def test_p0_3_auto_initializes_loot_runner(
+        self, mock_registry, mock_mo2, mock_sync_engine
+    ):
         """P0-3 FIX: Should auto-create LOOTRunner from loot_exe when None.
 
         Previously, _run_loot_sort would fail with "LOOT runner is not configured"
@@ -60,7 +61,9 @@ class TestLootAutoInit:
         assert registry._loot_runner is None
 
     @pytest.mark.asyncio
-    async def test_p0_3_creates_loot_runner_on_first_sort(self, mock_registry, mock_mo2, mock_sync_engine, tmp_path):
+    async def test_p0_3_creates_loot_runner_on_first_sort(
+        self, mock_registry, mock_mo2, mock_sync_engine, tmp_path
+    ):
         """P0-3 FIX: Should create LOOTRunner on first sort attempt."""
         # Create mock loot.exe
         loot_exe = tmp_path / "loot.exe"
@@ -148,7 +151,9 @@ class TestDownloadModFreshUrl:
         hitl.request_approval = AsyncMock(return_value=Decision.APPROVED)
         return hitl
 
-    def test_p0_2_captures_mod_ids_not_url(self, mock_registry, mock_mo2, mock_sync_engine, mock_downloader, mock_hitl):
+    def test_p0_2_captures_mod_ids_not_url(
+        self, mock_registry, mock_mo2, mock_sync_engine, mock_downloader, mock_hitl
+    ):
         """P0-2 FIX: Should capture nexus_id/file_id, not the URL itself.
 
         Previously, the download closure captured file_info.download_url directly,

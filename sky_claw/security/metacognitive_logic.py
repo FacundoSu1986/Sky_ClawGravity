@@ -4,14 +4,15 @@ Framework de decisión secuencial de 5 pasos para Auditoría Purple Team.
 """
 
 import logging
-from typing import Dict, Any
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+from .governance import GovernanceManager
 
 # Importar componentes de seguridad
 from .purple_scanner import run_scan
 from .text_inspector import scan_text
-from .governance import GovernanceManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +20,14 @@ logger = logging.getLogger(__name__)
 class SecurityMetacognition:
     def __init__(self, target_path: str):
         self.target_path = Path(target_path)
-        self.session_data: Dict[str, Any] = {
+        self.session_data: dict[str, Any] = {
             "start_time": datetime.now().isoformat(),
             "findings": [],
             "confidence": 1.0,
             "status": "INIT",
         }
 
-    async def execute_cycle(self) -> Dict[str, Any]:
+    async def execute_cycle(self) -> dict[str, Any]:
         """Ejecuta el ciclo metacognitivo completo de 5 pasos."""
         try:
             # Fase 1: DESCOMPONER
@@ -64,7 +65,9 @@ class SecurityMetacognition:
             files = [self.target_path]
         else:
             # Escanear recursivamente buscando .py, .md, .txt
-            files = list(self.target_path.rglob("*.[pm][yd]*")) + list(self.target_path.rglob("*.txt"))
+            files = list(self.target_path.rglob("*.[pm][yd]*")) + list(
+                self.target_path.rglob("*.txt")
+            )
 
         self.session_data["files_to_scan"] = sorted([str(f) for f in files])
         return True
@@ -84,7 +87,7 @@ class SecurityMetacognition:
                 continue
 
             try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(file_path, encoding="utf-8", errors="ignore") as f:
                     content = f.read()
 
                 # Escáner según extensión
@@ -109,8 +112,16 @@ class SecurityMetacognition:
         """Fase 3: Cruce de hallazgos con base de datos de amenazas y lógica de negocio."""
         self.session_data["status"] = "VERIFYING"
         # Aquí se ajusta la confianza basada en la severidad de los hallazgos
-        num_critical = len([f for f in self.session_data["findings"] if f.get("severity") == "CRITICAL"])
-        num_high = len([f for f in self.session_data["findings"] if f.get("severity") == "HIGH"])
+        num_critical = len(
+            [
+                f
+                for f in self.session_data["findings"]
+                if f.get("severity") == "CRITICAL"
+            ]
+        )
+        num_high = len(
+            [f for f in self.session_data["findings"] if f.get("severity") == "HIGH"]
+        )
 
         # Penalización bayesiana simple
         self.session_data["confidence"] -= num_critical * 0.4
@@ -130,7 +141,9 @@ class SecurityMetacognition:
         """Fase 5: Decisión final y autorreflexión si la confianza es baja."""
         self.session_data["status"] = "REFLECTING"
         if self.session_data["confidence"] < 0.8:
-            logger.warning(f"Confianza baja ({self.session_data['confidence']}). Requiere revisión manual (HITL).")
+            logger.warning(
+                f"Confianza baja ({self.session_data['confidence']}). Requiere revisión manual (HITL)."
+            )
             self.session_data["final_decision"] = "REJECT/QUARANTINE"
         else:
             self.session_data["final_decision"] = "ACCEPT/EXECUTE"
@@ -139,7 +152,7 @@ class SecurityMetacognition:
         self.session_data["status"] = "COMPLETED"
 
 
-async def audit_resource(path: str) -> Dict[str, Any]:
+async def audit_resource(path: str) -> dict[str, Any]:
     """Punto de entrada asíncrono para auditoría Purple Team."""
     logic = SecurityMetacognition(path)
     return await logic.execute_cycle()

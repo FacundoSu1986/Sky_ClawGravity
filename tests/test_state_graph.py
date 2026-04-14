@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Tests for LangGraph StateGraph integration in Sky-Claw.
 
@@ -11,6 +10,7 @@ Tests verify:
 
 import os
 import sys
+
 import pytest
 
 # Insert project root at start of path to avoid conflicts
@@ -19,14 +19,14 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from sky_claw.orchestrator.state_graph import (  # noqa: E402
-    SupervisorState,
-    WorkflowEventType,
-    SupervisorStateGraph,
-    StateGraphNodes,
+    LANGGRAPH_AVAILABLE,
     StateGraphEdges,
     StateGraphIntegration,
+    StateGraphNodes,
+    SupervisorState,
+    SupervisorStateGraph,
+    WorkflowEventType,
     create_supervisor_state_graph,
-    LANGGRAPH_AVAILABLE,
 )
 
 # Standard LangGraph end-node sentinel
@@ -260,7 +260,9 @@ class TestSupervisorStateGraph:
         """Test submitting an event to the workflow."""
         sg = SupervisorStateGraph()
 
-        result = await sg.submit_event(WorkflowEventType.USER_COMMAND, {"command": "test_command"})
+        result = await sg.submit_event(
+            WorkflowEventType.USER_COMMAND, {"command": "test_command"}
+        )
 
         assert result is not None
         assert result["pending_event"] == WorkflowEventType.USER_COMMAND.value
@@ -280,7 +282,9 @@ class TestStateGraphIntegration:
         sg = SupervisorStateGraph()
         integration = StateGraphIntegration(sg)
 
-        result = integration.translate_modlist_event(mtime=12345.0, path="/test/modlist.txt")
+        result = integration.translate_modlist_event(
+            mtime=12345.0, path="/test/modlist.txt"
+        )
 
         assert result["event_type"] == WorkflowEventType.MODLIST_CHANGED
         assert result["event_data"]["mtime"] == 12345.0
@@ -291,7 +295,9 @@ class TestStateGraphIntegration:
         sg = SupervisorStateGraph()
         integration = StateGraphIntegration(sg)
 
-        result = integration.translate_user_command(command="query_mod", params={"mod_id": 123})
+        result = integration.translate_user_command(
+            command="query_mod", params={"mod_id": 123}
+        )
 
         assert result["event_type"] == WorkflowEventType.USER_COMMAND
         assert result["event_data"]["command"] == "query_mod"

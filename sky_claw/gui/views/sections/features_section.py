@@ -6,11 +6,11 @@ en un grid de 3 columnas.
 VIEW PURO - Sin lógica de negocio, solo presentación.
 """
 
-from typing import Callable, Optional
+from collections.abc import Callable
+
 from nicegui import ui
 
 from ..components import create_feature_card
-
 
 # Colores del tema (extraídos del monolito para mantener invariante visual)
 COLORS = {
@@ -20,7 +20,7 @@ COLORS = {
 
 
 def create_features_section(
-    on_feature_click: Optional[Callable[[str], None]] = None,
+    on_feature_click: Callable[[str], None] | None = None,
 ) -> None:
     """Sección de features/características de la app.
 
@@ -52,7 +52,9 @@ def create_features_section(
                 ''',
                 badge="NEW",
                 badge_type="violet",
-                on_click=lambda: on_feature_click("Smart Search") if on_feature_click else None,
+                on_click=lambda: (
+                    on_feature_click("Smart Search") if on_feature_click else None
+                ),
             )
 
             # Feature: Conflict Resolution
@@ -68,7 +70,11 @@ def create_features_section(
                                  2 0 0 1-1.52-2.93z"/>
                     </svg>
                 """,
-                on_click=lambda: on_feature_click("Conflict Resolution") if on_feature_click else None,
+                on_click=lambda: (
+                    on_feature_click("Conflict Resolution")
+                    if on_feature_click
+                    else None
+                ),
             )
 
             # Feature: Zero-Trust Security
@@ -82,5 +88,9 @@ def create_features_section(
                         <path d="m9 12 2 2 4-4"/>
                     </svg>
                 ''',
-                on_click=lambda: on_feature_click("Zero-Trust Security") if on_feature_click else None,
+                on_click=lambda: (
+                    on_feature_click("Zero-Trust Security")
+                    if on_feature_click
+                    else None
+                ),
             )

@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import json
 import logging
-import pathlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
-from sky_claw.security.network_gateway import NetworkGateway, GatewayTCPConnector
+from sky_claw.security.network_gateway import GatewayTCPConnector, NetworkGateway
+
 from .schemas import SetupToolsParams
+
+if TYPE_CHECKING:
+    import pathlib
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +50,8 @@ async def setup_tools(
     Returns:
         JSON string with installation results.
     """
-    from sky_claw.tools_installer import ToolInstallError
     from sky_claw.local_config import save as save_local_config
+    from sky_claw.tools_installer import ToolInstallError
 
     params = SetupToolsParams(tools=tools or ["loot", "xedit", "pandora", "bodyslide"])
 
@@ -66,7 +69,9 @@ async def setup_tools(
                 connector=GatewayTCPConnector(gateway, limit=10),
             )
         else:
-            logger.warning("setup_tools called without gateway — creating unprotected session")
+            logger.warning(
+                "setup_tools called without gateway — creating unprotected session"
+            )
             session = aiohttp.ClientSession()
         own_session = True
 
@@ -81,7 +86,9 @@ async def setup_tools(
                     if local_cfg:
                         local_cfg.loot_exe = str(result.exe_path)
                     results["loot"] = {
-                        "status": "already_installed" if result.already_existed else "installed",
+                        "status": "already_installed"
+                        if result.already_existed
+                        else "installed",
                         "exe_path": str(result.exe_path),
                         "version": result.version,
                     }
@@ -90,7 +97,9 @@ async def setup_tools(
                     if not result.already_existed and local_cfg:
                         local_cfg.xedit_exe = str(result.exe_path)
                     results["xedit"] = {
-                        "status": "already_installed" if result.already_existed else "installed",
+                        "status": "already_installed"
+                        if result.already_existed
+                        else "installed",
                         "exe_path": str(result.exe_path),
                         "version": result.version,
                     }
@@ -101,24 +110,32 @@ async def setup_tools(
                     if local_cfg:
                         local_cfg.pandora_exe = str(result.exe_path)
                     results["pandora"] = {
-                        "status": "already_installed" if result.already_existed else "installed",
+                        "status": "already_installed"
+                        if result.already_existed
+                        else "installed",
                         "exe_path": str(result.exe_path),
                         "version": result.version,
                     }
                 elif tool_name_lower == "bodyslide":
-                    result = await tools_installer.ensure_bodyslide(install_dir, session, downloader)
+                    result = await tools_installer.ensure_bodyslide(
+                        install_dir, session, downloader
+                    )
                     if animation_hub:
                         animation_hub.bodyslide_exe = result.exe_path
                     if local_cfg:
                         local_cfg.bodyslide_exe = str(result.exe_path)
                     results["bodyslide"] = {
-                        "status": "already_installed" if result.already_existed else "installed",
+                        "status": "already_installed"
+                        if result.already_existed
+                        else "installed",
                         "exe_path": str(result.exe_path),
                         "version": result.version,
                     }
                 else:
                     results[tool_name] = {
-                        "error": (f"Unknown tool: {tool_name!r}. Supported: loot, xedit, pandora, bodyslide")
+                        "error": (
+                            f"Unknown tool: {tool_name!r}. Supported: loot, xedit, pandora, bodyslide"
+                        )
                     }
             except ToolInstallError as exc:
                 results[tool_name_lower] = {"error": str(exc)}

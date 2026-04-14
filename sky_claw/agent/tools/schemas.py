@@ -13,7 +13,6 @@ from pydantic import field_validator
 
 from sky_claw.config import SystemPaths
 
-
 # HOTFIX: Sandbox directories for path validation
 ALLOWED_SANDBOX_DIRS = [
     SystemPaths.modding_root().resolve(),
@@ -39,7 +38,9 @@ def _validate_sandbox_path(v: str) -> str:
         except ValueError:
             continue
 
-    raise ValueError(f"Path traversal blocked: '{v}' is outside allowed sandbox directories")
+    raise ValueError(
+        f"Path traversal blocked: '{v}' is outside allowed sandbox directories"
+    )
 
 
 class SearchModParams(pydantic.BaseModel):
@@ -47,7 +48,9 @@ class SearchModParams(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(strict=True)
 
-    mod_name: str = pydantic.Field(min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
+    mod_name: str = pydantic.Field(
+        min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$"
+    )
 
 
 class ProfileParams(pydantic.BaseModel):
@@ -55,7 +58,9 @@ class ProfileParams(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(strict=True)
 
-    profile: str = pydantic.Field(min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
+    profile: str = pydantic.Field(
+        min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$"
+    )
 
 
 class InstallModParams(pydantic.BaseModel):
@@ -64,7 +69,9 @@ class InstallModParams(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(strict=True)
 
     nexus_id: int = pydantic.Field(gt=0)
-    version: str = pydantic.Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.\-]+$")
+    version: str = pydantic.Field(
+        min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.\-]+$"
+    )
 
 
 class XEditAnalysisParams(pydantic.BaseModel):
@@ -72,7 +79,9 @@ class XEditAnalysisParams(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(strict=True)
 
-    script_name: str = pydantic.Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-]+\.pas$")
+    script_name: str = pydantic.Field(
+        min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-]+\.pas$"
+    )
     plugins: list[str] = pydantic.Field(min_length=1)
 
 
@@ -153,7 +162,9 @@ class AnalyzeConflictsParams(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(strict=True)
 
-    profile: str = pydantic.Field(min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
+    profile: str = pydantic.Field(
+        min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$"
+    )
     plugins: list[str] | None = pydantic.Field(
         default=None,
         description="Specific plugins to analyze. If omitted, uses all enabled plugins from the profile.",
@@ -164,30 +175,36 @@ class ModNameParams(pydantic.BaseModel):
     """Parameters for tools specifying a mod name."""
 
     model_config = pydantic.ConfigDict(strict=True)
-    mod_name: str = pydantic.Field(min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
-    profile: str = pydantic.Field(default="Default", pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
+    mod_name: str = pydantic.Field(
+        min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$"
+    )
+    profile: str = pydantic.Field(
+        default="Default", pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$"
+    )
 
 
 class ToggleModParams(pydantic.BaseModel):
     """Parameters for toggling a mod."""
 
     model_config = pydantic.ConfigDict(strict=True)
-    mod_name: str = pydantic.Field(min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
+    mod_name: str = pydantic.Field(
+        min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$"
+    )
     enable: bool
     profile: str = pydantic.Field(default="Default", pattern=r"^[a-zA-Z0-9_. \-]+$")
 
 
 __all__ = [
-    "SearchModParams",
-    "ProfileParams",
-    "InstallModParams",
-    "XEditAnalysisParams",
-    "DownloadModParams",
-    "PreviewInstallerParams",
-    "InstallFromArchiveParams",
-    "ResolveFomodParams",
-    "SetupToolsParams",
     "AnalyzeConflictsParams",
+    "DownloadModParams",
+    "InstallFromArchiveParams",
+    "InstallModParams",
     "ModNameParams",
+    "PreviewInstallerParams",
+    "ProfileParams",
+    "ResolveFomodParams",
+    "SearchModParams",
+    "SetupToolsParams",
     "ToggleModParams",
+    "XEditAnalysisParams",
 ]

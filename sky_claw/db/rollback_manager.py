@@ -6,9 +6,12 @@ import logging
 import pathlib
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from .journal import OperationJournal, OperationType, OperationStatus
-from .snapshot_manager import FileSnapshotManager
+from .journal import OperationJournal, OperationStatus, OperationType
+
+if TYPE_CHECKING:
+    from .snapshot_manager import FileSnapshotManager
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +46,7 @@ class RollbackManager:
         self._journal = journal
         self._snapshots = snapshot_manager
 
-    async def __aenter__(self) -> "RollbackManager":
+    async def __aenter__(self) -> RollbackManager:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -59,7 +62,9 @@ class RollbackManager:
         3. Actualizar estado de la entrada en el Journal a 'ROLLED_BACK'
         """
         # Obtener última operación
-        entry = await self._journal.get_last_operation(agent_id, [OperationStatus.COMPLETED, OperationStatus.FAILED])
+        entry = await self._journal.get_last_operation(
+            agent_id, [OperationStatus.COMPLETED, OperationStatus.FAILED]
+        )
 
         if entry is None:
             return RollbackResult(
@@ -74,8 +79,10 @@ class RollbackManager:
                 await self._snapshots.restore_snapshot(
                     pathlib.Path(entry.snapshot_path), pathlib.Path(entry.target_path)
                 )
-            except (OSError, IOError) as e:
-                logger.critical("Rollback failed for %s: %s", agent_id, str(e), exc_info=True)
+            except OSError as e:
+                logger.critical(
+                    "Rollback failed for %s: %s", agent_id, str(e), exc_info=True
+                )
                 raise RollbackError(str(e)) from e
 
         # Actualizar estado en journal
@@ -85,6 +92,9 @@ class RollbackManager:
             success=True,
             transaction_id=entry.id,
             entries_restored=1 if entry.snapshot_path else 0,
-            files_deleted=1 if entry.operation_type in [OperationType.FILE_CREATE, OperationType.MOD_INSTALL] else 0,
+            files_deleted=1
+            if entry.operation_type
+            in [OperationType.FILE_CREATE, OperationType.MOD_INSTALL]
+            else 0,
             errors=[],
         )

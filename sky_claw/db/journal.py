@@ -15,7 +15,7 @@ import pathlib
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import aiosqlite
@@ -80,7 +80,7 @@ class JournalRollbackError(JournalError):
 # =============================================================================
 
 
-class OperationType(str, Enum):
+class OperationType(StrEnum):
     """Tipos de operaciones journalizables."""
 
     MOD_INSTALL = "mod_install"
@@ -93,7 +93,7 @@ class OperationType(str, Enum):
     FILE_RENAME = "file_rename"
 
 
-class OperationStatus(str, Enum):
+class OperationStatus(StrEnum):
     """Estados de una operación en el journal."""
 
     STARTED = "started"
@@ -102,7 +102,7 @@ class OperationStatus(str, Enum):
     ROLLED_BACK = "rolled_back"
 
 
-class TransactionStatus(str, Enum):
+class TransactionStatus(StrEnum):
     """Estados de una transacción."""
 
     PENDING = "pending"
@@ -201,7 +201,7 @@ class OperationJournal:
         committed_at TEXT,
         rolled_back_at TEXT
     );
-    
+
     CREATE TABLE IF NOT EXISTS journal_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         transaction_id INTEGER NOT NULL REFERENCES transactions(transaction_id) ON DELETE CASCADE,
@@ -215,7 +215,7 @@ class OperationJournal:
         metadata TEXT,
         rolled_back INTEGER DEFAULT 0
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_journal_transaction ON journal_entries(transaction_id);
     CREATE INDEX IF NOT EXISTS idx_journal_agent ON journal_entries(agent_id);
     CREATE INDEX IF NOT EXISTS idx_journal_status ON journal_entries(status);
@@ -237,7 +237,9 @@ class OperationJournal:
         validator = PathTraversalValidator(allow_absolute=True)
         result = validator.validate(raw_path)
         if not result.is_valid:
-            raise ValueError(f"Path traversal detected in journal path '{raw_path}': {result.error_message}")
+            raise ValueError(
+                f"Path traversal detected in journal path '{raw_path}': {result.error_message}"
+            )
 
         self._db_path = pathlib.Path(raw_path)
         self._db: aiosqlite.Connection | None = None
@@ -254,7 +256,9 @@ class OperationJournal:
             await self._db.executescript(self._SCHEMA_SQL)
             await self._db.execute("PRAGMA journal_mode=WAL")
             await self._db.execute("PRAGMA foreign_keys=ON")
-            logger.info("Journal database opened", extra={"db_path": str(self._db_path)})
+            logger.info(
+                "Journal database opened", extra={"db_path": str(self._db_path)}
+            )
         except sqlite3.Error as e:
             raise JournalConnectionError(f"Failed to open journal database: {e}") from e
 
@@ -313,7 +317,9 @@ class OperationJournal:
                 transaction_id = cursor.lastrowid
 
                 if transaction_id is None:
-                    raise JournalTransactionError("Failed to get transaction ID after insert")
+                    raise JournalTransactionError(
+                        "Failed to get transaction ID after insert"
+                    )
 
                 self._current_transaction = transaction_id
 
@@ -330,7 +336,9 @@ class OperationJournal:
                 return transaction_id
 
             except sqlite3.Error as e:
-                raise JournalTransactionError(f"Failed to begin transaction: {e}") from e
+                raise JournalTransactionError(
+                    f"Failed to begin transaction: {e}"
+                ) from e
 
     async def commit_transaction(self, transaction_id: int) -> None:
         """
@@ -348,7 +356,7 @@ class OperationJournal:
             try:
                 cursor = await db.execute(
                     """
-                    UPDATE transactions 
+                    UPDATE transactions
                     SET status = ?, committed_at = datetime('now')
                     WHERE transaction_id = ? AND status = ?
                     """,
@@ -369,7 +377,9 @@ class OperationJournal:
                 if self._current_transaction == transaction_id:
                     self._current_transaction = None
 
-                logger.info("Transaction committed", extra={"transaction_id": transaction_id})
+                logger.info(
+                    "Transaction committed", extra={"transaction_id": transaction_id}
+                )
 
             except sqlite3.Error as e:
                 raise JournalTransactionError(
@@ -388,30 +398,32 @@ class OperationJournal:
         """
         db = await self._ensure_connected()
 
-        async with self._lock:
-            async with db.execute(
+        async with (
+            self._lock,
+            db.execute(
                 """
-                SELECT transaction_id, mod_id, description, status, 
+                SELECT transaction_id, mod_id, description, status,
                        created_at, committed_at, rolled_back_at
-                FROM transactions 
+                FROM transactions
                 WHERE transaction_id = ?
                 """,
                 (transaction_id,),
-            ) as cursor:
-                row = await cursor.fetchone()
+            ) as cursor,
+        ):
+            row = await cursor.fetchone()
 
-                if row is None:
-                    return None
+            if row is None:
+                return None
 
-                return Transaction(
-                    transaction_id=row[0],
-                    mod_id=row[1],
-                    description=row[2],
-                    status=TransactionStatus(row[3]),
-                    created_at=datetime.fromisoformat(row[4]),
-                    committed_at=datetime.fromisoformat(row[5]) if row[5] else None,
-                    rolled_back_at=datetime.fromisoformat(row[6]) if row[6] else None,
-                )
+            return Transaction(
+                transaction_id=row[0],
+                mod_id=row[1],
+                description=row[2],
+                status=TransactionStatus(row[3]),
+                created_at=datetime.fromisoformat(row[4]),
+                committed_at=datetime.fromisoformat(row[5]) if row[5] else None,
+                rolled_back_at=datetime.fromisoformat(row[6]) if row[6] else None,
+            )
 
     async def list_recent_transactions(
         self,
@@ -433,7 +445,7 @@ class OperationJournal:
         db = await self._ensure_connected()
 
         query = """
-            SELECT transaction_id, mod_id, description, status, 
+            SELECT transaction_id, mod_id, description, status,
                    created_at, committed_at, rolled_back_at
             FROM transactions
         """
@@ -454,25 +466,26 @@ class OperationJournal:
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
 
-        async with self._lock:
-            async with db.execute(query, params) as cursor:
-                rows = await cursor.fetchall()
+        async with self._lock, db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
 
-                transactions: list[Transaction] = []
-                for row in rows:
-                    transactions.append(
-                        Transaction(
-                            transaction_id=row[0],
-                            mod_id=row[1],
-                            description=row[2],
-                            status=TransactionStatus(row[3]),
-                            created_at=datetime.fromisoformat(row[4]),
-                            committed_at=datetime.fromisoformat(row[5]) if row[5] else None,
-                            rolled_back_at=datetime.fromisoformat(row[6]) if row[6] else None,
-                        )
+            transactions: list[Transaction] = []
+            for row in rows:
+                transactions.append(
+                    Transaction(
+                        transaction_id=row[0],
+                        mod_id=row[1],
+                        description=row[2],
+                        status=TransactionStatus(row[3]),
+                        created_at=datetime.fromisoformat(row[4]),
+                        committed_at=datetime.fromisoformat(row[5]) if row[5] else None,
+                        rolled_back_at=datetime.fromisoformat(row[6])
+                        if row[6]
+                        else None,
                     )
+                )
 
-                return transactions
+            return transactions
 
     # =========================================================================
     # OPERATION LOGGING
@@ -510,14 +523,16 @@ class OperationJournal:
 
         tx_id = transaction_id or self._current_transaction
         if tx_id is None:
-            raise JournalTransactionError("No active transaction. Call begin_transaction first.")
+            raise JournalTransactionError(
+                "No active transaction. Call begin_transaction first."
+            )
 
         async with self._lock:
             try:
                 cursor = await db.execute(
                     """
-                    INSERT INTO journal_entries 
-                    (transaction_id, timestamp, agent_id, operation_type, 
+                    INSERT INTO journal_entries
+                    (transaction_id, timestamp, agent_id, operation_type,
                      target_path, status, snapshot_path, checksum, metadata)
                     VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
                     """,
@@ -552,7 +567,9 @@ class OperationJournal:
                 return entry_id
 
             except sqlite3.Error as e:
-                raise JournalTransactionError(f"Failed to log operation: {e}", transaction_id=tx_id) from e
+                raise JournalTransactionError(
+                    f"Failed to log operation: {e}", transaction_id=tx_id
+                ) from e
 
     async def complete_operation(self, entry_id: int) -> None:
         """
@@ -564,7 +581,9 @@ class OperationJournal:
         await self._update_status(entry_id, OperationStatus.COMPLETED)
         logger.debug("Operation completed", extra={"entry_id": entry_id})
 
-    async def fail_operation(self, entry_id: int, error: str = "", metadata: dict[str, Any] | None = None) -> None:
+    async def fail_operation(
+        self, entry_id: int, error: str = "", metadata: dict[str, Any] | None = None
+    ) -> None:
         """
         Marcar una operación como fallida.
 
@@ -580,7 +599,7 @@ class OperationJournal:
             async with self._lock:
                 await db.execute(
                     """
-                    UPDATE journal_entries 
+                    UPDATE journal_entries
                     SET metadata = json_set(COALESCE(metadata, '{}'), '$.error', ?)
                     WHERE id = ?
                     """,
@@ -603,7 +622,7 @@ class OperationJournal:
         async with self._lock:
             await db.execute(
                 """
-                UPDATE journal_entries 
+                UPDATE journal_entries
                 SET status = ?, rolled_back = 1
                 WHERE id = ?
                 """,
@@ -613,7 +632,7 @@ class OperationJournal:
             if details:
                 await db.execute(
                     """
-                    UPDATE journal_entries 
+                    UPDATE journal_entries
                     SET metadata = json_set(COALESCE(metadata, '{}'), '$.rollback_details', ?)
                     WHERE id = ?
                     """,
@@ -622,7 +641,9 @@ class OperationJournal:
 
             await db.commit()
 
-        logger.info("Operation rolled back", extra={"entry_id": entry_id, "details": details})
+        logger.info(
+            "Operation rolled back", extra={"entry_id": entry_id, "details": details}
+        )
 
     async def _update_status(self, entry_id: int, status: OperationStatus) -> None:
         """Actualizar el estado de una operación."""
@@ -639,7 +660,9 @@ class OperationJournal:
     # QUERY OPERATIONS
     # =========================================================================
 
-    async def get_operations_by_transaction(self, transaction_id: int) -> list[JournalEntry]:
+    async def get_operations_by_transaction(
+        self, transaction_id: int
+    ) -> list[JournalEntry]:
         """
         Obtener todas las operaciones de una transacción.
 
@@ -651,24 +674,26 @@ class OperationJournal:
         """
         db = await self._ensure_connected()
 
-        async with self._lock:
-            async with db.execute(
+        async with (
+            self._lock,
+            db.execute(
                 """
-                SELECT id, timestamp, agent_id, operation_type, target_path, 
+                SELECT id, timestamp, agent_id, operation_type, target_path,
                        status, snapshot_path, checksum, metadata
-                FROM journal_entries 
+                FROM journal_entries
                 WHERE transaction_id = ?
                 ORDER BY timestamp ASC
                 """,
                 (transaction_id,),
-            ) as cursor:
-                rows = await cursor.fetchall()
+            ) as cursor,
+        ):
+            rows = await cursor.fetchall()
 
-                entries: list[JournalEntry] = []
-                for row in rows:
-                    entries.append(self._row_to_entry(row))
+            entries: list[JournalEntry] = []
+            for row in rows:
+                entries.append(self._row_to_entry(row))
 
-                return entries
+            return entries
 
     async def get_last_operation(
         self, agent_id: str, statuses: list[OperationStatus] | None = None
@@ -708,7 +733,9 @@ class OperationJournal:
 
                 return self._row_to_entry(row)
 
-    async def get_operations_by_agent(self, agent_id: str, limit: int = 100) -> list[JournalEntry]:
+    async def get_operations_by_agent(
+        self, agent_id: str, limit: int = 100
+    ) -> list[JournalEntry]:
         """
         Obtener todas las operaciones de un agente.
 
@@ -721,27 +748,31 @@ class OperationJournal:
         """
         db = await self._ensure_connected()
 
-        async with self._lock:
-            async with db.execute(
+        async with (
+            self._lock,
+            db.execute(
                 """
-                SELECT id, timestamp, agent_id, operation_type, target_path, 
+                SELECT id, timestamp, agent_id, operation_type, target_path,
                        status, snapshot_path, checksum, metadata
-                FROM journal_entries 
+                FROM journal_entries
                 WHERE agent_id = ?
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
                 (agent_id, limit),
-            ) as cursor:
-                rows = await cursor.fetchall()
+            ) as cursor,
+        ):
+            rows = await cursor.fetchall()
 
-                entries: list[JournalEntry] = []
-                for row in rows:
-                    entries.append(self._row_to_entry(row))
+            entries: list[JournalEntry] = []
+            for row in rows:
+                entries.append(self._row_to_entry(row))
 
-                return entries
+            return entries
 
-    async def get_operations_by_path(self, target_path: str, limit: int = 50) -> list[JournalEntry]:
+    async def get_operations_by_path(
+        self, target_path: str, limit: int = 50
+    ) -> list[JournalEntry]:
         """
         Obtener operaciones que afectaron un path específico.
 
@@ -754,25 +785,27 @@ class OperationJournal:
         """
         db = await self._ensure_connected()
 
-        async with self._lock:
-            async with db.execute(
+        async with (
+            self._lock,
+            db.execute(
                 """
-                SELECT id, timestamp, agent_id, operation_type, target_path, 
+                SELECT id, timestamp, agent_id, operation_type, target_path,
                        status, snapshot_path, checksum, metadata
-                FROM journal_entries 
+                FROM journal_entries
                 WHERE target_path = ?
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
                 (target_path, limit),
-            ) as cursor:
-                rows = await cursor.fetchall()
+            ) as cursor,
+        ):
+            rows = await cursor.fetchall()
 
-                entries: list[JournalEntry] = []
-                for row in rows:
-                    entries.append(self._row_to_entry(row))
+            entries: list[JournalEntry] = []
+            for row in rows:
+                entries.append(self._row_to_entry(row))
 
-                return entries
+            return entries
 
     # =========================================================================
     # MARK TRANSACTION ROLLED BACK
@@ -790,7 +823,7 @@ class OperationJournal:
         async with self._lock:
             await db.execute(
                 """
-                UPDATE transactions 
+                UPDATE transactions
                 SET status = ?, rolled_back_at = datetime('now')
                 WHERE transaction_id = ?
                 """,
@@ -822,7 +855,7 @@ class OperationJournal:
             metadata=json.loads(row[8]) if row[8] else None,
         )
 
-    async def __aenter__(self) -> "OperationJournal":
+    async def __aenter__(self) -> OperationJournal:
         """Context manager entry."""
         await self.open()
         return self

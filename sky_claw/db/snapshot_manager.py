@@ -140,10 +140,14 @@ class FileSnapshotManager:
             JournalSnapshotError: Si el archivo no existe o falla la copia.
         """
         if not file_path.exists():
-            raise JournalSnapshotError(f"Cannot create snapshot: file does not exist: {file_path}")
+            raise JournalSnapshotError(
+                f"Cannot create snapshot: file does not exist: {file_path}"
+            )
 
         if not file_path.is_file():
-            raise JournalSnapshotError(f"Cannot create snapshot: path is not a file: {file_path}")
+            raise JournalSnapshotError(
+                f"Cannot create snapshot: path is not a file: {file_path}"
+            )
 
         async with self._lock:
             try:
@@ -193,7 +197,9 @@ class FileSnapshotManager:
                 return snapshot_info
 
             except OSError as e:
-                raise JournalSnapshotError(f"Failed to create snapshot for {file_path}: {e}") from e
+                raise JournalSnapshotError(
+                    f"Failed to create snapshot for {file_path}: {e}"
+                ) from e
 
     async def create_snapshot_sync(
         self,
@@ -211,7 +217,9 @@ class FileSnapshotManager:
             SnapshotInfo con información del snapshot creado.
         """
         if not file_path.exists():
-            raise JournalSnapshotError(f"Cannot create snapshot: file does not exist: {file_path}")
+            raise JournalSnapshotError(
+                f"Cannot create snapshot: file does not exist: {file_path}"
+            )
 
         try:
             timestamp = datetime.utcnow()
@@ -239,7 +247,9 @@ class FileSnapshotManager:
             )
 
         except OSError as e:
-            raise JournalSnapshotError(f"Failed to create snapshot for {file_path}: {e}") from e
+            raise JournalSnapshotError(
+                f"Failed to create snapshot for {file_path}: {e}"
+            ) from e
 
     # =========================================================================
     # SNAPSHOT RESTORATION
@@ -317,7 +327,9 @@ class FileSnapshotManager:
                 return True
 
             except OSError as e:
-                raise JournalSnapshotError(f"Failed to restore snapshot {snapshot_path} to {target}: {e}") from e
+                raise JournalSnapshotError(
+                    f"Failed to restore snapshot {snapshot_path} to {target}: {e}"
+                ) from e
 
     # =========================================================================
     # SNAPSHOT CLEANUP
@@ -357,8 +369,14 @@ class FileSnapshotManager:
 
                         if dir_timestamp < cutoff_time:
                             # Eliminar todo el directorio
-                            dir_size = sum(f.stat().st_size for f in date_dir.rglob("*") if f.is_file())
-                            file_count = sum(1 for f in date_dir.rglob("*") if f.is_file())
+                            dir_size = sum(
+                                f.stat().st_size
+                                for f in date_dir.rglob("*")
+                                if f.is_file()
+                            )
+                            file_count = sum(
+                                1 for f in date_dir.rglob("*") if f.is_file()
+                            )
 
                             if not dry_run:
                                 await asyncio.to_thread(shutil.rmtree, date_dir)
@@ -384,7 +402,9 @@ class FileSnapshotManager:
                 errors.append(f"Error during cleanup: {e}")
                 logger.error("Snapshot cleanup error", extra={"error": str(e)})
 
-        return CleanupResult(deleted_count=deleted_count, freed_bytes=freed_bytes, errors=errors)
+        return CleanupResult(
+            deleted_count=deleted_count, freed_bytes=freed_bytes, errors=errors
+        )
 
     async def cleanup_by_pattern(
         self,
@@ -422,7 +442,9 @@ class FileSnapshotManager:
             except OSError as e:
                 errors.append(f"Error cleaning pattern {pattern}: {e}")
 
-        return CleanupResult(deleted_count=deleted_count, freed_bytes=freed_bytes, errors=errors)
+        return CleanupResult(
+            deleted_count=deleted_count, freed_bytes=freed_bytes, errors=errors
+        )
 
     # =========================================================================
     # SIZE MANAGEMENT
@@ -542,7 +564,9 @@ class FileSnapshotManager:
     # UTILITY METHODS
     # =========================================================================
 
-    def _generate_snapshot_id(self, file_path: pathlib.Path, timestamp: datetime) -> str:
+    def _generate_snapshot_id(
+        self, file_path: pathlib.Path, timestamp: datetime
+    ) -> str:
         """Genera un ID único para el snapshot."""
         # Usar hash del path + timestamp para unicidad
         unique_string = f"{file_path}:{timestamp.isoformat()}:{time.time_ns()}"
@@ -620,7 +644,7 @@ class FileSnapshotManager:
     # CONTEXT MANAGER
     # =========================================================================
 
-    async def __aenter__(self) -> "FileSnapshotManager":
+    async def __aenter__(self) -> FileSnapshotManager:
         """Context manager entry."""
         await self.initialize()
         return self

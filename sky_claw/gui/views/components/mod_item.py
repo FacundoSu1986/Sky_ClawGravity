@@ -5,7 +5,8 @@
 VIEW PURO - Sin lógica de negocio, solo presentación.
 """
 
-from typing import Optional, Callable
+from collections.abc import Callable
+
 from nicegui import ui
 
 
@@ -13,7 +14,7 @@ def create_mod_list_item(
     name: str,
     status: str,
     size: str,
-    on_click: Optional[Callable] = None,
+    on_click: Callable | None = None,
 ) -> ui.element:
     """Crea un ítem de lista de mod.
 
@@ -54,7 +55,9 @@ def create_mod_list_item(
                 ui.label(name).classes("text-white text-sm font-medium")
                 ui.label(size).classes("text-[#6b7280] text-xs")
 
-        ui.label(status_label).classes(f"{status_color} px-2 py-0.5 rounded-full text-xs font-medium text-white")
+        ui.label(status_label).classes(
+            f"{status_color} px-2 py-0.5 rounded-full text-xs font-medium text-white"
+        )
 
         if on_click:
             item.on("click", on_click)

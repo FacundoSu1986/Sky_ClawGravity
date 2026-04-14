@@ -10,14 +10,18 @@ from __future__ import annotations
 import logging
 import pathlib
 import time
+from typing import TYPE_CHECKING
 
-import aiohttp
+if TYPE_CHECKING:
+    import aiohttp
 
-from sky_claw.security.network_gateway import NetworkGateway
+    from sky_claw.security.network_gateway import NetworkGateway
 
 logger = logging.getLogger(__name__)
 
-MASTERLIST_URL = "https://raw.githubusercontent.com/loot/skyrimse/master/masterlist.yaml"
+MASTERLIST_URL = (
+    "https://raw.githubusercontent.com/loot/skyrimse/master/masterlist.yaml"
+)
 DEFAULT_CACHE_DIR = pathlib.Path("sky_claw_data")
 DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
@@ -79,7 +83,9 @@ class MasterlistDownloader:
         async with resp:
             if resp.status != 200:
                 body = await resp.text()
-                raise RuntimeError(f"Failed to download masterlist: HTTP {resp.status}: {body}")
+                raise RuntimeError(
+                    f"Failed to download masterlist: HTTP {resp.status}: {body}"
+                )
             content = await resp.read()
 
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)

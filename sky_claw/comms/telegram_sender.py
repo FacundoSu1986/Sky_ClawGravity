@@ -11,11 +11,12 @@ import asyncio
 import collections
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import aiohttp
+if TYPE_CHECKING:
+    import aiohttp
 
-from sky_claw.security.network_gateway import NetworkGateway
+    from sky_claw.security.network_gateway import NetworkGateway
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,9 @@ class TelegramSender:
         if len(times) >= self._rate_limit:
             wait_seconds = 60.0 - (now - times[0])
             if wait_seconds > 0:
-                logger.debug("Rate limit for chat_id=%d, waiting %.1fs", chat_id, wait_seconds)
+                logger.debug(
+                    "Rate limit for chat_id=%d, waiting %.1fs", chat_id, wait_seconds
+                )
                 await asyncio.sleep(wait_seconds)
 
     def _record_send(self, chat_id: int) -> None:

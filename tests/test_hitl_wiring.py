@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
-
 from sky_claw.comms.telegram import TelegramWebhook, _parse_hitl_command
 from sky_claw.comms.telegram_sender import TelegramSender
 from sky_claw.db.async_registry import AsyncModRegistry
@@ -21,7 +20,6 @@ from sky_claw.scraper.nexus_downloader import FileInfo, NexusDownloader
 from sky_claw.security.hitl import Decision, HITLGuard
 from sky_claw.security.network_gateway import EgressPolicy, NetworkGateway
 from sky_claw.security.path_validator import PathValidator
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -133,19 +131,25 @@ class TestParseHITLCommand:
 
 class TestWebhookHITLApprove:
     @pytest.mark.asyncio
-    async def test_approve_found_calls_respond_and_confirms(self, aiohttp_client) -> None:
+    async def test_approve_found_calls_respond_and_confirms(
+        self, aiohttp_client
+    ) -> None:
         guard = HITLGuard(notify_fn=None, timeout=5)
-        webhook, router, sender = _make_webhook(hitl=guard)
+        webhook, _router, sender = _make_webhook(hitl=guard)
 
         # Register a pending request manually.
-        req_task = asyncio.create_task(guard.request_approval(reason="test_reason", request_id="download-10-20"))
+        req_task = asyncio.create_task(
+            guard.request_approval(reason="test_reason", request_id="download-10-20")
+        )
         await asyncio.sleep(0)  # Let the coroutine register the request.
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
-        resp = await client.post("/webhook", json=_make_update(1, text="/approve download-10-20"))
+        resp = await client.post(
+            "/webhook", json=_make_update(1, text="/approve download-10-20")
+        )
         assert resp.status == 200
         await asyncio.sleep(0.05)
 
@@ -156,9 +160,11 @@ class TestWebhookHITLApprove:
     @pytest.mark.asyncio
     async def test_deny_found_calls_respond_and_confirms(self, aiohttp_client) -> None:
         guard = HITLGuard(notify_fn=None, timeout=5)
-        webhook, router, sender = _make_webhook(hitl=guard)
+        webhook, _router, sender = _make_webhook(hitl=guard)
 
-        req_task = asyncio.create_task(guard.request_approval(reason="test_reason", request_id="download-5-6"))
+        req_task = asyncio.create_task(
+            guard.request_approval(reason="test_reason", request_id="download-5-6")
+        )
         await asyncio.sleep(0)
 
         app = aiohttp.web.Application()
@@ -181,7 +187,9 @@ class TestWebhookHITLApprove:
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
-        await client.post("/webhook", json=_make_update(3, text="/approve nonexistent-id"))
+        await client.post(
+            "/webhook", json=_make_update(3, text="/approve nonexistent-id")
+        )
         await asyncio.sleep(0.05)
 
         router.chat.assert_not_awaited()
@@ -209,7 +217,7 @@ class TestWebhookHITLApprove:
     @pytest.mark.asyncio
     async def test_hitl_command_does_not_reach_llm_router(self, aiohttp_client) -> None:
         guard = HITLGuard(notify_fn=None, timeout=5)
-        webhook, router, sender = _make_webhook(hitl=guard)
+        webhook, router, _sender = _make_webhook(hitl=guard)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
@@ -236,9 +244,11 @@ class TestWebhookHITLApprove:
         sender.send.assert_awaited_once_with(999, "42 mods")
 
     @pytest.mark.asyncio
-    async def test_approve_without_hitl_falls_through_to_llm(self, aiohttp_client) -> None:
+    async def test_approve_without_hitl_falls_through_to_llm(
+        self, aiohttp_client
+    ) -> None:
         """When hitl=None, /approve is treated as normal text by the LLM."""
-        webhook, router, sender = _make_webhook(hitl=None)
+        webhook, router, _sender = _make_webhook(hitl=None)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
@@ -250,10 +260,12 @@ class TestWebhookHITLApprove:
         router.chat.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_approve_with_empty_id_falls_through_to_llm(self, aiohttp_client) -> None:
+    async def test_approve_with_empty_id_falls_through_to_llm(
+        self, aiohttp_client
+    ) -> None:
         """'/approve' with no ID is not a valid HITL command — goes to LLM."""
         guard = HITLGuard(notify_fn=None, timeout=5)
-        webhook, router, sender = _make_webhook(hitl=guard)
+        webhook, router, _sender = _make_webhook(hitl=guard)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
@@ -295,7 +307,9 @@ class TestHITLNotifyFn:
             await guard.respond("req-notify-test", approved=True)
 
         asyncio.create_task(_respond())
-        await guard.request_approval(reason="Download mod X", detail="file.zip", request_id="req-notify-test")
+        await guard.request_approval(
+            reason="Download mod X", detail="file.zip", request_id="req-notify-test"
+        )
 
         sender.send.assert_awaited_once()
         call = sender.send.call_args
@@ -363,7 +377,9 @@ class TestHITLNotifyFn:
 
         asyncio.create_task(_respond())
         # It should not propagate the exception; it returns TIMEOUT.
-        decision = await guard.request_approval(reason="test", request_id="bad-notify-req")
+        decision = await guard.request_approval(
+            reason="test", request_id="bad-notify-req"
+        )
         assert decision is Decision.TIMEOUT
 
 
@@ -374,9 +390,12 @@ class TestHITLNotifyFn:
 
 class TestAppContextWiring:
     @pytest.mark.asyncio
-    async def test_hitl_and_downloader_wired_when_keys_set(self, tmp_path: pathlib.Path) -> None:
+    async def test_hitl_and_downloader_wired_when_keys_set(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         """start() wires hitl + downloader when NEXUS_API_KEY is set."""
         import argparse
+
         from sky_claw.__main__ import AppContext
 
         args = argparse.Namespace(
@@ -403,15 +422,20 @@ class TestAppContextWiring:
 
         try:
             assert ctx.hitl is not None, "HITLGuard should always be created"
-            assert ctx.network.downloader is not None, "NexusDownloader should be created when NEXUS_API_KEY is set"
+            assert ctx.network.downloader is not None, (
+                "NexusDownloader should be created when NEXUS_API_KEY is set"
+            )
             assert ctx.network.downloader.staging_dir == tmp_path / "staging"
         finally:
             await ctx.stop()
 
     @pytest.mark.asyncio
-    async def test_downloader_is_none_without_nexus_key(self, tmp_path: pathlib.Path) -> None:
+    async def test_downloader_is_none_without_nexus_key(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         """start() leaves downloader=None when NEXUS_API_KEY is absent."""
         import argparse
+
         from sky_claw.__main__ import AppContext
 
         args = argparse.Namespace(
@@ -452,8 +476,11 @@ class TestAppContextWiring:
             await ctx.stop()
 
     @pytest.mark.asyncio
-    async def test_sender_created_when_bot_token_set(self, tmp_path: pathlib.Path) -> None:
+    async def test_sender_created_when_bot_token_set(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         import argparse
+
         from sky_claw.__main__ import AppContext
 
         args = argparse.Namespace(
@@ -486,6 +513,7 @@ class TestAppContextWiring:
     @pytest.mark.asyncio
     async def test_sender_none_without_bot_token(self, tmp_path: pathlib.Path) -> None:
         import argparse
+
         from sky_claw.__main__ import AppContext
 
         args = argparse.Namespace(
@@ -572,7 +600,9 @@ class TestArgparse:
 
 class TestEndToEndHITLFlow:
     @pytest.mark.asyncio
-    async def test_download_request_then_approve_enqueues(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
+    async def test_download_request_then_approve_enqueues(
+        self, tmp_path: pathlib.Path, aiohttp_client
+    ) -> None:
         """Full flow: tool calls request_approval → webhook delivers /approve → enqueued."""
         from sky_claw.agent.tools import AsyncToolRegistry
 
@@ -581,7 +611,9 @@ class TestEndToEndHITLFlow:
         validator = PathValidator(roots=[tmp_path])
         mo2 = MO2Controller(tmp_path, path_validator=validator)
         (tmp_path / "profiles" / "Default").mkdir(parents=True)
-        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text("", encoding="utf-8")
+        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text(
+            "", encoding="utf-8"
+        )
 
         db = AsyncModRegistry(db_path=tmp_path / "e2e.db")
         await db.open()
@@ -639,15 +671,21 @@ class TestEndToEndHITLFlow:
         tool_result: dict[str, Any] = {}
 
         async def _run_tool() -> None:
-            with patch("sky_claw.agent.tools.nexus_tools.aiohttp.ClientSession") as mock_cls:
+            with patch(
+                "sky_claw.agent.tools.nexus_tools.aiohttp.ClientSession"
+            ) as mock_cls:
                 mock_sess = AsyncMock()
                 mock_sess.__aenter__ = AsyncMock(return_value=mock_sess)
                 mock_sess.__aexit__ = AsyncMock(return_value=False)
                 mock_cls.return_value = mock_sess
 
                 with patch.object(downloader, "get_file_info", return_value=fi):
-                    with patch.object(sync_engine, "enqueue_download", side_effect=_fake_enqueue):
-                        result_str = await tool_registry.execute("download_mod", {"nexus_id": 42, "file_id": 7})
+                    with patch.object(
+                        sync_engine, "enqueue_download", side_effect=_fake_enqueue
+                    ):
+                        result_str = await tool_registry.execute(
+                            "download_mod", {"nexus_id": 42, "file_id": 7}
+                        )
             tool_result.update(json.loads(result_str))
 
         tool_task = asyncio.create_task(_run_tool())
@@ -659,7 +697,9 @@ class TestEndToEndHITLFlow:
         expected_request_id = "download-42-7"
         await client.post(
             "/webhook",
-            json=_make_update(100, chat_id=operator_chat_id, text=f"/approve {expected_request_id}"),
+            json=_make_update(
+                100, chat_id=operator_chat_id, text=f"/approve {expected_request_id}"
+            ),
         )
         await asyncio.sleep(0.1)
 
@@ -683,7 +723,9 @@ class TestEndToEndHITLFlow:
         await db.close()
 
     @pytest.mark.asyncio
-    async def test_download_request_then_deny_returns_denied(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
+    async def test_download_request_then_deny_returns_denied(
+        self, tmp_path: pathlib.Path, aiohttp_client
+    ) -> None:
         """Flow: tool calls request_approval → /deny → tool returns denied status."""
         from sky_claw.agent.tools import AsyncToolRegistry
 
@@ -691,7 +733,9 @@ class TestEndToEndHITLFlow:
         validator = PathValidator(roots=[tmp_path])
         mo2 = MO2Controller(tmp_path, path_validator=validator)
         (tmp_path / "profiles" / "Default").mkdir(parents=True)
-        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text("", encoding="utf-8")
+        (tmp_path / "profiles" / "Default" / "modlist.txt").write_text(
+            "", encoding="utf-8"
+        )
 
         db = AsyncModRegistry(db_path=tmp_path / "e2e_deny.db")
         await db.open()
@@ -700,7 +744,9 @@ class TestEndToEndHITLFlow:
         sync_engine = SyncEngine(mo2=mo2, masterlist=masterlist, registry=db)
 
         guard = HITLGuard(notify_fn=None, timeout=10)
-        downloader = NexusDownloader(api_key="nexus-key", gateway=gw, staging_dir=tmp_path / "staging")
+        downloader = NexusDownloader(
+            api_key="nexus-key", gateway=gw, staging_dir=tmp_path / "staging"
+        )
         tool_registry = AsyncToolRegistry(
             registry=db,
             mo2=mo2,
@@ -725,13 +771,17 @@ class TestEndToEndHITLFlow:
         tool_result: dict[str, Any] = {}
 
         async def _run_tool() -> None:
-            with patch("sky_claw.agent.tools.nexus_tools.aiohttp.ClientSession") as mock_cls:
+            with patch(
+                "sky_claw.agent.tools.nexus_tools.aiohttp.ClientSession"
+            ) as mock_cls:
                 mock_sess = AsyncMock()
                 mock_sess.__aenter__ = AsyncMock(return_value=mock_sess)
                 mock_sess.__aexit__ = AsyncMock(return_value=False)
                 mock_cls.return_value = mock_sess
                 with patch.object(downloader, "get_file_info", return_value=fi):
-                    result_str = await tool_registry.execute("download_mod", {"nexus_id": 1, "file_id": 2})
+                    result_str = await tool_registry.execute(
+                        "download_mod", {"nexus_id": 1, "file_id": 2}
+                    )
             tool_result.update(json.loads(result_str))
 
         tool_task = asyncio.create_task(_run_tool())

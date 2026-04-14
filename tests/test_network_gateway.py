@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from sky_claw.security.network_gateway import (
     EgressPolicy,
     EgressViolation,
@@ -32,7 +31,9 @@ def gw_strict() -> NetworkGateway:
 class TestHostAllowList:
     @pytest.mark.asyncio
     async def test_nexus_www_allowed(self, gw: NetworkGateway) -> None:
-        await gw.authorize("GET", "https://www.nexusmods.com/skyrimspecialedition/mods/1234")
+        await gw.authorize(
+            "GET", "https://www.nexusmods.com/skyrimspecialedition/mods/1234"
+        )
 
     @pytest.mark.asyncio
     async def test_nexus_subdomain_allowed(self, gw: NetworkGateway) -> None:

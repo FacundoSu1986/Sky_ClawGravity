@@ -110,7 +110,9 @@ class VFSOrchestrator:
             raise ValueError("La ruta a Mod Organizer 2 no puede estar vacía")
 
         if timeout_seconds <= 0:
-            raise ValueError(f"El timeout debe ser mayor a cero, se recibió: {timeout_seconds}")
+            raise ValueError(
+                f"El timeout debe ser mayor a cero, se recibió: {timeout_seconds}"
+            )
 
         self._mo2_path: str = mo2_path.strip()
         self._timeout_seconds: int = timeout_seconds
@@ -176,7 +178,7 @@ class VFSOrchestrator:
         tool_path = tool_path.strip()
 
         # Construcción del comando VFS de MO2
-        command: list[str] = [self._mo2_path, self._MO2_VFS_FLAG, tool_path] + args
+        command: list[str] = [self._mo2_path, self._MO2_VFS_FLAG, tool_path, *args]
 
         logger.info(
             "Iniciando ejecución VFS - Herramienta: %s, Argumentos: %s",
@@ -198,7 +200,7 @@ class VFSOrchestrator:
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
                     process.communicate(), timeout=self._timeout_seconds
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.critical(
                     "Timeout excedido para %s después de %d segundos",
                     tool_path,
@@ -209,7 +211,7 @@ class VFSOrchestrator:
                 process.terminate()
                 try:
                     await asyncio.wait_for(process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         "Proceso no terminó graciosamente, forzando kill - PID: %d",
                         process.pid,
@@ -224,11 +226,17 @@ class VFSOrchestrator:
                 )
 
             # Decodificación de salidas
-            stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
-            stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
+            stdout = (
+                stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
+            )
+            stderr = (
+                stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
+            )
 
             # Obtención del código de salida
-            exit_code: int = process.returncode if process.returncode is not None else -1
+            exit_code: int = (
+                process.returncode if process.returncode is not None else -1
+            )
 
             logger.info(
                 "Ejecución completada - Herramienta: %s, Código de salida: %d",
@@ -248,7 +256,9 @@ class VFSOrchestrator:
             logger.error("Error de sistema al ejecutar %s: %s", tool_path, str(e))
             raise
         except Exception as e:
-            logger.exception("Error inesperado durante ejecución de %s: %s", tool_path, str(e))
+            logger.exception(
+                "Error inesperado durante ejecución de %s: %s", tool_path, str(e)
+            )
             raise
 
     def __repr__(self) -> str:
@@ -257,4 +267,6 @@ class VFSOrchestrator:
 
     def __str__(self) -> str:
         """Representación en string del orquestador."""
-        return f"VFSOrchestrator(MO2: {self._mo2_path}, Timeout: {self._timeout_seconds}s)"
+        return (
+            f"VFSOrchestrator(MO2: {self._mo2_path}, Timeout: {self._timeout_seconds}s)"
+        )

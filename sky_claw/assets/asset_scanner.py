@@ -10,16 +10,17 @@ No debe modificar, mover ni ocultar archivos.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from enum import Enum
-from pathlib import Path
-from typing import TYPE_CHECKING, Final, Optional
 import hashlib
 import json
 import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import Enum
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sky_claw.security.path_validator import PathValidator
 
 from sky_claw.security.path_validator import PathViolation
@@ -114,11 +115,13 @@ class AssetConflictDetector:
         """
         self._mo2_mods_path = mo2_mods_path
         self._profile_name = profile_name
-        self._modlist_path: Optional[Path] = None
-        self._mods_path: Optional[Path] = None
+        self._modlist_path: Path | None = None
+        self._mods_path: Path | None = None
         self._path_validator = path_validator
 
-        logger.debug(f"AssetConflictDetector inicializado: mods_path={mo2_mods_path}, profile={profile_name}")
+        logger.debug(
+            f"AssetConflictDetector inicializado: mods_path={mo2_mods_path}, profile={profile_name}"
+        )
 
     @property
     def mo2_mods_path(self) -> Path:
@@ -174,7 +177,7 @@ class AssetConflictDetector:
                 except PathViolation:
                     logger.error("Path traversal blocked for modlist: %s", modlist_path)
                     raise
-            with open(modlist_path, "r", encoding="utf-8") as f:
+            with open(modlist_path, encoding="utf-8") as f:
                 lines = f.readlines()
 
             # MO2 guarda los mods en orden inverso de prioridad
@@ -192,10 +195,12 @@ class AssetConflictDetector:
                     # Mod deshabilitado, lo ignoramos
                     logger.debug(f"Mod deshabilitado ignorado: {line[1:]}")
 
-            logger.info(f"Parseados {len(enabled_mods)} mods habilitados desde modlist.txt")
+            logger.info(
+                f"Parseados {len(enabled_mods)} mods habilitados desde modlist.txt"
+            )
             return enabled_mods
 
-        except IOError as e:
+        except OSError as e:
             logger.error(f"Error leyendo modlist.txt: {e}")
             raise
 
@@ -263,11 +268,13 @@ class AssetConflictDetector:
             logger.debug(f"Checksum calculado para {file_path.name}: {checksum}")
             return checksum
 
-        except IOError as e:
+        except OSError as e:
             logger.error(f"Error calculando checksum para {file_path}: {e}")
             raise
 
-    def scan_mod_directory(self, mod_name: str, calculate_checksums: bool = False) -> dict[str, AssetInfo]:
+    def scan_mod_directory(
+        self, mod_name: str, calculate_checksums: bool = False
+    ) -> dict[str, AssetInfo]:
         """
         Escanea recursivamente un directorio de mod y mapea todos los assets.
 
@@ -305,7 +312,9 @@ class AssetConflictDetector:
             path_parts = relative_path_str.split("/")
             if path_parts and path_parts[0] not in self.CRITICAL_DIRS:
                 # No es un asset crítico, pero lo incluimos de todas formas
-                logger.debug(f"Asset fuera de directorios críticos: {relative_path_str}")
+                logger.debug(
+                    f"Asset fuera de directorios críticos: {relative_path_str}"
+                )
 
             # Determinar tipo de asset
             asset_type = self.get_asset_type(file_path)
@@ -314,8 +323,10 @@ class AssetConflictDetector:
             if calculate_checksums:
                 try:
                     checksum = self.calculate_checksum(file_path)
-                except (FileNotFoundError, IOError) as e:
-                    logger.warning(f"Error calculando checksum, usando placeholder: {e}")
+                except (OSError, FileNotFoundError) as e:
+                    logger.warning(
+                        f"Error calculando checksum, usando placeholder: {e}"
+                    )
                     checksum = "ERROR"
             else:
                 checksum = "SKIPPED"
@@ -338,7 +349,9 @@ class AssetConflictDetector:
             assets[relative_path_str] = asset_info
             logger.debug(f"Asset mapeado: {relative_path_str} -> {mod_name}")
 
-        logger.info(f"Escaneo completado para {mod_name}: {len(assets)} assets encontrados")
+        logger.info(
+            f"Escaneo completado para {mod_name}: {len(assets)} assets encontrados"
+        )
         return assets
 
     def detect_conflicts(self) -> list[AssetConflictReport]:
@@ -444,7 +457,7 @@ class AssetConflictDetector:
 
         # Construir estructura del reporte
         report = {
-            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
+            "scan_timestamp": datetime.now(UTC).isoformat(),
             "profile": self._profile_name,
             "mods_path": str(self._mo2_mods_path),
             "total_conflicts": len(conflicts),

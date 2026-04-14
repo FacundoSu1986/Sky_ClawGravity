@@ -1,15 +1,15 @@
 # tests/test_journal.py
 
-import pytest
 import pathlib
 
+import pytest
 from sky_claw.db.journal import (
     OperationJournal,
-    OperationType,
     OperationStatus,
+    OperationType,
 )
-from sky_claw.db.snapshot_manager import FileSnapshotManager
 from sky_claw.db.rollback_manager import RollbackManager
+from sky_claw.db.snapshot_manager import FileSnapshotManager
 
 
 @pytest.fixture
@@ -110,7 +110,9 @@ class TestFileSnapshotManager:
         test_file.write_text("modified content")
 
         # Restore
-        result = await snapshot_manager.restore_snapshot(snapshot_info.snapshot_path, test_file)
+        result = await snapshot_manager.restore_snapshot(
+            snapshot_info.snapshot_path, test_file
+        )
         assert result
         assert test_file.read_text() == "original content"
 

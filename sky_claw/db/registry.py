@@ -6,14 +6,17 @@ correlation.
 
 from __future__ import annotations
 
-import pathlib
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING
 
 import aiosqlite
 
 from sky_claw.config import DB_PATH
+
+if TYPE_CHECKING:
+    import pathlib
+    from collections.abc import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +87,9 @@ class ModRegistry:
             async with self._conn.execute("PRAGMA quick_check") as cur:
                 row = await cur.fetchone()
                 if row is None or str(row[0]).lower() != "ok":
-                    raise RuntimeError(f"SQLite integrity check failed for {self._db_path}")
+                    raise RuntimeError(
+                        f"SQLite integrity check failed for {self._db_path}"
+                    )
             await self._conn.executescript(_SCHEMA_SQL)
         except Exception:
             await self._conn.close()
@@ -146,10 +151,14 @@ class ModRegistry:
     async def get_mod(self, nexus_id: int) -> aiosqlite.Row | None:
         """Return the mod row for *nexus_id*, or ``None``."""
         assert self._conn is not None, "Database is not open"
-        async with self._conn.execute("SELECT * FROM mods WHERE nexus_id = ?", (nexus_id,)) as cur:
+        async with self._conn.execute(
+            "SELECT * FROM mods WHERE nexus_id = ?", (nexus_id,)
+        ) as cur:
             return await cur.fetchone()
 
-    async def set_vfs_status(self, nexus_id: int, *, installed: bool, enabled: bool) -> None:
+    async def set_vfs_status(
+        self, nexus_id: int, *, installed: bool, enabled: bool
+    ) -> None:
         """Update VFS flags for a mod."""
         async with self.transaction() as cur:
             await cur.execute(
@@ -185,7 +194,9 @@ class ModRegistry:
     async def get_dependencies(self, mod_id: int) -> list[aiosqlite.Row]:
         """Return all dependency rows for *mod_id*."""
         assert self._conn is not None, "Database is not open"
-        async with self._conn.execute("SELECT * FROM dependencies WHERE mod_id = ?", (mod_id,)) as cur:
+        async with self._conn.execute(
+            "SELECT * FROM dependencies WHERE mod_id = ?", (mod_id,)
+        ) as cur:
             return await cur.fetchall()
 
     # ------------------------------------------------------------------

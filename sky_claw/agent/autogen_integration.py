@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 autogen_integration.py - Integración de Microsoft AutoGen para Sky-Claw.
 Implementa orquestación multi-agente con conversaciones entre agentes,
@@ -9,12 +8,13 @@ usando implementaciones stub.
 """
 
 import logging
-from typing import Optional, Any, Dict, List, Callable
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from typing import Any, Optional
 
 try:
     import autogen  # noqa: F401
-    from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
+    from autogen import AssistantAgent, GroupChat, GroupChatManager, UserProxyAgent
 
     AUTOGEN_AVAILABLE = True
 except ImportError:
@@ -35,8 +35,8 @@ class AutoGenConfig:
     def __init__(
         self,
         model: str = "gpt-4",
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
         timeout: int = 60,
@@ -48,7 +48,7 @@ class AutoGenConfig:
         self.max_tokens = max_tokens
         self.timeout = timeout
 
-    def to_llm_config(self) -> Dict[str, Any]:
+    def to_llm_config(self) -> dict[str, Any]:
         """Convierte la configuración a formato AutoGen LLM config."""
         config = {
             "model": self.model,
@@ -74,26 +74,30 @@ class SkyClawConversableAgent(ABC):
         self,
         name: str,
         system_message: str,
-        tool_executor: Optional[Any] = None,
+        tool_executor: Any | None = None,
         **kwargs,
     ):
         self.name = name
         self.system_message = system_message
         self._tool_executor = tool_executor
-        self._message_history: List[Dict[str, Any]] = []
+        self._message_history: list[dict[str, Any]] = []
         self._kwargs = kwargs
 
     @abstractmethod
-    async def send_message(self, message: str, recipient: Optional["SkyClawConversableAgent"] = None) -> str:
+    async def send_message(
+        self, message: str, recipient: Optional["SkyClawConversableAgent"] = None
+    ) -> str:
         """Envía un mensaje a otro agente o al grupo."""
         pass
 
     @abstractmethod
-    async def receive_message(self, message: str, sender: "SkyClawConversableAgent") -> str:
+    async def receive_message(
+        self, message: str, sender: "SkyClawConversableAgent"
+    ) -> str:
         """Recibe un mensaje de otro agente."""
         pass
 
-    def get_history(self) -> List[Dict[str, Any]]:
+    def get_history(self) -> list[dict[str, Any]]:
         """Retorna el historial de mensajes del agente."""
         return self._message_history.copy()
 
@@ -110,8 +114,8 @@ class AutoGenWrapper(SkyClawConversableAgent):
         name: str,
         system_message: str,
         agent_type: str = "assistant",
-        tool_executor: Optional[Any] = None,
-        config: Optional[AutoGenConfig] = None,
+        tool_executor: Any | None = None,
+        config: AutoGenConfig | None = None,
         human_input_mode: str = "NEVER",
         max_consecutive_auto_reply: int = 10,
         **kwargs,
@@ -154,7 +158,9 @@ class AutoGenWrapper(SkyClawConversableAgent):
 
         logger.info(f"Agente AutoGen inicializado: {self.name} ({self.agent_type})")
 
-    async def send_message(self, message: str, recipient: Optional["AutoGenWrapper"] = None) -> str:
+    async def send_message(
+        self, message: str, recipient: Optional["AutoGenWrapper"] = None
+    ) -> str:
         """Envía un mensaje a otro agente o al grupo.
 
         Args:
@@ -175,7 +181,9 @@ class AutoGenWrapper(SkyClawConversableAgent):
         if AUTOGEN_AVAILABLE and self._autogen_agent:
             if recipient and recipient._autogen_agent:
                 # Conversación directa
-                self._autogen_agent.initiate_chat(recipient._autogen_agent, message=message)
+                self._autogen_agent.initiate_chat(
+                    recipient._autogen_agent, message=message
+                )
                 # Obtener última respuesta
                 last_message = recipient._autogen_agent.last_message()
                 return last_message.get("content", "")
@@ -199,11 +207,15 @@ class AutoGenWrapper(SkyClawConversableAgent):
         Returns:
             Respuesta al mensaje
         """
-        self._message_history.append({"role": "receiver", "content": message, "sender": sender.name})
+        self._message_history.append(
+            {"role": "receiver", "content": message, "sender": sender.name}
+        )
 
         if AUTOGEN_AVAILABLE and self._autogen_agent:
             # Procesar con AutoGen
-            response = self._autogen_agent.generate_reply(messages=[{"role": "user", "content": message}])
+            response = self._autogen_agent.generate_reply(
+                messages=[{"role": "user", "content": message}]
+            )
             return response
         else:
             # Modo stub: respuesta simulada
@@ -219,9 +231,9 @@ class MultiAgentOrchestrator:
 
     def __init__(
         self,
-        agents: List[AutoGenWrapper],
+        agents: list[AutoGenWrapper],
         max_round: int = 10,
-        route_classification_callback: Optional[Callable] = None,
+        route_classification_callback: Callable | None = None,
     ):
         self.agents = agents
         self.max_round = max_round
@@ -234,16 +246,22 @@ class MultiAgentOrchestrator:
 
     def _initialize_group_chat(self):
         """Inicializa el GroupChat de AutoGen."""
-        autogen_agents = [agent._autogen_agent for agent in self.agents if agent._autogen_agent is not None]
+        autogen_agents = [
+            agent._autogen_agent
+            for agent in self.agents
+            if agent._autogen_agent is not None
+        ]
 
         if autogen_agents:
-            self._group_chat = GroupChat(agents=autogen_agents, messages=[], max_round=self.max_round)
+            self._group_chat = GroupChat(
+                agents=autogen_agents, messages=[], max_round=self.max_round
+            )
             self._manager = GroupChatManager(groupchat=self._group_chat)
             logger.info(f"GroupChat inicializado con {len(autogen_agents)} agentes")
 
     async def run_conversation(
-        self, initial_message: str, starter_agent: Optional[AutoGenWrapper] = None
-    ) -> Dict[str, Any]:
+        self, initial_message: str, starter_agent: AutoGenWrapper | None = None
+    ) -> dict[str, Any]:
         """Ejecuta una conversación multi-agente.
 
         Args:
@@ -265,7 +283,9 @@ class MultiAgentOrchestrator:
             # Usar AutoGen GroupChat
             starter = starter_agent or self.agents[0]
             if starter._autogen_agent:
-                starter._autogen_agent.initiate_chat(self._manager, message=initial_message)
+                starter._autogen_agent.initiate_chat(
+                    self._manager, message=initial_message
+                )
 
                 # Recopilar mensajes del GroupChat
                 results["messages"] = self._group_chat.messages
@@ -279,12 +299,16 @@ class MultiAgentOrchestrator:
             current_message = initial_message
 
             for i, agent in enumerate(self.agents):
-                response = await agent.receive_message(current_message, self.agents[(i - 1) % len(self.agents)])
+                response = await agent.receive_message(
+                    current_message, self.agents[(i - 1) % len(self.agents)]
+                )
                 results["messages"].append({"agent": agent.name, "content": response})
                 current_message = response
                 results["rounds"] = i + 1
 
-            logger.warning("Conversación ejecutada en modo stub (AutoGen no disponible)")
+            logger.warning(
+                "Conversación ejecutada en modo stub (AutoGen no disponible)"
+            )
 
         return results
 
@@ -301,13 +325,17 @@ class MultiAgentOrchestrator:
             if agent.name == agent_name:
                 self.agents.pop(i)
                 if AUTOGEN_AVAILABLE and self._group_chat:
-                    self._group_chat.agents = [a for a in self._group_chat.agents if a.name != agent_name]
+                    self._group_chat.agents = [
+                        a for a in self._group_chat.agents if a.name != agent_name
+                    ]
                 logger.info(f"Agente {agent_name} removido del GroupChat")
                 return True
         return False
 
 
-def create_sky_claw_agents(tool_executor: Any, config: Optional[AutoGenConfig] = None) -> Dict[str, AutoGenWrapper]:
+def create_sky_claw_agents(
+    tool_executor: Any, config: AutoGenConfig | None = None
+) -> dict[str, AutoGenWrapper]:
     """Factory function para crear agentes Sky-Claw preconfigurados.
 
     Crea un conjunto de agentes conversacionales especializados para
@@ -391,11 +419,11 @@ Usa las herramientas de base de datos disponibles para las operaciones CRUD.""",
 
 
 # Instancia global del orquestador (lazy initialization)
-_orchestrator_instance: Optional[MultiAgentOrchestrator] = None
+_orchestrator_instance: MultiAgentOrchestrator | None = None
 
 
 def get_orchestrator(
-    tool_executor: Any, config: Optional[AutoGenConfig] = None, force_new: bool = False
+    tool_executor: Any, config: AutoGenConfig | None = None, force_new: bool = False
 ) -> MultiAgentOrchestrator:
     """Obtiene la instancia global del orquestador multi-agente.
 

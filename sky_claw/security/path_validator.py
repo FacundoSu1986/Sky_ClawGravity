@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import functools
 import pathlib
-from typing import Callable, Iterable, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -39,7 +42,9 @@ class PathValidator:
     def roots(self) -> tuple[pathlib.Path, ...]:
         return self._roots
 
-    def validate(self, path: str | pathlib.Path, *, strict_symlink: bool = True) -> pathlib.Path:
+    def validate(
+        self, path: str | pathlib.Path, *, strict_symlink: bool = True
+    ) -> pathlib.Path:
         """Return the resolved *path* if it is inside the sandbox.
 
         Raises :class:`PathViolation` otherwise.
@@ -68,7 +73,9 @@ class PathValidator:
                     continue
 
             if not is_symlink_valid:
-                raise PathViolation(f"Symlink strictly escapes sandbox: {path} -> {symlink_target}")
+                raise PathViolation(
+                    f"Symlink strictly escapes sandbox: {path} -> {symlink_target}"
+                )
 
         resolved = target.resolve()
 
@@ -79,7 +86,9 @@ class PathValidator:
             except ValueError:
                 continue
 
-        raise PathViolation(f"Path '{resolved}' is outside all sandbox roots: {self._roots}")
+        raise PathViolation(
+            f"Path '{resolved}' is outside all sandbox roots: {self._roots}"
+        )
 
 
 def sandboxed_io(

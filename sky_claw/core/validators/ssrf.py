@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Validador Anti-SSRF para prevenir Server-Side Request Forgery.
 
@@ -11,8 +10,8 @@ import ipaddress
 import logging
 import re
 import socket
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger("SkyClaw.validators.ssrf")
@@ -57,9 +56,9 @@ class SSRFValidationResult:
     """Resultado de validación SSRF."""
 
     is_valid: bool
-    normalized_url: Optional[str]
-    blocked_reason: Optional[str]
-    resolved_ip: Optional[str] = None
+    normalized_url: str | None
+    blocked_reason: str | None
+    resolved_ip: str | None = None
 
 
 class SSRFValidator:
@@ -76,7 +75,7 @@ class SSRFValidator:
         _dns_resolver: Función para resolver DNS (inyectable para testing)
     """
 
-    def __init__(self, dns_resolver: Optional[Callable[[str], list]] = None):
+    def __init__(self, dns_resolver: Callable[[str], list] | None = None):
         """
         Inicializa el validador SSRF.
 
@@ -164,7 +163,9 @@ class SSRFValidator:
 
         for pattern in BLOCKED_HOSTNAME_PATTERNS:
             if pattern.search(hostname_lower):
-                logger.warning(f"SSRF blocked: hostname coincide con patrón - {hostname_lower}")
+                logger.warning(
+                    f"SSRF blocked: hostname coincide con patrón - {hostname_lower}"
+                )
                 return SSRFValidationResult(
                     is_valid=False,
                     normalized_url=None,
@@ -186,7 +187,9 @@ class SSRFValidator:
 
         if not resolved_ips:
             # Fail-closed: si no se puede resolver DNS, bloquear la request
-            logger.warning(f"SSRF: DNS resolution failed for {hostname_lower} — blocking (fail-closed)")
+            logger.warning(
+                f"SSRF: DNS resolution failed for {hostname_lower} — blocking (fail-closed)"
+            )
             return SSRFValidationResult(
                 is_valid=False,
                 normalized_url=None,
@@ -199,7 +202,9 @@ class SSRFValidator:
                     ip_obj = ipaddress.ip_address(ip_str)
                     for network in BLOCKED_NETWORKS:
                         if ip_obj in network:
-                            logger.warning(f"SSRF blocked: IP {ip_str} en red bloqueada {network}")
+                            logger.warning(
+                                f"SSRF blocked: IP {ip_str} en red bloqueada {network}"
+                            )
                             return SSRFValidationResult(
                                 is_valid=False,
                                 normalized_url=None,
@@ -236,7 +241,9 @@ class SSRFValidator:
         query = f"?{parsed.query}" if parsed.query else ""
 
         # No incluir puerto si es el default del scheme
-        if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+        if port and not (
+            (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
+        ):
             netloc = f"{hostname}:{port}"
         else:
             netloc = hostname

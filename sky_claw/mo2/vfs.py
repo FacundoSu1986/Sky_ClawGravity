@@ -9,14 +9,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import pathlib
-import psutil
-from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiofiles
+import psutil
 
-from sky_claw.security.path_validator import PathValidator
+if TYPE_CHECKING:
+    import pathlib
+    from collections.abc import AsyncGenerator
+
+    from sky_claw.security.path_validator import PathValidator
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,7 @@ class MO2Controller:
         modlist_path = self._root / "profiles" / profile / "modlist.txt"
         validated = self._validator.validate(modlist_path)
 
-        async with aiofiles.open(validated, mode="r", encoding="utf-8-sig") as fh:
+        async with aiofiles.open(validated, encoding="utf-8-sig") as fh:
             async for raw_line in fh:
                 line = raw_line.strip()
                 if not line or line.startswith("#"):
@@ -100,7 +102,7 @@ class MO2Controller:
             # Check if already present.
             existing_names: set[str] = set()
             try:
-                async with aiofiles.open(validated, mode="r", encoding="utf-8-sig") as fh:
+                async with aiofiles.open(validated, encoding="utf-8-sig") as fh:
                     async for raw_line in fh:
                         line = raw_line.strip()
                         if line and line[0] in ("+", "-"):
@@ -109,7 +111,9 @@ class MO2Controller:
                 pass
 
             if mod_name in existing_names:
-                logger.info("Mod %r already in modlist for profile %r", mod_name, profile)
+                logger.info(
+                    "Mod %r already in modlist for profile %r", mod_name, profile
+                )
                 return
 
             async with aiofiles.open(validated, mode="a", encoding="utf-8") as fh:
@@ -135,10 +139,14 @@ class MO2Controller:
             lines: list[str] = []
             found = False
             try:
-                async with aiofiles.open(validated, mode="r", encoding="utf-8-sig") as fh:
+                async with aiofiles.open(validated, encoding="utf-8-sig") as fh:
                     async for raw_line in fh:
                         line = raw_line.strip()
-                        if line and line[1:].strip() == mod_name and line[0] in ("+", "-"):
+                        if (
+                            line
+                            and line[1:].strip() == mod_name
+                            and line[0] in ("+", "-")
+                        ):
                             found = True
                             continue  # Skip this line
                         lines.append(raw_line)
@@ -174,10 +182,14 @@ class MO2Controller:
             target_prefix = "+" if enable else "-"
 
             try:
-                async with aiofiles.open(validated, mode="r", encoding="utf-8-sig") as fh:
+                async with aiofiles.open(validated, encoding="utf-8-sig") as fh:
                     async for raw_line in fh:
                         line = raw_line.strip()
-                        if line and line[1:].strip() == mod_name and line[0] in ("+", "-"):
+                        if (
+                            line
+                            and line[1:].strip() == mod_name
+                            and line[0] in ("+", "-")
+                        ):
                             if line[0] != target_prefix:
                                 lines.append(f"{target_prefix}{mod_name}\n")
                                 changed = True

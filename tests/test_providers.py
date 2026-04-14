@@ -7,19 +7,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
-
 from sky_claw.agent.providers import (
     AnthropicProvider,
     DeepSeekProvider,
     OllamaProvider,
     ProviderConfigError,
-    create_provider,
     _convert_messages_to_openai,
     _convert_tools_to_openai,
     _parse_openai_response,
     _should_retry,
+    create_provider,
 )
-
 
 # ------------------------------------------------------------------
 # Tool/message conversion helpers
@@ -305,7 +303,9 @@ class TestOllamaProvider:
 
         session = MagicMock(spec=aiohttp.ClientSession)
 
-        result = await provider.chat([{"role": "user", "content": "test"}], [], session, gateway=mock_gateway)
+        result = await provider.chat(
+            [{"role": "user", "content": "test"}], [], session, gateway=mock_gateway
+        )
 
         assert result["stop_reason"] == "end_turn"
         call_url = mock_gateway.request.call_args[0][1]
@@ -320,7 +320,9 @@ class TestOllamaProvider:
         mock_response.status = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]}
+            return_value={
+                "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]
+            }
         )
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=False)
@@ -330,7 +332,9 @@ class TestOllamaProvider:
 
         session = MagicMock(spec=aiohttp.ClientSession)
 
-        await provider.chat([{"role": "user", "content": "x"}], [], session, gateway=mock_gateway)
+        await provider.chat(
+            [{"role": "user", "content": "x"}], [], session, gateway=mock_gateway
+        )
 
         # Ollama doesn't send auth headers
         call_kwargs = mock_gateway.request.call_args[1]
@@ -444,9 +448,8 @@ class TestShouldRetry:
         assert _should_retry(exc) is True
 
     def test_retries_on_timeout(self) -> None:
-        import asyncio
 
-        exc = asyncio.TimeoutError()
+        exc = TimeoutError()
         assert _should_retry(exc) is True
 
     def test_retries_on_429(self) -> None:
