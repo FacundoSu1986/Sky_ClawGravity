@@ -316,6 +316,38 @@ class SynthesisPipelineService:
                 errors=[f"Lock contention: {exc}"],
             )
 
+        except Exception as exc:
+            # Unexpected exception (OSError, asyncio.TimeoutError, etc.)
+            # SnapshotTransactionLock.__aexit__ already restored snapshots and
+            # released the lock via its own finally block.
+            # The journal transaction was opened but never committed — mark it
+            # rolled back so the journal row does not remain in PENDING state.
+            # Note: asyncio.CancelledError is BaseException, not Exception —
+            # it intentionally propagates through here uncaught.
+            rolled_back = bool(target_files)
+            if tx_id is not None:
+                try:
+                    await self._journal.mark_transaction_rolled_back(tx_id)
+                except Exception as rollback_exc:
+                    logger.critical(
+                        "Failed to mark journal TX %d rolled back after unexpected error: %s",
+                        tx_id,
+                        rollback_exc,
+                        exc_info=True,
+                    )
+            logger.error(
+                "Unexpected exception in synthesis pipeline: %s", exc, exc_info=True
+            )
+            result = SynthesisResult(
+                success=False,
+                output_esp=None,
+                return_code=-1,
+                stdout="",
+                stderr=str(exc),
+                patchers_executed=[],
+                errors=[f"Unexpected error: {exc}"],
+            )
+
         duration = time.monotonic() - t0
 
         # --- Publish completed event ---
