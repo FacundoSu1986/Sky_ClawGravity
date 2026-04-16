@@ -67,6 +67,9 @@ dummy_*.py
 nul
 .kilo/
 
+# Git worktrees (isolated workspaces)
+.worktrees/
+
 # Environments and Secrets
 **/.env
 
