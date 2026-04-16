@@ -8,15 +8,16 @@ manipulation, tool execution (LOOT CLI, SSEEdit) via the
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
+import pathlib
 from typing import TYPE_CHECKING, Any
 
 import aiofiles
 import psutil
 
 if TYPE_CHECKING:
-    import pathlib
     from collections.abc import AsyncGenerator
 
     from sky_claw.security.path_validator import PathValidator
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def _write_modlist_atomic(path: "pathlib.Path", lines: list[str]) -> None:
+async def _write_modlist_atomic(path: pathlib.Path, lines: list[str]) -> None:
     """Write *lines* to *path* with UTF-8 BOM, using an atomic tmp→rename swap.
 
     Each line is normalised to end with ``\\n`` so MO2 is happy on all
@@ -32,16 +33,20 @@ async def _write_modlist_atomic(path: "pathlib.Path", lines: list[str]) -> None:
     ``encoding="utf-8-sig"`` (which prepends the BOM automatically), then
     renamed over the original so the swap is atomic.
     """
-    import pathlib as _pathlib
-
-    tmp: _pathlib.Path = path.with_suffix(path.suffix + ".tmp")
+    tmp: pathlib.Path = path.with_suffix(path.suffix + ".tmp")
     normalised = [
         (line if line.endswith("\n") else line.rstrip("\r\n") + "\n")
         for line in lines
     ]
-    async with aiofiles.open(tmp, mode="w", encoding="utf-8-sig") as fh:
-        await fh.writelines(normalised)
-    await asyncio.to_thread(os.replace, tmp, path)
+    try:
+        async with aiofiles.open(tmp, mode="w", encoding="utf-8-sig") as fh:
+            await fh.writelines(normalised)
+        await asyncio.to_thread(os.replace, tmp, path)
+    except Exception:
+        # Limpiar tmp huérfano si la escritura o el rename falla
+        with contextlib.suppress(OSError):
+            await asyncio.to_thread(tmp.unlink, missing_ok=True)
+        raise
 
 
 class ModlistParseError(Exception):

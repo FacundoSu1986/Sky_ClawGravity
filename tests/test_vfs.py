@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import pathlib
+from typing import NamedTuple
 
 import pytest
 from sky_claw.mo2.vfs import MO2Controller
 from sky_claw.security.path_validator import PathValidator, PathViolation
 
-if TYPE_CHECKING:
-    import pathlib
+class BomFixture(NamedTuple):
+    controller: MO2Controller
+    modlist: pathlib.Path
 
 
 @pytest.fixture()
@@ -144,7 +146,7 @@ class TestBomPreservation:
     """C-01 – modlist.txt rewrites must retain the UTF-8 BOM required by MO2."""
 
     @pytest.fixture()
-    def bom_controller(self, tmp_path: pathlib.Path):
+    def bom_controller(self, tmp_path: pathlib.Path) -> BomFixture:
         """MO2 root whose modlist.txt starts with a real UTF-8 BOM."""
         profile_dir = tmp_path / "profiles" / "Default"
         profile_dir.mkdir(parents=True)
@@ -154,22 +156,21 @@ class TestBomPreservation:
             b"\xef\xbb\xbf+RealMod-1\n-DisabledMod-2\n"
         )
         validator = PathValidator(roots=[tmp_path])
-        return MO2Controller(tmp_path, path_validator=validator), modlist
+        controller = MO2Controller(tmp_path, path_validator=validator)
+        return BomFixture(controller=controller, modlist=modlist)
 
     @pytest.mark.asyncio
-    async def test_remove_mod_preserves_bom(self, bom_controller) -> None:
-        controller, modlist = bom_controller
-        await controller.remove_mod_from_modlist("RealMod-1")
-        raw = modlist.read_bytes()
+    async def test_remove_mod_preserves_bom(self, bom_controller: BomFixture) -> None:
+        await bom_controller.controller.remove_mod_from_modlist("RealMod-1")
+        raw = bom_controller.modlist.read_bytes()
         assert raw[:3] == b"\xef\xbb\xbf", (
             "UTF-8 BOM must be present after remove_mod_from_modlist rewrite"
         )
 
     @pytest.mark.asyncio
-    async def test_toggle_mod_preserves_bom(self, bom_controller) -> None:
-        controller, modlist = bom_controller
-        await controller.toggle_mod_in_modlist("DisabledMod-2", enable=True)
-        raw = modlist.read_bytes()
+    async def test_toggle_mod_preserves_bom(self, bom_controller: BomFixture) -> None:
+        await bom_controller.controller.toggle_mod_in_modlist("DisabledMod-2", enable=True)
+        raw = bom_controller.modlist.read_bytes()
         assert raw[:3] == b"\xef\xbb\xbf", (
             "UTF-8 BOM must be present after toggle_mod_in_modlist rewrite"
         )
