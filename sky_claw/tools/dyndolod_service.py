@@ -315,7 +315,9 @@ class DynDOLODPipelineService:
                     if isinstance(obj, pathlib.Path):
                         return str(obj)
                     if isinstance(obj, dict):
-                        return {k: normalize_for_serialization(v) for k, v in obj.items()}
+                        return {
+                            k: normalize_for_serialization(v) for k, v in obj.items()
+                        }
                     if isinstance(obj, list):
                         return [normalize_for_serialization(v) for v in obj]
                     return obj
