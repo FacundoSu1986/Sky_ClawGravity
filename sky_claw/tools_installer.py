@@ -113,6 +113,9 @@ def _extract_zip_safe(archive: pathlib.Path, dest: pathlib.Path) -> None:
 
     Validates both the relative path (no '..' or absolute paths) and the
     resolved destination path (must remain inside *dest* after resolution).
+
+    Note: ZIP entries with symlink metadata are not extracted as symlinks by Python's
+    zipfile module on Windows (the primary target platform), mitigating symlink-escape attacks.
     """
     dest_resolved = dest.resolve()
     with zipfile.ZipFile(archive, "r") as zf:

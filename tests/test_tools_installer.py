@@ -644,6 +644,9 @@ class TestExtractZipSafe:
         with pytest.raises(PathViolation):
             _extract_zip_safe(zip_path, dest)
 
+        # Verify NO file was extracted inside dest
+        assert not any(dest.iterdir()), "No files should be extracted from malicious zip"
+
     def test_nested_normal_path_succeeds(self, tmp_path: pathlib.Path) -> None:
         """A zip with 'subdir/file.txt' extracts correctly."""
         zip_path = tmp_path / "nested.zip"
