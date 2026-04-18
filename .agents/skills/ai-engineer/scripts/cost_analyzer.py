@@ -19,7 +19,6 @@ import sys
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import tomli
 
@@ -96,7 +95,7 @@ class CostAnalyzer:
     Attributes:
         model_prices: Diccionario de precios por modelo.
     """
-    
+
     def __init__(self, model_prices: dict[str, dict[str, float]] | None = None) -> None:
         """
         Inicializar el analizador.
@@ -106,7 +105,7 @@ class CostAnalyzer:
         """
         self.model_prices = model_prices or MODEL_PRICES
         self.logger = logging.getLogger(__name__)
-    
+
     def calculate_cost(
         self,
         provider: str,
@@ -127,16 +126,16 @@ class CostAnalyzer:
             Costo en USD.
         """
         prices = self.model_prices.get(provider, {}).get(model)
-        
+
         if prices is None:
             self.logger.warning(f"Modelo no encontrado: {provider}/{model}")
             return 0.0
-        
+
         input_cost = (input_tokens / 1000) * prices["input"]
         output_cost = (output_tokens / 1000) * prices["output"]
-        
+
         return round(input_cost + output_cost, 6)
-    
+
     def parse_log_line(self, line: str) -> CallRecord | None:
         """
         Parsear una línea de log JSON.
@@ -163,7 +162,7 @@ class CostAnalyzer:
         except json.JSONDecodeError as e:
             self.logger.debug(f"Error parseando línea: {e}")
             return None
-    
+
     def analyze_logs(self, log_file: Path) -> CostSummary:
         """
         Analizar archivo de logs y generar resumen.
@@ -179,27 +178,27 @@ class CostAnalyzer:
         """
         if not log_file.exists():
             raise FileNotFoundError(f"Archivo de logs no encontrado: {log_file}")
-        
+
         calls: list[CallRecord] = []
         cost_by_model: dict[str, float] = {}
         cost_by_endpoint: dict[str, float] = {}
         cost_by_day: dict[str, float] = {}
         latencies: list[int] = []
         success_count = 0
-        
+
         self.logger.info(f"Analizando logs desde {log_file}")
-        
+
         with open(log_file, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
                 if not line.strip():
                     continue
-                
+
                 record = self.parse_log_line(line)
                 if record is None:
                     continue
-                
+
                 calls.append(record)
-                
+
                 # Calcular costo
                 cost = self.calculate_cost(
                     record.provider,
@@ -207,35 +206,35 @@ class CostAnalyzer:
                     record.input_tokens,
                     record.output_tokens
                 )
-                
+
                 # Acumular por modelo
                 model_key = f"{record.provider}/{record.model}"
                 cost_by_model[model_key] = cost_by_model.get(model_key, 0.0) + cost
-                
+
                 # Acumular por endpoint
                 cost_by_endpoint[record.endpoint] = cost_by_endpoint.get(record.endpoint, 0.0) + cost
-                
+
                 # Acumular por día
                 day = record.timestamp[:10] if record.timestamp else "unknown"
                 cost_by_day[day] = cost_by_day.get(day, 0.0) + cost
-                
+
                 # Latencias
                 if record.latency_ms is not None:
                     latencies.append(record.latency_ms)
-                
+
                 # Éxitos
                 if record.success:
                     success_count += 1
-        
+
         # Calcular totales
         total_cost = sum(cost_by_model.values())
         total_input = sum(c.input_tokens for c in calls)
         total_output = sum(c.output_tokens for c in calls)
         avg_latency = sum(latencies) / len(latencies) if latencies else None
         success_rate = success_count / len(calls) if calls else 0.0
-        
+
         self.logger.info(f"Analizadas {len(calls)} llamadas, costo total: ${total_cost:.4f}")
-        
+
         return CostSummary(
             total_cost_usd=round(total_cost, 4),
             total_input_tokens=total_input,
@@ -247,7 +246,7 @@ class CostAnalyzer:
             average_latency_ms=round(avg_latency, 2) if avg_latency else None,
             success_rate=round(success_rate, 4)
         )
-    
+
     def generate_report(self, summary: CostSummary) -> str:
         """
         Generar reporte legible de costos.
@@ -276,55 +275,55 @@ class CostAnalyzer:
             "💰 COSTO POR MODELO",
             "-" * 70,
         ]
-        
+
         # Ordenar por costo descendente
         sorted_models = sorted(summary.cost_by_model.items(), key=lambda x: x[1], reverse=True)
         for model, cost in sorted_models[:10]:  # Top 10
             percentage = (cost / summary.total_cost_usd * 100) if summary.total_cost_usd > 0 else 0
             report.append(f"  {model:40s} ${cost:>8.4f} ({percentage:>5.1f}%)")
-        
+
         if len(sorted_models) > 10:
             report.append(f"  ... y {len(sorted_models) - 10} modelos más")
-        
+
         report.extend([
             "",
             "🔗 COSTO POR ENDPOINT",
             "-" * 70,
         ])
-        
+
         sorted_endpoints = sorted(summary.cost_by_endpoint.items(), key=lambda x: x[1], reverse=True)
         for endpoint, cost in sorted_endpoints[:10]:
             percentage = (cost / summary.total_cost_usd * 100) if summary.total_cost_usd > 0 else 0
             report.append(f"  {endpoint:40s} ${cost:>8.4f} ({percentage:>5.1f}%)")
-        
+
         report.extend([
             "",
             "📈 COSTO POR DÍA (Últimos 7 días)",
             "-" * 70,
         ])
-        
+
         sorted_days = sorted(summary.cost_by_day.items(), reverse=True)[:7]
         for day, cost in sorted_days:
             report.append(f"  {day:20s} ${cost:>8.4f}")
-        
+
         report.extend([
             "",
             "⚠️ RECOMENDACIONES",
             "-" * 70,
         ])
-        
+
         # Generar recomendaciones
         recommendations = self._generate_recommendations(summary)
         for i, rec in enumerate(recommendations, 1):
             report.append(f"  {i}. {rec}")
-        
+
         report.extend([
             "",
             "=" * 70,
         ])
-        
+
         return "\n".join(report)
-    
+
     def _generate_recommendations(self, summary: CostSummary) -> list[str]:
         """
         Generar recomendaciones basadas en el análisis.
@@ -336,14 +335,14 @@ class CostAnalyzer:
             Lista de recomendaciones.
         """
         recommendations = []
-        
+
         # Verificar tasa de éxito
         if summary.success_rate < 0.95:
             recommendations.append(
                 f"Tasa de éxito baja ({summary.success_rate * 100:.1f}%). "
                 "Revisar errores y implementar retry logic."
             )
-        
+
         # Verificar modelos caros
         expensive_models = [
             m for m, c in summary.cost_by_model.items()
@@ -354,14 +353,14 @@ class CostAnalyzer:
                 f"Modelo(s) {', '.join(expensive_models)} representa(n) >30% del costo. "
                 "Considerar modelos más económicos para casos simples."
             )
-        
+
         # Verificar latencia
         if summary.average_latency_ms and summary.average_latency_ms > 2000:
             recommendations.append(
                 f"Latencia promedio alta ({summary.average_latency_ms:.0f}ms). "
                 "Considerar caching semántico o modelos más rápidos."
             )
-        
+
         # Verificar ratio output/input
         if summary.total_input_tokens > 0:
             ratio = summary.total_output_tokens / summary.total_input_tokens
@@ -370,10 +369,10 @@ class CostAnalyzer:
                     f"Ratio output/input alto ({ratio:.2f}). "
                     "Revisar prompts para reducir verbosity del modelo."
                 )
-        
+
         if not recommendations:
             recommendations.append("Sin recomendaciones críticas. El sistema está optimizado.")
-        
+
         return recommendations
 
 
@@ -405,9 +404,9 @@ def main() -> int:
         default=Path("logs/cost_report.txt"),
         help="Ruta para guardar el reporte"
     )
-    
+
     args = parser.parse_args()
-    
+
     try:
         # Cargar precios personalizados si existen
         model_prices = MODEL_PRICES
@@ -417,29 +416,29 @@ def main() -> int:
                 if "llm_prices" in config:
                     model_prices = config["llm_prices"]
                     logger.info("Precios personalizados cargados desde config")
-        
+
         # Analizar
         analyzer = CostAnalyzer(model_prices=model_prices)
         summary = analyzer.analyze_logs(args.logs)
-        
+
         # Generar reporte
         report = analyzer.generate_report(summary)
         print(report)
-        
+
         # Guardar reporte
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(report)
         logger.info(f"Reporte guardado en {args.output}")
-        
+
         # Guardar resumen JSON para integración
         json_output = args.output.with_suffix(".json")
         with open(json_output, "w", encoding="utf-8") as f:
             json.dump(asdict(summary), f, indent=2)
         logger.info(f"Resumen JSON guardado en {json_output}")
-        
+
         return 0
-        
+
     except FileNotFoundError as e:
         logger.error(f"Archivo no encontrado: {e}")
         return 1

@@ -44,10 +44,10 @@ class ASTGuardian:
         """
         # Inmutabilidad garantizada con frozenset
         self.forbidden_functions: Final[FrozenSet[str]] = (
-            frozenset(forbidden_functions) if forbidden_functions else 
+            frozenset(forbidden_functions) if forbidden_functions else
             frozenset([
-                "eval", "exec", "compile", "__import__", "globals", 
-                "locals", "getattr", "setattr", "delattr", "hasattr", 
+                "eval", "exec", "compile", "__import__", "globals",
+                "locals", "getattr", "setattr", "delattr", "hasattr",
                 "__builtins__"
             ])
         )
@@ -66,7 +66,7 @@ class ASTGuardian:
             bool: True si el payload es seguro, False si se detectan violaciones.
         """
         logger.debug(f"Audit requested for context: {context}")
-        
+
         if not payload or not isinstance(payload, str):
             logger.warning("Empty or invalid payload received.")
             return True
@@ -76,7 +76,7 @@ class ASTGuardian:
             return await asyncio.to_thread(self._sync_audit, payload)
         except SecurityAuditError as sae:
             logger.error(f"[SECURITY BLOCK] Zero-Trust policy enforced: {sae}")
-            return False 
+            return False
         except Exception as e:
             logger.error(f"[ERROR] Guardian failed to process AST: {e.__class__.__name__}")
             return False  # Fall back to block (Zero-Trust)
@@ -98,7 +98,7 @@ class ASTGuardian:
             tree = ast.parse(payload)
             violations: List[str] = []
             node_count: int = 0
-            
+
             for node in ast.walk(tree):
                 node_count += 1
                 if node_count > self.max_nodes:
@@ -113,14 +113,14 @@ class ASTGuardian:
                             violations.append(
                                 f"Forbidden func '{node.func.id}' at line {node.lineno}"
                             )
-                
+
                 # Bloqueo de accesos dunder (ej. __class__, __mro__)
                 elif isinstance(node, ast.Attribute):
                     if node.attr.startswith("__") and node.attr.endswith("__"):
                         violations.append(
                             f"Forbidden dunder attribute '{node.attr}' at line {node.lineno}"
                         )
-                        
+
                 # Bloqueo de importaciones dinámicas
                 elif isinstance(node, (ast.Import, ast.ImportFrom)):
                     violations.append(f"Forbidden import detected at line {node.lineno}")
@@ -132,9 +132,9 @@ class ASTGuardian:
                     f"Vulnerabilities detected. Hash: {payload_hash}. Findings: {violations}"
                 )
                 return False
-                
+
             return True
-            
+
         except SyntaxError:
             # Código no parseable = no ejecutable = seguro en este contexto
             logger.debug("Payload failed syntax parse (non-executable)")

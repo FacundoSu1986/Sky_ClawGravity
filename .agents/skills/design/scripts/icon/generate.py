@@ -15,7 +15,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -312,7 +311,7 @@ def generate_batch(prompt, count, output_dir, style=None, color=None,
     )
 
     print(f"\n{'='*60}")
-    print(f"  BATCH ICON GENERATION")
+    print("  BATCH ICON GENERATION")
     print(f"  Model: {MODEL}")
     print(f"  Prompt: {prompt}")
     print(f"  Variants: {count}")

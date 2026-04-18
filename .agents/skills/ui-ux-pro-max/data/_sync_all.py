@@ -7,7 +7,9 @@ Sync colors.csv and ui-reasoning.csv with the updated products.csv (161 entries)
 - Keep colors.csv aligned 1:1 with products.csv
 - Renumber everything
 """
-import csv, os, json
+import csv
+import os
+import json
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
@@ -50,7 +52,7 @@ def derive_row(pt, pri, sec, acc, bg, notes=""):
     card_fg = "#FFFFFF" if dark else "#0F172A"
     muted = blend(bg, pri, 0.08) if dark else blend("#FFFFFF", pri, 0.06)
     muted_fg = "#94A3B8" if dark else "#64748B"
-    border = f"rgba(255,255,255,0.08)" if dark else blend("#FFFFFF", pri, 0.12)
+    border = "rgba(255,255,255,0.08)" if dark else blend("#FFFFFF", pri, 0.12)
     destr = "#DC2626"
     on_destr = "#FFFFFF"
     ring = pri
