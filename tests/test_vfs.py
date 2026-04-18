@@ -9,6 +9,7 @@ import pytest
 from sky_claw.mo2.vfs import MO2Controller
 from sky_claw.security.path_validator import PathValidator, PathViolation
 
+
 class BomFixture(NamedTuple):
     controller: MO2Controller
     modlist: pathlib.Path
@@ -152,9 +153,7 @@ class TestBomPreservation:
         profile_dir.mkdir(parents=True)
         modlist = profile_dir / "modlist.txt"
         # Write with BOM explicitly so the fixture models a real MO2 file.
-        modlist.write_bytes(
-            b"\xef\xbb\xbf+RealMod-1\n-DisabledMod-2\n"
-        )
+        modlist.write_bytes(b"\xef\xbb\xbf+RealMod-1\n-DisabledMod-2\n")
         validator = PathValidator(roots=[tmp_path])
         controller = MO2Controller(tmp_path, path_validator=validator)
         return BomFixture(controller=controller, modlist=modlist)
@@ -169,7 +168,9 @@ class TestBomPreservation:
 
     @pytest.mark.asyncio
     async def test_toggle_mod_preserves_bom(self, bom_controller: BomFixture) -> None:
-        await bom_controller.controller.toggle_mod_in_modlist("DisabledMod-2", enable=True)
+        await bom_controller.controller.toggle_mod_in_modlist(
+            "DisabledMod-2", enable=True
+        )
         raw = bom_controller.modlist.read_bytes()
         assert raw[:3] == b"\xef\xbb\xbf", (
             "UTF-8 BOM must be present after toggle_mod_in_modlist rewrite"
