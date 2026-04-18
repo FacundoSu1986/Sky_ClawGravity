@@ -240,8 +240,6 @@ class SupervisorAgent:
     async def handle_execution_signal(self, payload: dict[str, object]) -> None:
         """Reacciona a la señal de ignición forzada desde la GUI."""
         logger.info("Ignición forzada desde GUI detectada. Despertando demonio proactivo.")
-        from sky_claw.orchestrator.events import Event
-
         await self._trigger_proactive_analysis(Event(topic="system.manual.trigger", payload=payload))
 
     # FASE 1.5: Worker de pruning pasivo
@@ -313,9 +311,6 @@ class SupervisorAgent:
                     patch_result = await self._xedit_service.execute_patch(
                         target_plugin=target_plugin,
                         report=report,
-                        strategy=PatchStrategyType(
-                            payload_dict.get("strategy", PatchStrategyType.CREATE_MERGED_PATCH.value)
-                        ),
                     )
                 except Exception as exc:
                     logger.exception("RCA: Falló resolve_conflict_with_patch; se convierte la excepción a error dict.")

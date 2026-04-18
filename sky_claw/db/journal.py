@@ -623,22 +623,23 @@ class OperationJournal:
         )
 
         try:
-            op_enum = OperationType(operation_type)
-        except ValueError:
-            # Fallback to general modification if operation_type is entirely custom
-            op_enum = OperationType.FILE_MODIFY
+            try:
+                op_enum = OperationType(operation_type)
+            except ValueError:
+                op_enum = OperationType.FILE_MODIFY
 
-        op_id = await self.begin_operation(
-            agent_id=agent_id,
-            operation_type=op_enum,
-            target_path=file_path,
-            transaction_id=tx_id,
-            metadata=details,
-        )
-
-        # Mark as completed if we used the legacy non-transactional log method
-        await self.complete_operation(op_id)
-        await self.commit_transaction(tx_id)
+            op_id = await self.begin_operation(
+                agent_id=agent_id,
+                operation_type=op_enum,
+                target_path=file_path,
+                transaction_id=tx_id,
+                metadata=details,
+            )
+            await self.complete_operation(op_id)
+            await self.commit_transaction(tx_id)
+        except Exception:
+            await self.mark_transaction_rolled_back(tx_id)
+            raise
 
         return op_id
 
