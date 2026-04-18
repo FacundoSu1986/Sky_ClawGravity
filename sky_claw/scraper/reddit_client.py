@@ -35,7 +35,7 @@ from tenacity import (
 from sky_claw.security.network_gateway import (
     EgressViolationError,
     NetworkGateway,
-    NetworkGatewayTimeout,
+    NetworkGatewayTimeoutError,
 )
 
 logger = logging.getLogger("SkyClaw.Scraper.Reddit")
@@ -267,7 +267,7 @@ class RedditKnowledgeResolver:
                 aiohttp.ClientError,
                 TimeoutError,
                 EgressViolationError,
-                NetworkGatewayTimeout,
+                NetworkGatewayTimeoutError,
                 _TransientHTTPError,
             ) as exc:
                 logger.warning(
