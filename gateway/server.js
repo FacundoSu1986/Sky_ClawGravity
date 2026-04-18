@@ -4,6 +4,7 @@
  */
 
 const { WebSocketServer } = require('ws');
+const { Mutex } = require('async-mutex');
 const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
@@ -174,6 +175,9 @@ function requireAuth(ws, label, onAuthenticated) {
 
 // Estado del Gateway
 let agentSocket = null;
+// CONCURRENCY: Mutex prevents a TOCTOU race where agentSocket is checked
+// as OPEN but closes before send() executes across concurrent UI messages.
+const agentMutex = new Mutex();
 const uiSockets = new Set();
 const pendingCommands = [];
 
@@ -278,13 +282,29 @@ uiServer.on('connection', (ws) => {
             }
             ws._rateLimitCount++;
 
+            let command;
             try {
-                const command = JSON.parse(data);
-                console.log(`[UI] Comando recibido: ${command.type || 'unknown'}`);
+                command = JSON.parse(data);
+            } catch (err) {
+                console.error('[UI] Error al procesar mensaje de UI:', err.message);
+                return;
+            }
+            console.log(`[UI] Comando recibido: ${command.type || 'unknown'}`);
 
+            // CONCURRENCY: Hold the mutex for the check-then-send to eliminate
+            // the TOCTOU window. runExclusive returns a Promise so the handler
+            // is async-safe with the existing async WS callback.
+            agentMutex.runExclusive(() => {
                 if (agentSocket && agentSocket.readyState === 1) {
-                    // Enviar inmediatamente si el agente está vivo
-                    agentSocket.send(data.toString());
+                    try {
+                        // Enviar inmediatamente si el agente está vivo
+                        agentSocket.send(data.toString());
+                    } catch (sendErr) {
+                        // Socket closed between check and send — re-enqueue.
+                        console.warn('[GATEWAY] Send falló, re-encolando:', sendErr.message);
+                        pendingCommands.push(command);
+                        if (pendingCommands.length > 100) pendingCommands.shift();
+                    }
                 } else {
                     // Buffer de Resiliencia: Encolar si el agente está reiniciando
                     console.warn('[GATEWAY] Agente offline. Encolando comando.');
@@ -293,9 +313,7 @@ uiServer.on('connection', (ws) => {
                     // Limitar tamaño del buffer para evitar fugas de memoria
                     if (pendingCommands.length > 100) pendingCommands.shift();
                 }
-            } catch (err) {
-                console.error('[UI] Error al procesar mensaje de UI:', err.message);
-            }
+            }).catch(err => console.error('[GATEWAY] Mutex error:', err.message));
         });
 
         ws.on('close', () => {

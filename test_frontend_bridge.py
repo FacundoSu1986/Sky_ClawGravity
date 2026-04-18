@@ -240,7 +240,7 @@ class FrontendBridgeTestSuite:
 
         if response.get("type") != "RESPONSE":
             print(f"  {YELLOW}⚠️ Tipo inesperado: {response.get('type')}{RESET}")
-            print(f"     (Podría ser OK si API key no es válida)")
+            print("     (Podría ser OK si API key no es válida)")
             return False
 
         print(f"  {GREEN}✅ QUERY aceptado y forwarded:{RESET}")

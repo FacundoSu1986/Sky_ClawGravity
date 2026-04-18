@@ -29,10 +29,10 @@ try:
     LANGGRAPH_AVAILABLE = True
 except ImportError:
     LANGGRAPH_AVAILABLE = False
-    StateGraph = object
-    END = "__END__"
-    START = "__START__"
-    MemorySaver = None
+    StateGraph: Any = object  # type: ignore[no-redef]
+    END: str = "__END__"  # type: ignore[no-redef]
+    START: str = "__START__"  # type: ignore[no-redef]
+    MemorySaver: Any = None  # type: ignore[no-redef]
 
 try:
     from pydantic import BaseModel, Field, field_validator  # noqa: F401
@@ -40,10 +40,12 @@ try:
     PYDANTIC_AVAILABLE = True
 except ImportError:
     PYDANTIC_AVAILABLE = False
-    BaseModel = object
+    BaseModel: Any = object  # type: ignore[no-redef]
 
-    def Field(*args, **kwargs):
+    def field_stub(*args: Any, **kwargs: Any) -> Any:
         return None
+
+    Field: Any = field_stub  # type: ignore[no-redef]
 
 
 logger = logging.getLogger("SkyClaw.StateGraph")
@@ -160,9 +162,7 @@ class StateGraphValidator:
         return cls._VALID_TRANSITIONS.copy()
 
     @classmethod
-    def is_valid_transition(
-        cls, from_state: SupervisorState, to_state: SupervisorState
-    ) -> bool:
+    def is_valid_transition(cls, from_state: SupervisorState, to_state: SupervisorState) -> bool:
         """Verifica si una transición es válida.
 
         Args:
@@ -176,9 +176,7 @@ class StateGraphValidator:
         return to_state in valid_targets
 
     @classmethod
-    def validate_transition(
-        cls, from_state: SupervisorState, to_state: SupervisorState
-    ) -> None:
+    def validate_transition(cls, from_state: SupervisorState, to_state: SupervisorState) -> None:
         """Valida una transición y lanza excepción si es inválida.
 
         Args:
@@ -194,9 +192,7 @@ class StateGraphValidator:
                 from_state.value,
                 to_state.value,
             )
-            raise ValueError(
-                f"Transición de estado inválida: {from_state.value} -> {to_state.value}"
-            )
+            raise ValueError(f"Transición de estado inválida: {from_state.value} -> {to_state.value}")
 
 
 if PYDANTIC_AVAILABLE:
@@ -205,9 +201,7 @@ if PYDANTIC_AVAILABLE:
         """Estado del workflow de LangGraph para Sky-Claw."""
 
         # Identificación
-        workflow_id: str = Field(
-            default_factory=lambda: f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-        )
+        workflow_id: str = Field(default_factory=lambda: f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}")
 
         # Estado actual
         current_state: SupervisorState = Field(default=SupervisorState.INIT)
@@ -266,10 +260,10 @@ if PYDANTIC_AVAILABLE:
 
 else:
     # Fallback sin Pydantic
-    class WorkflowState:
+    class WorkflowState:  # type: ignore[no-redef]
         """Estado del workflow sin Pydantic."""
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.workflow_id = f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
             self.current_state = SupervisorState.INIT
             self.previous_state = None
@@ -277,13 +271,13 @@ else:
             self.modlist_path = None
             self.last_mtime = 0.0
             self.pending_event = None
-            self.event_data = {}
+            self.event_data: dict[str, Any] = {}
             self.tool_name = None
-            self.tool_payload = {}
+            self.tool_payload: dict[str, Any] = {}
             self.tool_result = None
             self.hitl_request = None
             self.hitl_response = None
-            self.transition_history = []
+            self.transition_history: list[dict[str, Any]] = []
             self.last_error = None
             self.error_count = 0
             # FASE 1.5: Campos de rollback
@@ -372,10 +366,8 @@ class StateGraphNodes:
     @staticmethod
     def hitl_wait_node(state: StateGraphState) -> dict[str, Any]:
         """Nodo de espera HITL - esperando aprobación humana."""
-        hitl_request = state.get("hitl_request", {})
-        logger.info(
-            f"[StateGraph] Esperando aprobación HITL: {hitl_request.get('action_type')}"
-        )
+        hitl_request: dict[str, Any] = state.get("hitl_request") or {}
+        logger.info(f"[StateGraph] Esperando aprobación HITL: {hitl_request.get('action_type')}")
         return {
             "current_state": SupervisorState.HITL_WAIT.value,
             "previous_state": SupervisorState.DISPATCHING.value,
@@ -395,9 +387,7 @@ class StateGraphNodes:
     def error_node(state: StateGraphState) -> dict[str, Any]:
         """Nodo de error - manejo de errores."""
         error_count = state.get("error_count", 0) + 1
-        logger.error(
-            f"[StateGraph] Error en workflow (intento {error_count}): {state.get('last_error')}"
-        )
+        logger.error(f"[StateGraph] Error en workflow (intento {error_count}): {state.get('last_error')}")
         return {
             "current_state": SupervisorState.ERROR.value,
             "error_count": error_count,
@@ -407,9 +397,7 @@ class StateGraphNodes:
     @staticmethod
     def rolling_back_node(state: StateGraphState) -> dict[str, Any]:
         """Nodo de rollback - ejecuta reversión de operaciones fallidas."""
-        logger.info(
-            f"[StateGraph] Iniciando rollback para transaction: {state.get('rollback_transaction_id')}"
-        )
+        logger.info(f"[StateGraph] Iniciando rollback para transaction: {state.get('rollback_transaction_id')}")
         return {
             "current_state": SupervisorState.ROLLING_BACK.value,
             "previous_state": SupervisorState.ERROR.value,
@@ -419,9 +407,7 @@ class StateGraphNodes:
     @staticmethod
     def error_fatal_node(state: StateGraphState) -> dict[str, Any]:
         """Nodo de error fatal - estado terminal sin recuperación posible."""
-        logger.critical(
-            f"[StateGraph] Error fatal detectado. Rollback falló: {state.get('last_error')}"
-        )
+        logger.critical(f"[StateGraph] Error fatal detectado. Rollback falló: {state.get('last_error')}")
         return {
             "current_state": SupervisorState.ERROR_FATAL.value,
             "previous_state": SupervisorState.ROLLING_BACK.value,
@@ -464,7 +450,9 @@ class StateGraphNodes:
             }
 
         # El resultado del parcheo se determinará por el callback externo
-        # Este nodo solo actualiza el estado, la lógica está en supervisor.resolve_conflict_with_patch
+        # Este nodo solo actualiza el estado; la lógica vive ahora en
+        # XEditPipelineService.execute_patch (despachado desde supervisor.dispatch_tool
+        # con tool_name="resolve_conflict_with_patch")
         return {
             "current_state": SupervisorState.PATCHING.value,
             "previous_state": SupervisorState.ANALYZING.value,
@@ -481,9 +469,7 @@ class StateGraphEdges:
     """Aristas condicionales del grafo de estados."""
 
     @staticmethod
-    def _validate_and_route(
-        from_state: SupervisorState, to_state: SupervisorState
-    ) -> str:
+    def _validate_and_route(from_state: SupervisorState, to_state: SupervisorState) -> str:
         """BUG-003 FIX: Valida y retorna la transición, o falla ruidosamente si es inválida."""
         if StateGraphValidator.is_valid_transition(from_state, to_state):
             return to_state.value
@@ -498,23 +484,15 @@ class StateGraphEdges:
         event = state.get("pending_event")
 
         if event == WorkflowEventType.MODLIST_CHANGED.value:
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.IDLE, SupervisorState.WATCHING
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.IDLE, SupervisorState.WATCHING)
         elif event == WorkflowEventType.USER_COMMAND.value:
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.IDLE, SupervisorState.ANALYZING
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.IDLE, SupervisorState.ANALYZING)
         elif event == WorkflowEventType.TOOL_REQUEST.value:
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.IDLE, SupervisorState.DISPATCHING
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.IDLE, SupervisorState.DISPATCHING)
         elif event == WorkflowEventType.SHUTDOWN.value:
             return END
         elif event == WorkflowEventType.ERROR_OCCURRED.value:
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.IDLE, SupervisorState.ERROR
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.IDLE, SupervisorState.ERROR)
 
         return SupervisorState.IDLE.value
 
@@ -524,17 +502,11 @@ class StateGraphEdges:
         event = state.get("pending_event")
 
         if event == WorkflowEventType.MODLIST_CHANGED.value:
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.WATCHING, SupervisorState.ANALYZING
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.WATCHING, SupervisorState.ANALYZING)
         elif event == WorkflowEventType.ERROR_OCCURRED.value:
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.WATCHING, SupervisorState.ERROR
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.WATCHING, SupervisorState.ERROR)
 
-        return StateGraphEdges._validate_and_route(
-            SupervisorState.WATCHING, SupervisorState.IDLE
-        )
+        return StateGraphEdges._validate_and_route(SupervisorState.WATCHING, SupervisorState.IDLE)
 
     @staticmethod
     def route_from_analyzing(state: StateGraphState) -> str:
@@ -549,26 +521,16 @@ class StateGraphEdges:
         requires_patch = event_data.get("requires_patch", False)
 
         if state.get("last_error"):
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.ANALYZING, SupervisorState.ERROR
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.ANALYZING, SupervisorState.ERROR)
         elif tool_name:
             # FASE 2: Si requiere parcheo, ir a PATCHING
             if requires_patch:
-                return StateGraphEdges._validate_and_route(
-                    SupervisorState.ANALYZING, SupervisorState.PATCHING
-                )
+                return StateGraphEdges._validate_and_route(SupervisorState.ANALYZING, SupervisorState.PATCHING)
             if requires_hitl:
-                return StateGraphEdges._validate_and_route(
-                    SupervisorState.ANALYZING, SupervisorState.HITL_WAIT
-                )
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.ANALYZING, SupervisorState.DISPATCHING
-            )
+                return StateGraphEdges._validate_and_route(SupervisorState.ANALYZING, SupervisorState.HITL_WAIT)
+            return StateGraphEdges._validate_and_route(SupervisorState.ANALYZING, SupervisorState.DISPATCHING)
 
-        return StateGraphEdges._validate_and_route(
-            SupervisorState.ANALYZING, SupervisorState.COMPLETED
-        )
+        return StateGraphEdges._validate_and_route(SupervisorState.ANALYZING, SupervisorState.COMPLETED)
 
     @staticmethod
     def route_from_patching(state: StateGraphState) -> str:
@@ -585,24 +547,13 @@ class StateGraphEdges:
         if state.get("last_error"):
             # Si hay error y no se ha hecho rollback automático
             if not rollback_triggered:
-                return StateGraphEdges._validate_and_route(
-                    SupervisorState.PATCHING, SupervisorState.ROLLING_BACK
-                )
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.PATCHING, SupervisorState.ERROR
-            )
-        elif (
-            tool_result.get("status") == "success"
-            or tool_result.get("status") == "aborted"
-        ):
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.PATCHING, SupervisorState.COMPLETED
-            )
+                return StateGraphEdges._validate_and_route(SupervisorState.PATCHING, SupervisorState.ROLLING_BACK)
+            return StateGraphEdges._validate_and_route(SupervisorState.PATCHING, SupervisorState.ERROR)
+        elif tool_result and (tool_result.get("status") == "success" or tool_result.get("status") == "aborted"):
+            return StateGraphEdges._validate_and_route(SupervisorState.PATCHING, SupervisorState.COMPLETED)
 
         # Default: completar
-        return StateGraphEdges._validate_and_route(
-            SupervisorState.PATCHING, SupervisorState.COMPLETED
-        )
+        return StateGraphEdges._validate_and_route(SupervisorState.PATCHING, SupervisorState.COMPLETED)
 
     @staticmethod
     def route_from_hitl_wait(state: StateGraphState) -> str:
@@ -610,17 +561,11 @@ class StateGraphEdges:
         hitl_response = state.get("hitl_response")
 
         if hitl_response == "approved":
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.HITL_WAIT, SupervisorState.DISPATCHING
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.HITL_WAIT, SupervisorState.DISPATCHING)
         elif hitl_response == "denied":
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.HITL_WAIT, SupervisorState.COMPLETED
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.HITL_WAIT, SupervisorState.COMPLETED)
         elif hitl_response == "timeout":
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.HITL_WAIT, SupervisorState.ERROR
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.HITL_WAIT, SupervisorState.ERROR)
 
         return SupervisorState.HITL_WAIT.value  # Seguir esperando
 
@@ -630,20 +575,11 @@ class StateGraphEdges:
         tool_result = state.get("tool_result", {})
 
         if state.get("last_error"):
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.DISPATCHING, SupervisorState.ERROR
-            )
-        elif (
-            tool_result.get("status") == "success"
-            or tool_result.get("status") == "aborted"
-        ):
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.DISPATCHING, SupervisorState.COMPLETED
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.DISPATCHING, SupervisorState.ERROR)
+        elif tool_result and (tool_result.get("status") == "success" or tool_result.get("status") == "aborted"):
+            return StateGraphEdges._validate_and_route(SupervisorState.DISPATCHING, SupervisorState.COMPLETED)
 
-        return StateGraphEdges._validate_and_route(
-            SupervisorState.DISPATCHING, SupervisorState.COMPLETED
-        )
+        return StateGraphEdges._validate_and_route(SupervisorState.DISPATCHING, SupervisorState.COMPLETED)
 
     @staticmethod
     def route_from_error(state: StateGraphState) -> str:
@@ -658,19 +594,13 @@ class StateGraphEdges:
 
         # Si hay una transacción de rollback disponible, intentar revertir
         if state.get("rollback_transaction_id") and not rollback_triggered:
-            logger.info(
-                "[StateGraph] Transición a ROLLING_BACK para revertir operación fallida"
-            )
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.ERROR, SupervisorState.ROLLING_BACK
-            )
+            logger.info("[StateGraph] Transición a ROLLING_BACK para revertir operación fallida")
+            return StateGraphEdges._validate_and_route(SupervisorState.ERROR, SupervisorState.ROLLING_BACK)
 
         if error_count >= max_retries:
             return END  # Demasiados errores, terminar
 
-        return StateGraphEdges._validate_and_route(
-            SupervisorState.ERROR, SupervisorState.IDLE
-        )
+        return StateGraphEdges._validate_and_route(SupervisorState.ERROR, SupervisorState.IDLE)
 
     # FASE 1.5: Routing desde estado ROLLING_BACK
     @staticmethod
@@ -681,18 +611,14 @@ class StateGraphEdges:
         - IDLE: si el rollback fue exitoso
         - ERROR_FATAL: si el rollback falló
         """
-        rollback_result = state.get("rollback_result", {})
+        rollback_result: dict[str, Any] = state.get("rollback_result") or {}
 
         if rollback_result.get("success", False):
             logger.info("[StateGraph] Rollback exitoso, transicionando a IDLE")
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.ROLLING_BACK, SupervisorState.IDLE
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.ROLLING_BACK, SupervisorState.IDLE)
         else:
             logger.critical("[StateGraph] Rollback falló, transicionando a ERROR_FATAL")
-            return StateGraphEdges._validate_and_route(
-                SupervisorState.ROLLING_BACK, SupervisorState.ERROR_FATAL
-            )
+            return StateGraphEdges._validate_and_route(SupervisorState.ROLLING_BACK, SupervisorState.ERROR_FATAL)
 
 
 # =============================================================================
@@ -715,18 +641,16 @@ class SupervisorStateGraph:
 
     def __init__(self, profile_name: str = "Default"):
         self.profile_name = profile_name
-        self.graph: StateGraph | None = None
-        self.checkpointer: MemorySaver | None = None
-        self.compiled_graph = None
+        self.graph: Any = None
+        self.checkpointer: Any = None
+        self.compiled_graph: Any = None
         self._state: WorkflowState | None = None
-        self._callbacks: dict[str, Callable] = {}
+        self._callbacks: dict[str, Callable[..., Any]] = {}
 
         if LANGGRAPH_AVAILABLE:
             self._build_graph()
         else:
-            logger.warning(
-                "[StateGraph] LangGraph no disponible. Usando implementación fallback."
-            )
+            logger.warning("[StateGraph] LangGraph no disponible. Usando implementación fallback.")
 
     def _build_graph(self) -> None:
         """Construye el grafo de estados con nodos y aristas."""
@@ -740,26 +664,14 @@ class SupervisorStateGraph:
         builder.add_node(SupervisorState.INIT.value, StateGraphNodes.init_node)
         builder.add_node(SupervisorState.IDLE.value, StateGraphNodes.idle_node)
         builder.add_node(SupervisorState.WATCHING.value, StateGraphNodes.watching_node)
-        builder.add_node(
-            SupervisorState.ANALYZING.value, StateGraphNodes.analyzing_node
-        )
-        builder.add_node(
-            SupervisorState.DISPATCHING.value, StateGraphNodes.dispatching_node
-        )
-        builder.add_node(
-            SupervisorState.HITL_WAIT.value, StateGraphNodes.hitl_wait_node
-        )
-        builder.add_node(
-            SupervisorState.COMPLETED.value, StateGraphNodes.completed_node
-        )
+        builder.add_node(SupervisorState.ANALYZING.value, StateGraphNodes.analyzing_node)
+        builder.add_node(SupervisorState.DISPATCHING.value, StateGraphNodes.dispatching_node)
+        builder.add_node(SupervisorState.HITL_WAIT.value, StateGraphNodes.hitl_wait_node)
+        builder.add_node(SupervisorState.COMPLETED.value, StateGraphNodes.completed_node)
         builder.add_node(SupervisorState.ERROR.value, StateGraphNodes.error_node)
         # FASE 1.5: Nodos de rollback
-        builder.add_node(
-            SupervisorState.ROLLING_BACK.value, StateGraphNodes.rolling_back_node
-        )
-        builder.add_node(
-            SupervisorState.ERROR_FATAL.value, StateGraphNodes.error_fatal_node
-        )
+        builder.add_node(SupervisorState.ROLLING_BACK.value, StateGraphNodes.rolling_back_node)
+        builder.add_node(SupervisorState.ERROR_FATAL.value, StateGraphNodes.error_fatal_node)
         # FASE 2: Nodo de parcheo transaccional
         builder.add_node(SupervisorState.PATCHING.value, StateGraphNodes.patching_node)
 
@@ -767,43 +679,25 @@ class SupervisorStateGraph:
         builder.set_entry_point(SupervisorState.INIT.value)
 
         # Agregar aristas condicionales
-        builder.add_conditional_edges(
-            SupervisorState.INIT.value, lambda s: SupervisorState.IDLE.value
-        )
+        builder.add_conditional_edges(SupervisorState.INIT.value, lambda s: SupervisorState.IDLE.value)
 
-        builder.add_conditional_edges(
-            SupervisorState.IDLE.value, StateGraphEdges.route_from_idle
-        )
+        builder.add_conditional_edges(SupervisorState.IDLE.value, StateGraphEdges.route_from_idle)
 
-        builder.add_conditional_edges(
-            SupervisorState.WATCHING.value, StateGraphEdges.route_from_watching
-        )
+        builder.add_conditional_edges(SupervisorState.WATCHING.value, StateGraphEdges.route_from_watching)
 
-        builder.add_conditional_edges(
-            SupervisorState.ANALYZING.value, StateGraphEdges.route_from_analyzing
-        )
+        builder.add_conditional_edges(SupervisorState.ANALYZING.value, StateGraphEdges.route_from_analyzing)
 
-        builder.add_conditional_edges(
-            SupervisorState.DISPATCHING.value, StateGraphEdges.route_from_dispatching
-        )
+        builder.add_conditional_edges(SupervisorState.DISPATCHING.value, StateGraphEdges.route_from_dispatching)
 
-        builder.add_conditional_edges(
-            SupervisorState.HITL_WAIT.value, StateGraphEdges.route_from_hitl_wait
-        )
+        builder.add_conditional_edges(SupervisorState.HITL_WAIT.value, StateGraphEdges.route_from_hitl_wait)
 
-        builder.add_conditional_edges(
-            SupervisorState.ERROR.value, StateGraphEdges.route_from_error
-        )
+        builder.add_conditional_edges(SupervisorState.ERROR.value, StateGraphEdges.route_from_error)
 
         # FASE 1.5: Aristas condicionales para rollback
-        builder.add_conditional_edges(
-            SupervisorState.ROLLING_BACK.value, StateGraphEdges.route_from_rolling_back
-        )
+        builder.add_conditional_edges(SupervisorState.ROLLING_BACK.value, StateGraphEdges.route_from_rolling_back)
 
         # FASE 2: Aristas condicionales para parcheo
-        builder.add_conditional_edges(
-            SupervisorState.PATCHING.value, StateGraphEdges.route_from_patching
-        )
+        builder.add_conditional_edges(SupervisorState.PATCHING.value, StateGraphEdges.route_from_patching)
 
         # Arista final desde COMPLETED
         builder.add_edge(SupervisorState.COMPLETED.value, SupervisorState.IDLE.value)
@@ -820,7 +714,7 @@ class SupervisorStateGraph:
 
         logger.info("[StateGraph] Grafo de estados construido y compilado exitosamente")
 
-    def register_callback(self, state: SupervisorState, callback: Callable) -> None:
+    def register_callback(self, state: SupervisorState, callback: Callable[..., Any]) -> None:
         """Registra un callback para un estado específico."""
         key = f"{state.value}_callback"
         self._callbacks[key] = callback
@@ -851,9 +745,7 @@ class SupervisorStateGraph:
             "rollback_transaction_id": None,
         }
 
-    async def execute(
-        self, initial_state: StateGraphState | None = None
-    ) -> StateGraphState:
+    async def execute(self, initial_state: StateGraphState | None = None) -> StateGraphState:
         """
         Ejecuta el workflow de forma asíncrona.
 
@@ -872,16 +764,14 @@ class SupervisorStateGraph:
         try:
             # Ejecutar el grafo
             result = await self.compiled_graph.ainvoke(state, config)
-            return result
+            return result  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"[StateGraph] Error ejecutando workflow: {e}")
             state["last_error"] = str(e)
             state["current_state"] = SupervisorState.ERROR.value
             return state
 
-    async def _execute_fallback(
-        self, initial_state: StateGraphState | None = None
-    ) -> StateGraphState:
+    async def _execute_fallback(self, initial_state: StateGraphState | None = None) -> StateGraphState:
         """Ejecución fallback sin LangGraph."""
         state = initial_state or self.get_initial_state()
 
@@ -958,7 +848,7 @@ class SupervisorStateGraph:
                     f.write(mermaid_png)
                 logger.info(f"[StateGraph] Diagrama guardado en: {output_path}")
 
-            return mermaid_png
+            return mermaid_png  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"[StateGraph] Error generando visualización: {e}")
             return None
@@ -1060,15 +950,9 @@ class StateGraphIntegration:
         self._supervisor = supervisor
 
         # Registrar callbacks para cada estado
-        self.state_graph.register_callback(
-            SupervisorState.ANALYZING, self._on_analyzing
-        )
-        self.state_graph.register_callback(
-            SupervisorState.DISPATCHING, self._on_dispatching
-        )
-        self.state_graph.register_callback(
-            SupervisorState.HITL_WAIT, self._on_hitl_wait
-        )
+        self.state_graph.register_callback(SupervisorState.ANALYZING, self._on_analyzing)
+        self.state_graph.register_callback(SupervisorState.DISPATCHING, self._on_dispatching)
+        self.state_graph.register_callback(SupervisorState.HITL_WAIT, self._on_hitl_wait)
 
         logger.info("[StateGraph] Supervisor conectado exitosamente")
 
@@ -1101,9 +985,7 @@ class StateGraphIntegration:
             "event_data": {"mtime": mtime, "path": path, "requires_hitl": False},
         }
 
-    def translate_user_command(
-        self, command: str, params: dict[str, Any]
-    ) -> dict[str, Any]:
+    def translate_user_command(self, command: str, params: dict[str, Any]) -> dict[str, Any]:
         """Traduce un comando de usuario al formato del grafo."""
         return {
             "event_type": WorkflowEventType.USER_COMMAND,

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from sky_claw.xedit.output_parser import XEditConflict, XEditOutputParser, XEditResult
 from sky_claw.xedit.runner import (
     ScriptGenerator,
@@ -52,9 +53,7 @@ class TestXEditOutputParser:
         assert result.success is False
 
     def test_parse_stderr_errors(self) -> None:
-        result = XEditOutputParser.parse(
-            stdout="", stderr="Fatal: Out of memory\n", return_code=1
-        )
+        result = XEditOutputParser.parse(stdout="", stderr="Fatal: Out of memory\n", return_code=1)
         assert len(result.errors) == 1
         assert "Out of memory" in result.errors[0]
 
@@ -257,11 +256,7 @@ class TestXEditTool:
                 return_value=XEditResult(
                     return_code=0,
                     processed_plugins=["Skyrim.esm"],
-                    conflicts=[
-                        XEditConflict(
-                            plugin="Requiem.esp", record="WEAP", detail="Damage"
-                        )
-                    ],
+                    conflicts=[XEditConflict(plugin="Requiem.esp", record="WEAP", detail="Damage")],
                     errors=[],
                 )
             )

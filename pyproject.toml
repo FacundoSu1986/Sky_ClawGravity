@@ -40,15 +40,78 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["sky_claw", "tests"]
+
 [tool.ruff.lint]
-ignore = [
-    "RUF001", "RUF002", "RUF003",  # Ambiguous unicode (intentional in docs/test comments)
-    "RUF006",  # asyncio.create_task reference (fire-and-forget pattern)
-    "RUF012",  # Mutable class attributes (intentional class constants)
-    "SIM102", "SIM103", "SIM117",  # Simplification suggestions (cosmetic)
-    "N802", "N806", "N817", "N818",  # Naming conventions (pre-existing throughout)
-    "B904",  # raise from err (pre-existing exception style)
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
 ]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "UP046",  # PEP 695 type params — conflicts with TypeVar re-exports and @dataclass Generic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sky_claw"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+# Progressive typing: strict checks disabled until modules are fully annotated.
+# Re-enable individual checks as typing coverage improves.
+strict = false
+warn_redundant_casts = true
+warn_unused_configs = true
+no_implicit_optional = true
+ignore_missing_imports = true
+show_error_codes = true
+show_column_numbers = true
+pretty = true
+exclude = ["tests/", "scratch/", "autoskills_tmp/", "project_scrape/"]
+
+# Modules with unresolved type errors — ignore until annotated
+[[tool.mypy.overrides]]
+module = [
+    "sky_claw.gui.*",
+    "sky_claw.comms.*",
+    "sky_claw.agent.*",
+    "sky_claw.modes.*",
+    "sky_claw.orchestrator.*",
+    "sky_claw.reasoning.*",
+    "sky_claw.scraper.*",
+    "sky_claw.web.*",
+    "sky_claw.tools.*",
+    "sky_claw.fomod.*",
+    "sky_claw.xedit.*",
+    "sky_claw.db.*",
+    "sky_claw.mo2.*",
+    "sky_claw.security.*",
+    "sky_claw.app_context",
+    "sky_claw.config",
+    "sky_claw.logging_config",
+    "sky_claw.local_config",
+    "sky_claw.__main__",
+    "sky_claw.tools_installer",
+    "sky_claw.discovery.*",
+]
+ignore_errors = true
 
 [tool.setuptools]
 packages = ["sky_claw"]

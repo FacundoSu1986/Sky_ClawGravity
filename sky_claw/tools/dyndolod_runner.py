@@ -235,9 +235,7 @@ class DynDOLODRunner:
             config.timeout_seconds,
         )
 
-    async def run_texgen(
-        self, extra_args: list[str] | None = None
-    ) -> ToolExecutionResult:
+    async def run_texgen(self, extra_args: list[str] | None = None) -> ToolExecutionResult:
         """
         Ejecuta TexGen en modo headless.
 
@@ -429,9 +427,7 @@ class DynDOLODRunner:
             DynDOLODTimeoutError: Si se excede el timeout.
             DynDOLODExecutionError: Si el proceso falla críticamente.
         """
-        effective_timeout = (
-            timeout if timeout is not None else self._config.timeout_seconds
-        )
+        effective_timeout = timeout if timeout is not None else self._config.timeout_seconds
         heartbeat_interval = self._config.heartbeat_interval
 
         # Windows: CREATE_NO_WINDOW to avoid console popups.
@@ -458,13 +454,13 @@ class DynDOLODRunner:
                 **kwargs,
             )
         except FileNotFoundError:
-            raise DynDOLODNotFoundError(executable)
+            raise DynDOLODNotFoundError(executable) from None
         except OSError as e:
             raise DynDOLODExecutionError(
                 f"Failed to start {tool_name}: {e}",
                 return_code=None,
                 stderr=str(e),
-            )
+            ) from e
 
         stdout_chunks: list[bytes] = []
         stderr_chunks: list[bytes] = []
@@ -506,10 +502,8 @@ class DynDOLODRunner:
             drain_out.cancel()
             drain_err.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(
-                    heartbeat, drain_out, drain_err, return_exceptions=True
-                )
-            raise DynDOLODTimeoutError(effective_timeout, tool_name)
+                await asyncio.gather(heartbeat, drain_out, drain_err, return_exceptions=True)
+            raise DynDOLODTimeoutError(effective_timeout, tool_name) from None
         except Exception as e:
             proc.kill()
             with contextlib.suppress(TimeoutError):
@@ -518,14 +512,12 @@ class DynDOLODRunner:
             drain_out.cancel()
             drain_err.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(
-                    heartbeat, drain_out, drain_err, return_exceptions=True
-                )
+                await asyncio.gather(heartbeat, drain_out, drain_err, return_exceptions=True)
             raise DynDOLODExecutionError(
                 f"Unexpected error during {tool_name} execution: {e}",
                 return_code=proc.returncode,
                 stderr=str(e),
-            )
+            ) from e
         else:
             # Process exited normally — cancel heartbeat and wait for drains to finish.
             heartbeat.cancel()
@@ -628,12 +620,12 @@ class DynDOLODRunner:
             raise DynDOLODValidationError(
                 f"Permission denied creating mod: {e}",
                 output_path=mod_path,
-            )
+            ) from e
         except OSError as e:
             raise DynDOLODValidationError(
                 f"Failed to package mod: {e}",
                 output_path=mod_path,
-            )
+            ) from e
 
     async def run_full_pipeline(
         self,
@@ -740,9 +732,7 @@ class DynDOLODRunner:
             dyndolod_result is not None
             and dyndolod_result.success
             and dyndolod_mod_path is not None
-            and (
-                not run_texgen or (texgen_result is not None and texgen_result.success)
-            )
+            and (not run_texgen or (texgen_result is not None and texgen_result.success))
         )
 
         result = DynDOLODPipelineResult(
@@ -868,13 +858,13 @@ class DynDOLODRunner:
             mod_name: Nombre del mod.
         """
         # S2-FIX: Validate target path is within MO2 mods sandbox.
-        from sky_claw.security.path_validator import PathValidator, PathViolation
+        from sky_claw.security.path_validator import PathValidator, PathViolationError
 
         meta_ini_path = mod_path / "meta.ini"
         validator = PathValidator(roots=[self._config.mo2_mods_path])
         try:
             validator.validate(meta_ini_path, strict_symlink=False)
-        except PathViolation:
+        except PathViolationError:
             logger.error("Path traversal blocked for meta.ini: %s", meta_ini_path)
             raise
 

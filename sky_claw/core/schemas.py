@@ -43,12 +43,10 @@ class ScrapingQuery(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
     url: str | None = Field(None, description="URL objetivo para scraping")
     mod_id: int | None = Field(None, gt=0)
-    force_stealth: bool = Field(
-        default=False, description="Forzar scraping por Playwright omitiendo la API"
+    force_stealth: bool = Field(default=False, description="Forzar scraping por Playwright omitiendo la API")
+    target_data: Literal["dependencies", "files", "changelog", "forum_known_issues"] | None = Field(
+        default=None, description="Tipo de información a extraer"
     )
-    target_data: (
-        Literal["dependencies", "files", "changelog", "forum_known_issues"] | None
-    ) = Field(default=None, description="Tipo de información a extraer")
     include_description: bool = True
 
     @field_validator("url", mode="before")
@@ -142,13 +140,9 @@ class RouteClassification(BaseModel):
         "CHAT_GENERAL",
     ] = Field(..., description="Intento clasificado del mensaje del usuario")
 
-    confidence: float = Field(
-        ..., ge=0.0, le=1.0, description="Confianza de la clasificación"
-    )
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confianza de la clasificación")
 
-    target_agent: str | None = Field(
-        None, description="Agente objetivo si el intento requiere despacho específico"
-    )
+    target_agent: str | None = Field(None, description="Agente objetivo si el intento requiere despacho específico")
 
     tool_name: str | None = Field(
         None,
@@ -165,9 +159,7 @@ class RouteClassification(BaseModel):
         description="Si se requiere contexto adicional (RAG, historial, etc.)",
     )
 
-    metadata: dict = Field(
-        default_factory=dict, description="Metadatos adicionales para orquestación"
-    )
+    metadata: dict = Field(default_factory=dict, description="Metadatos adicionales para orquestación")
 
     @field_validator("confidence")
     @classmethod

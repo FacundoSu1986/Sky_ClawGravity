@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
+
 from sky_claw.scraper.masterlist import (
     CircuitOpenError,
     MasterlistClient,

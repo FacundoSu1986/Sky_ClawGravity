@@ -18,7 +18,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-class PathViolation(Exception):
+class PathViolationError(Exception):
     """Raised when an I/O path escapes the sandbox."""
 
 
@@ -42,25 +42,23 @@ class PathValidator:
     def roots(self) -> tuple[pathlib.Path, ...]:
         return self._roots
 
-    def validate(
-        self, path: str | pathlib.Path, *, strict_symlink: bool = True
-    ) -> pathlib.Path:
+    def validate(self, path: str | pathlib.Path, *, strict_symlink: bool = True) -> pathlib.Path:
         """Return the resolved *path* if it is inside the sandbox.
 
-        Raises :class:`PathViolation` otherwise.
+        Raises :class:`PathViolationError` otherwise.
         """
         target = pathlib.Path(path)
 
         # Reject obvious traversal attempts before resolving.
         if ".." in target.parts:
-            raise PathViolation(f"Path traversal component ('..') detected in: {path}")
+            raise PathViolationError(f"Path traversal component ('..') detected in: {path}")
 
         # Require symlinks to explicitly resolve inside the sandbox
         if strict_symlink and target.is_symlink():
             try:
                 symlink_target = target.resolve(strict=True)
             except FileNotFoundError as e:
-                raise PathViolation(f"Symlink target not found: {path} -> {e}") from e
+                raise PathViolationError(f"Symlink target not found: {path} -> {e}") from e
 
             # Ensure the symlink target itself is within the sandbox
             is_symlink_valid = False
@@ -73,9 +71,7 @@ class PathValidator:
                     continue
 
             if not is_symlink_valid:
-                raise PathViolation(
-                    f"Symlink strictly escapes sandbox: {path} -> {symlink_target}"
-                )
+                raise PathViolationError(f"Symlink strictly escapes sandbox: {path} -> {symlink_target}")
 
         resolved = target.resolve()
 
@@ -86,9 +82,7 @@ class PathValidator:
             except ValueError:
                 continue
 
-        raise PathViolation(
-            f"Path '{resolved}' is outside all sandbox roots: {self._roots}"
-        )
+        raise PathViolationError(f"Path '{resolved}' is outside all sandbox roots: {self._roots}")
 
 
 def sandboxed_io(
@@ -119,9 +113,9 @@ def sandboxed_io(
             # Try to pull the path from kwargs first, then positional.
             raw_path = kwargs.get(arg_name)
             if raw_path is None and args:
-                raw_path = args[0]  # type: ignore[assignment]
+                raw_path = args[0]  # type: ignore[arg-type]
             if raw_path is not None:
-                validator.validate(raw_path)
+                validator.validate(raw_path)  # type: ignore[arg-type]
             return fn(*args, **kwargs)
 
         return wrapper

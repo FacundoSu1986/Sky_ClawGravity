@@ -9,6 +9,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
+
 from sky_claw.scraper.reddit_client import (
     RedditClientConfig,
     RedditKnowledgeResolver,
@@ -18,9 +20,7 @@ from sky_claw.security.network_gateway import NetworkGateway
 VALID_UA = "script:sky_claw:v0.1.0 (by /u/tester)"
 
 
-def _make_response_mock(
-    status: int, json_payload: Any = None, headers: dict[str, str] | None = None
-) -> MagicMock:
+def _make_response_mock(status: int, json_payload: Any = None, headers: dict[str, str] | None = None) -> MagicMock:
     resp = MagicMock()
     resp.status = status
     resp.headers = headers or {}
@@ -74,9 +74,7 @@ async def resolver(
     mock_session: MagicMock,
     mock_gateway: MagicMock,
 ) -> AsyncGenerator[RedditKnowledgeResolver, None]:
-    r = RedditKnowledgeResolver(
-        user_agent=VALID_UA, session=mock_session, gateway=mock_gateway
-    )
+    r = RedditKnowledgeResolver(user_agent=VALID_UA, session=mock_session, gateway=mock_gateway)
     yield r
     await r.close()
 
@@ -88,42 +86,30 @@ class TestUserAgentValidation:
 
     def test_browser_user_agent_rejected(self, mock_gateway: MagicMock) -> None:
         with pytest.raises(ValueError):
-            RedditKnowledgeResolver(
-                user_agent="Mozilla/5.0 (Windows NT 10.0)", gateway=mock_gateway
-            )
+            RedditKnowledgeResolver(user_agent="Mozilla/5.0 (Windows NT 10.0)", gateway=mock_gateway)
 
     def test_missing_username_rejected(self, mock_gateway: MagicMock) -> None:
         with pytest.raises(ValueError):
-            RedditKnowledgeResolver(
-                user_agent="script:sky_claw:v0.1.0", gateway=mock_gateway
-            )
+            RedditKnowledgeResolver(user_agent="script:sky_claw:v0.1.0", gateway=mock_gateway)
 
-    def test_valid_user_agent_accepted(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
-        r = RedditKnowledgeResolver(
-            user_agent=VALID_UA, session=mock_session, gateway=mock_gateway
-        )
+    def test_valid_user_agent_accepted(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
+        r = RedditKnowledgeResolver(user_agent=VALID_UA, session=mock_session, gateway=mock_gateway)
         assert r._config.user_agent == VALID_UA
 
     def test_config_is_frozen(self) -> None:
         cfg = RedditClientConfig(user_agent=VALID_UA)
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             cfg.user_agent = "tampered"  # type: ignore[misc]
 
 
 class TestModNameValidation:
     @pytest.mark.asyncio
-    async def test_empty_mod_name_rejected(
-        self, resolver: RedditKnowledgeResolver
-    ) -> None:
+    async def test_empty_mod_name_rejected(self, resolver: RedditKnowledgeResolver) -> None:
         with pytest.raises(ValueError):
             await resolver.search_known_issues("")
 
     @pytest.mark.asyncio
-    async def test_whitespace_only_rejected(
-        self, resolver: RedditKnowledgeResolver
-    ) -> None:
+    async def test_whitespace_only_rejected(self, resolver: RedditKnowledgeResolver) -> None:
         with pytest.raises(ValueError):
             await resolver.search_known_issues("   ")
 
@@ -133,9 +119,7 @@ class TestModNameValidation:
             await resolver.search_known_issues("x" * 101)
 
     @pytest.mark.asyncio
-    async def test_control_char_rejected(
-        self, resolver: RedditKnowledgeResolver
-    ) -> None:
+    async def test_control_char_rejected(self, resolver: RedditKnowledgeResolver) -> None:
         with pytest.raises(ValueError):
             await resolver.search_known_issues("bad\x00name")
 
@@ -147,12 +131,8 @@ class TestModNameValidation:
 
 class TestRateLimit:
     @pytest.mark.asyncio
-    async def test_sliding_window_blocks_excess(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload([])
-        )
+    async def test_sliding_window_blocks_excess(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload([]))
 
         # Reloj simulado que podemos adelantar manualmente
         current_time = 1000.0
@@ -184,12 +164,8 @@ class TestRateLimit:
             await r.close()
 
     @pytest.mark.asyncio
-    async def test_window_slides_after_expiry(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload([])
-        )
+    async def test_window_slides_after_expiry(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload([]))
         t = 1000.0
 
         def mock_clock() -> float:
@@ -223,9 +199,7 @@ class TestCache:
         mock_session: MagicMock,
         mock_gateway: MagicMock,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload(_sample_posts(1))
-        )
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload(_sample_posts(1)))
         # SkyUI normalization
         await resolver.search_known_issues("SkyUI")
         await resolver.search_known_issues("SkyUI")
@@ -238,9 +212,7 @@ class TestCache:
         mock_session: MagicMock,
         mock_gateway: MagicMock,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload([])
-        )
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload([]))
         # r/skyrimmods vs skyrimmods
         r2 = RedditKnowledgeResolver(
             user_agent=VALID_UA,
@@ -272,23 +244,15 @@ class TestCache:
         mock_session: MagicMock,
         mock_gateway: MagicMock,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload(_sample_posts(1))
-        )
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload(_sample_posts(1)))
         await resolver.search_known_issues("SkyUI")
         await resolver.search_known_issues("  skyui  ")
         assert mock_gateway.request.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_close_clears_cache(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload(_sample_posts(1))
-        )
-        r = RedditKnowledgeResolver(
-            user_agent=VALID_UA, session=mock_session, gateway=mock_gateway
-        )
+    async def test_close_clears_cache(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload(_sample_posts(1)))
+        r = RedditKnowledgeResolver(user_agent=VALID_UA, session=mock_session, gateway=mock_gateway)
         await r.search_known_issues("SkyUI")
         assert "skyui" in r._cache
         await r.close()
@@ -318,9 +282,7 @@ class TestCache:
         ctx.__aexit__ = AsyncMock(return_value=None)
         mock_gateway.request.return_value = ctx
 
-        tasks = [
-            asyncio.create_task(resolver.search_known_issues("SkyUI")) for _ in range(5)
-        ]
+        tasks = [asyncio.create_task(resolver.search_known_issues("SkyUI")) for _ in range(5)]
         await call_started.wait()
         release.set()
         results = await asyncio.gather(*tasks)
@@ -329,9 +291,7 @@ class TestCache:
         assert all(r == results[0] for r in results)
 
     @pytest.mark.asyncio
-    async def test_errors_are_not_cached(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
+    async def test_errors_are_not_cached(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
         # Primero falla con 500
         mock_gateway.request.return_value = _make_response_mock(500)
         r = RedditKnowledgeResolver(
@@ -344,19 +304,13 @@ class TestCache:
         try:
             res1 = await r.search_known_issues("BuggyMod")
             assert "unavailable" in res1
-            assert (
-                mock_gateway.request.call_count == 3
-            )  # 1 inicial + 2 reintentos por Tenacity
+            assert mock_gateway.request.call_count == 3  # 1 inicial + 2 reintentos por Tenacity
 
             # Ahora "arreglamos" el server
-            mock_gateway.request.return_value = _make_response_mock(
-                200, _reddit_payload(_sample_posts(1))
-            )
+            mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload(_sample_posts(1)))
             res2 = await r.search_known_issues("BuggyMod")
             assert "Reddit findings" in res2
-            assert (
-                mock_gateway.request.call_count == 4
-            )  # +1 llamado exitoso (no salió de caché)
+            assert mock_gateway.request.call_count == 4  # +1 llamado exitoso (no salió de caché)
         finally:
             await r.close()
 
@@ -369,9 +323,7 @@ class TestSearchBehavior:
         mock_session: MagicMock,
         mock_gateway: MagicMock,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload(_sample_posts(3))
-        )
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload(_sample_posts(3)))
         result = await resolver.search_known_issues("SkyUI")
         assert "Reddit findings for 'SkyUI'" in result
         assert "Issue 0" in result
@@ -386,9 +338,7 @@ class TestSearchBehavior:
         mock_session: MagicMock,
         mock_gateway: MagicMock,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload([])
-        )
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload([]))
         result = await resolver.search_known_issues("ObscureMod")
         assert "No known issues found" in result
         assert "ObscureMod" in result
@@ -401,18 +351,14 @@ class TestSearchBehavior:
         mock_gateway: MagicMock,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            429, headers={"Retry-After": "120"}
-        )
+        mock_gateway.request.return_value = _make_response_mock(429, headers={"Retry-After": "120"})
         caplog.set_level(logging.WARNING, logger="SkyClaw.Scraper.Reddit")
         result = await resolver.search_known_issues("SomeMod")
         assert "No known issues found" in result
         assert any("rate_limited" in rec.message for rec in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_http_500_exhausts_retries(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
+    async def test_http_500_exhausts_retries(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
         mock_gateway.request.return_value = _make_response_mock(500)
         r = RedditKnowledgeResolver(
             user_agent=VALID_UA,
@@ -447,52 +393,32 @@ class TestSearchBehavior:
         mock_session: MagicMock,
         mock_gateway: MagicMock,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload([])
-        )
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload([]))
         await resolver.search_known_issues("Mod & X")
         call_args = mock_gateway.request.call_args
-        url = (
-            call_args.args[1]
-            if len(call_args.args) > 1
-            else call_args.kwargs.get("url", "")
-        )
+        url = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs.get("url", "")
         assert "Mod+%26+X" in url or "Mod%20%26%20X" in url
         assert "&" not in url.split("?", 1)[1].split("=", 1)[1].split("&")[0]
 
 
 class TestLifecycle:
     @pytest.mark.asyncio
-    async def test_async_context_manager(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload([])
-        )
-        async with RedditKnowledgeResolver(
-            user_agent=VALID_UA, session=mock_session, gateway=mock_gateway
-        ) as r:
+    async def test_async_context_manager(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload([]))
+        async with RedditKnowledgeResolver(user_agent=VALID_UA, session=mock_session, gateway=mock_gateway) as r:
             result = await r.search_known_issues("Foo")
             assert isinstance(result, str)
         assert r._closed
 
     @pytest.mark.asyncio
-    async def test_close_is_idempotent(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
-        r = RedditKnowledgeResolver(
-            user_agent=VALID_UA, session=mock_session, gateway=mock_gateway
-        )
+    async def test_close_is_idempotent(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
+        r = RedditKnowledgeResolver(user_agent=VALID_UA, session=mock_session, gateway=mock_gateway)
         await r.close()
         await r.close()
 
     @pytest.mark.asyncio
-    async def test_search_after_close_raises(
-        self, mock_session: MagicMock, mock_gateway: MagicMock
-    ) -> None:
-        r = RedditKnowledgeResolver(
-            user_agent=VALID_UA, session=mock_session, gateway=mock_gateway
-        )
+    async def test_search_after_close_raises(self, mock_session: MagicMock, mock_gateway: MagicMock) -> None:
+        r = RedditKnowledgeResolver(user_agent=VALID_UA, session=mock_session, gateway=mock_gateway)
         await r.close()
         with pytest.raises(RuntimeError):
             await r.search_known_issues("Foo")
@@ -501,9 +427,7 @@ class TestLifecycle:
     async def test_injected_session_not_closed_by_resolver(
         self, mock_session: MagicMock, mock_gateway: MagicMock
     ) -> None:
-        r = RedditKnowledgeResolver(
-            user_agent=VALID_UA, session=mock_session, gateway=mock_gateway
-        )
+        r = RedditKnowledgeResolver(user_agent=VALID_UA, session=mock_session, gateway=mock_gateway)
         await r.close()
         mock_session.close.assert_not_called()
 
@@ -517,9 +441,7 @@ class TestObservability:
         mock_gateway: MagicMock,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload(_sample_posts(1))
-        )
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload(_sample_posts(1)))
         caplog.set_level(logging.INFO, logger="SkyClaw.Scraper.Reddit")
         await resolver.search_known_issues("SkyUI")
         await resolver.search_known_issues("SkyUI")
@@ -534,9 +456,7 @@ class TestObservability:
         mock_gateway: MagicMock,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        mock_gateway.request.return_value = _make_response_mock(
-            200, _reddit_payload([])
-        )
+        mock_gateway.request.return_value = _make_response_mock(200, _reddit_payload([]))
         caplog.set_level(logging.INFO, logger="SkyClaw.Scraper.Reddit")
         await resolver.search_known_issues("Foo")
         records = [r for r in caplog.records if "search_completed" in r.message]

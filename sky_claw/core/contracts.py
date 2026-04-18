@@ -63,11 +63,7 @@ def _ensure_registry() -> None:
 
     for attr_name in dir(_schemas_module):
         attr = getattr(_schemas_module, attr_name)
-        if (
-            isinstance(attr, type)
-            and issubclass(attr, BaseModel)
-            and attr is not BaseModel
-        ):
+        if isinstance(attr, type) and issubclass(attr, BaseModel) and attr is not BaseModel:
             _SCHEMA_REGISTRY[attr_name] = attr
 
     logger.debug(
@@ -300,9 +296,7 @@ def validate_contract(method_name: str) -> Callable:
                             schema_key,
                             exc.errors(),
                         )
-                        raise ValueError(
-                            f"Entrada inválida para {schema_key}: {exc}"
-                        ) from exc
+                        raise ValueError(f"Entrada inválida para {schema_key}: {exc}") from exc
 
             # ── Fase 2: Ejecutar función (una sola vez) ──
             result = await func(self, *clean_args, **clean_kwargs)
@@ -315,9 +309,7 @@ def validate_contract(method_name: str) -> Callable:
                         if isinstance(result, dict):
                             validated_out = output_cls.model_validate(result)
                         elif isinstance(result, BaseModel):
-                            validated_out = output_cls.model_validate(
-                                result.model_dump()
-                            )
+                            validated_out = output_cls.model_validate(result.model_dump())
                         else:
                             return result
 
@@ -330,9 +322,7 @@ def validate_contract(method_name: str) -> Callable:
                             schema_key,
                             exc.errors(),
                         )
-                        raise ValueError(
-                            f"Salida inválida para {schema_key}: {exc}"
-                        ) from exc
+                        raise ValueError(f"Salida inválida para {schema_key}: {exc}") from exc
 
             return result
 

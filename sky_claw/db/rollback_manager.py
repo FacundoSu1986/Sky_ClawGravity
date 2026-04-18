@@ -49,7 +49,12 @@ class RollbackManager:
     async def __aenter__(self) -> RollbackManager:
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
         pass
 
     async def undo_last_operation(self, agent_id: str) -> RollbackResult:
@@ -62,9 +67,7 @@ class RollbackManager:
         3. Actualizar estado de la entrada en el Journal a 'ROLLED_BACK'
         """
         # Obtener última operación
-        entry = await self._journal.get_last_operation(
-            agent_id, [OperationStatus.COMPLETED, OperationStatus.FAILED]
-        )
+        entry = await self._journal.get_last_operation(agent_id, [OperationStatus.COMPLETED, OperationStatus.FAILED])
 
         if entry is None:
             return RollbackResult(
@@ -80,9 +83,7 @@ class RollbackManager:
                     pathlib.Path(entry.snapshot_path), pathlib.Path(entry.target_path)
                 )
             except OSError as e:
-                logger.critical(
-                    "Rollback failed for %s: %s", agent_id, str(e), exc_info=True
-                )
+                logger.critical("Rollback failed for %s: %s", agent_id, str(e), exc_info=True)
                 raise RollbackError(str(e)) from e
 
         # Actualizar estado en journal
@@ -92,9 +93,6 @@ class RollbackManager:
             success=True,
             transaction_id=entry.id,
             entries_restored=1 if entry.snapshot_path else 0,
-            files_deleted=1
-            if entry.operation_type
-            in [OperationType.FILE_CREATE, OperationType.MOD_INSTALL]
-            else 0,
+            files_deleted=1 if entry.operation_type in [OperationType.FILE_CREATE, OperationType.MOD_INSTALL] else 0,
             errors=[],
         )

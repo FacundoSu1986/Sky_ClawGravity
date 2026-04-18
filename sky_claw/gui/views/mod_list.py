@@ -42,9 +42,7 @@ def build_mod_list(
 
     # ── Search Bar ────────────────────────────────────────────────────
     search_input = (
-        ui.input(placeholder="🔍 Buscar mod...")
-        .classes("sky-modlist-search w-full")
-        .props("dense outlined dark")
+        ui.input(placeholder="🔍 Buscar mod...").classes("sky-modlist-search w-full").props("dense outlined dark")
     )
 
     # ── Mod List Container ────────────────────────────────────────────
@@ -85,9 +83,7 @@ def _build_mod_row(
     is_enabled = mod.get("enabled", True)
     version = mod.get("version", "")
 
-    with ui.element("div").classes(
-        "sky-mod-row" + (" sky-mod-row--disabled" if not is_enabled else "")
-    ):
+    with ui.element("div").classes("sky-mod-row" + (" sky-mod-row--disabled" if not is_enabled else "")):
         # Toggle
         switch = ui.switch(value=is_enabled).classes("sky-mod-toggle")
         if on_toggle:
@@ -106,6 +102,4 @@ def _build_mod_row(
         if is_enabled:
             ui.icon("check_circle", size="1.2rem").classes("sky-mod-status-ok")
         else:
-            ui.icon("remove_circle_outline", size="1.2rem").classes(
-                "sky-mod-status-off"
-            )
+            ui.icon("remove_circle_outline", size="1.2rem").classes("sky-mod-status-off")

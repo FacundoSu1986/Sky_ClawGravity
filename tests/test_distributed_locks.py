@@ -11,6 +11,7 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
+
 from sky_claw.db.locks import (
     DEFAULT_LOCK_TTL_SECONDS,
     DistributedLockManager,

@@ -72,9 +72,7 @@ class WryeBashRunner:
                 **kwargs,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=self.config.timeout_seconds
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.config.timeout_seconds)
 
             duration = time.monotonic() - start_time
             success = process.returncode == 0
@@ -98,4 +96,4 @@ class WryeBashRunner:
             )
         except Exception as e:
             logger.error(f"Wrye Bash execution failed: {e}")
-            raise WryeBashExecutionError(f"Failed to execute Wrye Bash: {e}")
+            raise WryeBashExecutionError(f"Failed to execute Wrye Bash: {e}") from e

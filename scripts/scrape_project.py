@@ -16,27 +16,27 @@ def get_project_files():
     for root, dirs, files in os.walk(PROJECT_ROOT):
         # Filtrar directorios
         dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
-        
+
         for file in files:
             if file in EXCLUDE_FILES:
                 continue
-            
+
             ext = os.path.splitext(file)[1].lower()
             full_path = os.path.join(root, file)
-            
+
             if ext in INCLUDE_EXTENSIONS or file in {"Dockerfile", "LICENSE", "requirements.txt"}:
                 # Verificar tamaño para archivos de texto
                 if os.path.getsize(full_path) < MAX_FILE_SIZE_TEXT:
                     text_files.append(full_path)
             elif ext in IMAGE_EXTENSIONS:
                 image_files.append(full_path)
-                
+
     return text_files, image_files
 
 def scrape_text_files(files):
     content_list = []
     total_chars = 0
-    
+
     for file_path in files:
         try:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -48,23 +48,23 @@ def scrape_text_files(files):
                 total_chars += len(full_content)
         except Exception as e:
             print(f"Error reading {file_path}: {e}")
-            
+
     return content_list, total_chars
 
 def main():
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
-        
+
     print("Recopilando archivos...")
     text_files, image_files = get_project_files()
-    
+
     # Crear lista de imágenes
     image_list_content = "\n" + "="*80 + "\nLISTA DE IMÁGENES ENCONTRADAS\n" + "="*80 + "\n"
     for img in image_files:
         image_list_content += f"- {os.path.relpath(img, PROJECT_ROOT)}\n"
-    
+
     contents, total_chars = scrape_text_files(text_files)
-    
+
     # Añadir la lista de imágenes al principio del primer archivo
     if contents:
         contents[0] = image_list_content + contents[0]
@@ -72,20 +72,20 @@ def main():
     else:
         contents = [image_list_content]
         total_chars = len(image_list_content)
-    
+
     # El usuario pidió dividirlo en 4 partes si es grande
     # Vamos a usar un límite de 500k caracteres por archivo para que sea digerible por la mayoría de IAs (o lo que quepa en 4)
     num_parts = 4
     chars_per_part = math.ceil(total_chars / num_parts)
-    
+
     print(f"Total caracteres: {total_chars}. Dividiendo en {num_parts} archivos (~{chars_per_part} chars cada uno).")
-    
+
     part_num = 1
     current_content = ""
-    
+
     for content in contents:
         current_content += content
-        
+
         if len(current_content) >= chars_per_part and part_num < num_parts:
             filename = os.path.join(OUTPUT_DIR, f"txt{part_num}.txt")
             with open(filename, "w", encoding="utf-8") as f:
@@ -93,7 +93,7 @@ def main():
             print(f"Archivo creado: {filename} ({len(current_content)} chars)")
             part_num += 1
             current_content = ""
-            
+
     # Última parte
     filename = os.path.join(OUTPUT_DIR, f"txt{part_num}.txt")
     with open(filename, "w", encoding="utf-8") as f:

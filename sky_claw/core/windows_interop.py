@@ -35,7 +35,7 @@ class ModdingToolsAgent:
             proc.kill()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=3.0)
-            raise WSLInteropError(f"wslpath tardó más de {timeout}s para: {wsl_path}")
+            raise WSLInteropError(f"wslpath tardó más de {timeout}s para: {wsl_path}") from None
         if proc.returncode != 0:
             err_str = stderr.decode("utf-8", errors="replace").strip()
             raise WSLInteropError(f"Fallo en wslpath: {err_str}")
@@ -93,9 +93,7 @@ class ModdingToolsAgent:
         err_str = stderr.decode("utf-8", errors="replace").strip()
 
         if proc.returncode != 0:
-            logger.error(
-                "RCA: LOOT falló con código %d. Stderr: %s", proc.returncode, err_str
-            )
+            logger.error("RCA: LOOT falló con código %d. Stderr: %s", proc.returncode, err_str)
             return {"status": "error", "logs": err_str}
 
         return {"status": "success", "logs": out_str}

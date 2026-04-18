@@ -188,7 +188,7 @@ class ShadcnInstaller:
         if not installed:
             return True, "No components installed"
 
-        return True, f"Installed components:\n" + "\n".join(f"  - {c}" for c in sorted(installed))
+        return True, "Installed components:\n" + "\n".join(f"  - {c}" for c in sorted(installed))
 
 
 def main():

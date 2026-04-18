@@ -68,9 +68,7 @@ class BodySlideRunner:
                 **kwargs,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=self.config.timeout_seconds
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.config.timeout_seconds)
 
             duration = time.monotonic() - start_time
             success = process.returncode == 0
@@ -94,4 +92,4 @@ class BodySlideRunner:
             )
         except Exception as e:
             logger.error(f"BodySlide execution failed: {e}")
-            raise BodySlideExecutionError(f"Failed to execute BodySlide: {e}")
+            raise BodySlideExecutionError(f"Failed to execute BodySlide: {e}") from e

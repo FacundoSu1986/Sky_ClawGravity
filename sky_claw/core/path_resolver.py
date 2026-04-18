@@ -306,9 +306,7 @@ class PathResolutionService:
             return mo2_base / "profiles" / profile / "modlist.txt"
 
         # 3. Fallback: WSL2 default path — también validado
-        fallback_path = (
-            pathlib.Path("/mnt/c/Modding/MO2") / "profiles" / profile / "modlist.txt"
-        )
+        fallback_path = pathlib.Path("/mnt/c/Modding/MO2") / "profiles" / profile / "modlist.txt"
         try:
             validated_fallback = self._path_validator.validate(fallback_path)
             logger.warning(

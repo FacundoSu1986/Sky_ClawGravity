@@ -86,9 +86,7 @@ def create_cta_section(
             ui.label(title).classes("text-white text-5xl font-bold leading-tight mb-6")
 
             # Descripción
-            ui.label(description).classes(
-                "text-[#9ca3af] text-lg max-w-2xl mb-10 leading-relaxed"
-            )
+            ui.label(description).classes("text-[#9ca3af] text-lg max-w-2xl mb-10 leading-relaxed")
 
             # Botones de acción
             with ui.row().classes("items-center gap-4"):

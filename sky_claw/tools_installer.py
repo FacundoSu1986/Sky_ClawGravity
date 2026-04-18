@@ -20,7 +20,7 @@ from sky_claw.config import (
     SystemPaths,
 )
 from sky_claw.security.hitl import Decision, HITLGuard
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 if TYPE_CHECKING:
     from sky_claw.scraper.nexus_downloader import NexusDownloader
@@ -96,10 +96,7 @@ def _is_safe_path(member_path: str) -> bool:
         from sky_claw.core.validators import validate_path_strict
 
         # Rechazar explícitamente rutas absolutas o con letra de unidad
-        if (
-            pathlib.PureWindowsPath(member_path).is_absolute()
-            or pathlib.PurePosixPath(member_path).is_absolute()
-        ):
+        if pathlib.PureWindowsPath(member_path).is_absolute() or pathlib.PurePosixPath(member_path).is_absolute():
             return False
 
         validate_path_strict(member_path)
@@ -123,13 +120,11 @@ def _extract_zip_safe(archive: pathlib.Path, dest: pathlib.Path) -> None:
             if info.is_dir():
                 continue
             if not _is_safe_path(info.filename):
-                raise PathViolation(f"Zip-slip detected: {info.filename!r}")
+                raise PathViolationError(f"Zip-slip detected: {info.filename!r}")
             # Secondary check: resolved path must stay inside dest
             target = (dest / info.filename).resolve()
             if not target.is_relative_to(dest_resolved):
-                raise PathViolation(
-                    f"Zip-slip (resolved path escapes sandbox): {info.filename!r}"
-                )
+                raise PathViolationError(f"Zip-slip (resolved path escapes sandbox): {info.filename!r}")
             zf.extract(info, dest)
 
 
@@ -138,14 +133,12 @@ def _extract_7z_safe(archive: pathlib.Path, dest: pathlib.Path) -> None:
     try:
         import py7zr
     except ModuleNotFoundError as exc:
-        raise RuntimeError(
-            "py7zr is required for .7z extraction — pip install py7zr"
-        ) from exc
+        raise RuntimeError("py7zr is required for .7z extraction — pip install py7zr") from exc
 
     with py7zr.SevenZipFile(archive, "r") as szf:
         for name in szf.getnames():
             if not _is_safe_path(name):
-                raise PathViolation(f"Zip-slip detected in 7z: {name!r}")
+                raise PathViolationError(f"Zip-slip detected in 7z: {name!r}")
         szf.extractall(dest)
 
 
@@ -164,9 +157,7 @@ def find_exe_in_dir(directory: pathlib.Path, exe_name: str) -> pathlib.Path | No
     return None
 
 
-def scan_common_paths(
-    common_paths: tuple[pathlib.Path, ...], exe_name: str
-) -> pathlib.Path | None:
+def scan_common_paths(common_paths: tuple[pathlib.Path, ...], exe_name: str) -> pathlib.Path | None:
     """Check common installation directories for an executable."""
     for base in common_paths:
         found = find_exe_in_dir(base, exe_name)
@@ -254,9 +245,7 @@ class ToolsInstaller:
             ),
         )
         if decision is not Decision.APPROVED:
-            raise ToolInstallError(
-                f"LOOT installation denied by operator (decision={decision.value})"
-            )
+            raise ToolInstallError(f"LOOT installation denied by operator (decision={decision.value})")
 
         archive = await self._download_asset(session, asset, install_dir)
         self._extract(archive, install_dir)
@@ -264,9 +253,7 @@ class ToolsInstaller:
 
         exe = find_exe_in_dir(install_dir, "loot.exe")
         if exe is None:
-            raise ToolInstallError(
-                "LOOT extraction succeeded but loot.exe not found in output"
-            )
+            raise ToolInstallError("LOOT extraction succeeded but loot.exe not found in output")
 
         logger.info("LOOT %s installed at %s", version, exe)
         return InstallResult(
@@ -318,9 +305,7 @@ class ToolsInstaller:
             ),
         )
         if decision is not Decision.APPROVED:
-            raise ToolInstallError(
-                f"SSEEdit installation denied by operator (decision={decision.value})"
-            )
+            raise ToolInstallError(f"SSEEdit installation denied by operator (decision={decision.value})")
 
         archive = await self._download_asset(session, asset, install_dir)
         self._extract(archive, install_dir)
@@ -328,9 +313,7 @@ class ToolsInstaller:
 
         exe = find_exe_in_dir(install_dir, "SSEEdit.exe")
         if exe is None:
-            raise ToolInstallError(
-                "SSEEdit extraction succeeded but SSEEdit.exe not found in output"
-            )
+            raise ToolInstallError("SSEEdit extraction succeeded but SSEEdit.exe not found in output")
 
         logger.info("SSEEdit %s installed at %s", version, exe)
         return InstallResult(
@@ -383,9 +366,7 @@ class ToolsInstaller:
             ),
         )
         if decision is not Decision.APPROVED:
-            raise ToolInstallError(
-                f"Pandora installation denied by operator (decision={decision.value})"
-            )
+            raise ToolInstallError(f"Pandora installation denied by operator (decision={decision.value})")
 
         archive = await self._download_asset(session, asset, install_dir)
         self._extract(archive, install_dir)
@@ -393,9 +374,7 @@ class ToolsInstaller:
 
         exe = find_exe_in_dir(install_dir, "Pandora.exe")
         if exe is None:
-            raise ToolInstallError(
-                "Pandora extraction succeeded but Pandora.exe not found in output"
-            )
+            raise ToolInstallError("Pandora extraction succeeded but Pandora.exe not found in output")
 
         logger.info("Pandora %s installed at %s", version, exe)
         return InstallResult(
@@ -434,9 +413,7 @@ class ToolsInstaller:
             )
 
         if downloader is None:
-            raise ToolInstallError(
-                "BodySlide requires a NexusDownloader for installation (not on GitHub)."
-            )
+            raise ToolInstallError("BodySlide requires a NexusDownloader for installation (not on GitHub).")
 
         # BodySlide is Mod ID 201 on SSE.
         nexus_id = 201
@@ -444,9 +421,7 @@ class ToolsInstaller:
         try:
             file_info = await downloader.get_file_info(nexus_id, None, session)
         except Exception as exc:
-            raise ToolInstallError(
-                f"Failed to fetch BodySlide info from Nexus: {exc}"
-            ) from exc
+            raise ToolInstallError(f"Failed to fetch BodySlide info from Nexus: {exc}") from exc
 
         decision = await self._hitl.request_approval(
             request_id=f"install-bodyslide-{file_info.file_id}",
@@ -457,9 +432,7 @@ class ToolsInstaller:
             ),
         )
         if decision is not Decision.APPROVED:
-            raise ToolInstallError(
-                f"BodySlide installation denied by operator (decision={decision.value})"
-            )
+            raise ToolInstallError(f"BodySlide installation denied by operator (decision={decision.value})")
 
         # Download to staging dir first (as per NexusDownloader logic)
         archive_path = await downloader.download(file_info, session)
@@ -472,9 +445,7 @@ class ToolsInstaller:
 
         exe = find_exe_in_dir(install_dir, "BodySlide.exe")
         if exe is None:
-            raise ToolInstallError(
-                "BodySlide extraction succeeded but BodySlide.exe not found in output"
-            )
+            raise ToolInstallError("BodySlide extraction succeeded but BodySlide.exe not found in output")
 
         logger.info("BodySlide installed at %s", exe)
         return InstallResult(
@@ -511,9 +482,7 @@ class ToolsInstaller:
 
         async with session.get(releases_url, headers=headers, timeout=timeout) as resp:
             if resp.status != 200:
-                raise ToolInstallError(
-                    f"GitHub API returned {resp.status} for {releases_url}"
-                )
+                raise ToolInstallError(f"GitHub API returned {resp.status} for {releases_url}")
             data: dict[str, Any] = await resp.json()
 
         version: str = data.get("tag_name", "unknown")
@@ -523,9 +492,7 @@ class ToolsInstaller:
         # a .zip or .7z archive.
         for a in assets:
             name: str = a.get("name", "")
-            if keyword.lower() in name.lower() and (
-                name.endswith(".zip") or name.endswith(".7z")
-            ):
+            if keyword.lower() in name.lower() and (name.endswith(".zip") or name.endswith(".7z")):
                 return (
                     ReleaseAsset(
                         name=name,
@@ -536,9 +503,7 @@ class ToolsInstaller:
                 )
 
         available = [a.get("name", "?") for a in assets]
-        raise ToolInstallError(
-            f"No asset matching '{keyword}' (.zip/.7z) in release {version}. Available: {available}"
-        )
+        raise ToolInstallError(f"No asset matching '{keyword}' (.zip/.7z) in release {version}. Available: {available}")
 
     async def _download_asset(
         self,
@@ -589,9 +554,7 @@ class ToolsInstaller:
         # Size validation.
         if asset.size > 0 and downloaded != asset.size:
             dest.unlink(missing_ok=True)
-            raise ToolInstallError(
-                f"Size mismatch for {asset.name}: expected {asset.size}, got {downloaded}"
-            )
+            raise ToolInstallError(f"Size mismatch for {asset.name}: expected {asset.size}, got {downloaded}")
 
         logger.info(
             "Downloaded %s (%d bytes, sha256=%s)",

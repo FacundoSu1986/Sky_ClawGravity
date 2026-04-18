@@ -103,6 +103,62 @@ class SynthesisPipelineCompletedPayload(BaseModel):
         return self.model_dump()
 
 
+class XEditPatchStartedPayload(BaseModel):
+    """Payload inmutable para el evento ``xedit.patch.started``.
+
+    Publicado por :class:`XEditPipelineService` al iniciar la ejecución
+    de un parche xEdit transaccional.
+
+    Attributes:
+        target_plugin: Nombre del plugin objetivo del parcheo.
+        total_conflicts: Total de conflictos a resolver.
+        started_at: Timestamp de inicio (epoch float, autogenerado).
+    """
+
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    target_plugin: str
+    total_conflicts: int
+    started_at: float = Field(default_factory=time.time)
+
+    def to_log_dict(self) -> dict[str, object]:
+        """Serialización compatible con el sistema de logging estructurado."""
+        return self.model_dump()
+
+
+class XEditPatchCompletedPayload(BaseModel):
+    """Payload inmutable para el evento ``xedit.patch.completed``.
+
+    Publicado por :class:`XEditPipelineService` al finalizar la ejecución
+    de un parche xEdit (éxito o fallo).
+
+    Attributes:
+        target_plugin: Nombre del plugin objetivo del parcheo.
+        total_conflicts: Total de conflictos solicitados.
+        success: Si la ejecución fue exitosa.
+        records_patched: Número de records procesados.
+        conflicts_resolved: Número de conflictos resueltos.
+        duration_seconds: Duración total de la ejecución.
+        rolled_back: Si se ejecutó rollback automático.
+        completed_at: Timestamp de finalización (epoch float, autogenerado).
+    """
+
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    target_plugin: str
+    total_conflicts: int
+    success: bool
+    records_patched: int
+    conflicts_resolved: int
+    duration_seconds: float
+    rolled_back: bool
+    completed_at: float = Field(default_factory=time.time)
+
+    def to_log_dict(self) -> dict[str, object]:
+        """Serialización compatible con el sistema de logging estructurado."""
+        return self.model_dump()
+
+
 class DynDOLODPipelineStartedPayload(BaseModel):
     """Payload inmutable para el evento ``pipeline.dyndolod.started``.
 

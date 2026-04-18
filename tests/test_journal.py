@@ -3,6 +3,7 @@
 import pathlib
 
 import pytest
+
 from sky_claw.db.journal import (
     OperationJournal,
     OperationStatus,
@@ -110,9 +111,7 @@ class TestFileSnapshotManager:
         test_file.write_text("modified content")
 
         # Restore
-        result = await snapshot_manager.restore_snapshot(
-            snapshot_info.snapshot_path, test_file
-        )
+        result = await snapshot_manager.restore_snapshot(snapshot_info.snapshot_path, test_file)
         assert result
         assert test_file.read_text() == "original content"
 

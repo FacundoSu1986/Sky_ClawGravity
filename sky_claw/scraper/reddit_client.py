@@ -17,16 +17,12 @@ import logging
 import re
 import time
 from collections import deque
+from collections.abc import Callable
 from types import TracebackType
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import quote_plus
 
 import aiohttp
-from sky_claw.security.network_gateway import (
-    EgressViolation,
-    NetworkGateway,
-    NetworkGatewayTimeout,
-)
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from tenacity import (
     AsyncRetrying,
@@ -36,11 +32,15 @@ from tenacity import (
     wait_exponential,
 )
 
+from sky_claw.security.network_gateway import (
+    EgressViolationError,
+    NetworkGateway,
+    NetworkGatewayTimeoutError,
+)
+
 logger = logging.getLogger("SkyClaw.Scraper.Reddit")
 
-_USER_AGENT_RE = re.compile(
-    r"^[A-Za-z0-9_\-]+:[A-Za-z0-9_.\-]+:v?\d+[\w.\-]*\s+\(by\s+/u/[A-Za-z0-9_\-]+\)$"
-)
+_USER_AGENT_RE = re.compile(r"^[A-Za-z0-9_\-]+:[A-Za-z0-9_.\-]+:v?\d+[\w.\-]*\s+\(by\s+/u/[A-Za-z0-9_\-]+\)$")
 _MOD_NAME_MAX = 100
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 _DEFAULT_SUBREDDITS: tuple[str, ...] = ("skyrimmods", "skyrimse")
@@ -111,20 +111,14 @@ class RedditClientConfig(BaseModel):
         stripped = value.strip()
         if not _USER_AGENT_RE.match(stripped):
             raise ValueError(
-                "user_agent must follow Reddit ToS format "
-                "'script:app_name:version (by /u/username)', "
-                f"got: {value!r}"
+                f"user_agent must follow Reddit ToS format 'script:app_name:version (by /u/username)', got: {value!r}"
             )
         return stripped
 
     @field_validator("subreddits")
     @classmethod
     def _validate_subreddits(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        cleaned = tuple(
-            s.strip().removeprefix("r/").removeprefix("/").lower()
-            for s in value
-            if s.strip()
-        )
+        cleaned = tuple(s.strip().removeprefix("r/").removeprefix("/").lower() for s in value if s.strip())
         if not cleaned:
             raise ValueError("subreddits must contain at least one non-empty entry")
         return cleaned
@@ -191,11 +185,7 @@ class RedditKnowledgeResolver:
         if self._closed:
             return
         self._closed = True
-        if (
-            self._owns_session
-            and self._session is not None
-            and not self._session.closed
-        ):
+        if self._owns_session and self._session is not None and not self._session.closed:
             await self._session.close()
         async with self._cache_lock:
             self._cache.clear()
@@ -275,9 +265,9 @@ class RedditKnowledgeResolver:
                     self._cache[cache_key] = result
             except (
                 aiohttp.ClientError,
-                asyncio.TimeoutError,
-                EgressViolation,
-                NetworkGatewayTimeout,
+                TimeoutError,
+                EgressViolationError,
+                NetworkGatewayTimeoutError,
                 _TransientHTTPError,
             ) as exc:
                 logger.warning(
@@ -313,9 +303,7 @@ class RedditKnowledgeResolver:
 
     async def _search(self, mod_name: str) -> list[dict[str, Any]]:
         await self._acquire_slot()
-        subreddit_filter = " OR ".join(
-            f"subreddit:{s}" for s in self._config.subreddits
-        )
+        subreddit_filter = " OR ".join(f"subreddit:{s}" for s in self._config.subreddits)
         query = f"{mod_name} ({subreddit_filter})"
         params = {
             "q": query,
@@ -340,9 +328,7 @@ class RedditKnowledgeResolver:
             raise _TransientHTTPError("exhausted retries") from exc
         return []
 
-    async def _execute_request(
-        self, session: aiohttp.ClientSession, url: str
-    ) -> list[RedditPostData]:
+    async def _execute_request(self, session: aiohttp.ClientSession, url: str) -> list[RedditPostData]:
         resp_cm = await self._gateway.request("GET", url, session)
 
         async with resp_cm as response:

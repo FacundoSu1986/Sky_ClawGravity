@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
+
 from sky_claw.core.path_resolver import PathResolutionService, PathResolver
 from sky_claw.security.path_validator import PathValidator
 
@@ -160,11 +161,12 @@ class TestResolveModlistPath:
         path_resolver: PathResolutionService,
     ) -> None:
         """Lanza RuntimeError si ninguna ruta puede resolverse."""
-        with patch.dict(os.environ, {}, clear=True):
-            # Sin MO2_PATH, sin auto-detect, sin fallback válido
-            with patch.object(path_resolver, "detect_mo2_path", return_value=None):
-                with pytest.raises(RuntimeError, match="No se pudo resolver"):
-                    path_resolver.resolve_modlist_path("MissingProfile")
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(path_resolver, "detect_mo2_path", return_value=None),
+            pytest.raises(RuntimeError, match="No se pudo resolver"),
+        ):
+            path_resolver.resolve_modlist_path("MissingProfile")
 
 
 class TestGetMo2ModsPath:
@@ -188,10 +190,12 @@ class TestGetMo2ModsPath:
         path_resolver: PathResolutionService,
     ) -> None:
         """Lanza RuntimeError si no puede detectar MO2."""
-        with patch.dict(os.environ, {}, clear=True):
-            with patch.object(path_resolver, "detect_mo2_path", return_value=None):
-                with pytest.raises(RuntimeError, match="No se pudo detectar"):
-                    path_resolver.get_mo2_mods_path()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(path_resolver, "detect_mo2_path", return_value=None),
+            pytest.raises(RuntimeError, match="No se pudo detectar"),
+        ):
+            path_resolver.get_mo2_mods_path()
 
 
 class TestGetActiveProfile:

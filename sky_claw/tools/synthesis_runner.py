@@ -344,11 +344,11 @@ class SynthesisRunner:
                 timeout=self._config.timeout_seconds,
             )
         except FileNotFoundError:
-            raise SynthesisNotFoundError(self._config.synthesis_exe)
+            raise SynthesisNotFoundError(self._config.synthesis_exe) from None
         except TimeoutError:
             proc.kill()
             await proc.communicate()
-            raise SynthesisTimeoutError(self._config.timeout_seconds)
+            raise SynthesisTimeoutError(self._config.timeout_seconds) from None
 
         stdout_text = stdout.decode(errors="replace")
         stderr_text = stderr.decode(errors="replace")

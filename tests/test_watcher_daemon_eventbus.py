@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
+
 from sky_claw.core.event_bus import CoreEventBus, Event
 from sky_claw.core.event_payloads import ModlistChangedPayload
 from sky_claw.orchestrator.watcher_daemon import WatcherDaemon
@@ -35,9 +36,7 @@ def event_bus() -> CoreEventBus:
 
 
 @pytest.fixture
-def watcher(
-    mock_db: AsyncMock, event_bus: CoreEventBus, tmp_path: pathlib.Path
-) -> WatcherDaemon:
+def watcher(mock_db: AsyncMock, event_bus: CoreEventBus, tmp_path: pathlib.Path) -> WatcherDaemon:
     """WatcherDaemon configurado con EventBus y archivo temporal."""
     modlist_file = tmp_path / "modlist.txt"
     modlist_file.write_text("+plugin1.esp\n+plugin2.esm\n")

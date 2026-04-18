@@ -6,6 +6,7 @@ import pathlib
 import textwrap
 
 import pytest
+
 from sky_claw.core.errors import FomodParserSecurityError
 from sky_claw.fomod.models import (
     FomodConfig,

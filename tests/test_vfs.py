@@ -6,8 +6,9 @@ import pathlib
 from typing import NamedTuple
 
 import pytest
+
 from sky_claw.mo2.vfs import MO2Controller
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 
 class BomFixture(NamedTuple):
@@ -42,9 +43,7 @@ class TestReadModlist:
         assert ("DisabledMod-9999", False) in entries
 
     @pytest.mark.asyncio
-    async def test_skips_separators_and_comments(
-        self, controller: MO2Controller
-    ) -> None:
+    async def test_skips_separators_and_comments(self, controller: MO2Controller) -> None:
         names = [name async for name, _ in controller.read_modlist()]
         assert "Separator" not in names
         assert "# comment line" not in names
@@ -73,7 +72,7 @@ class TestReadModlist:
         (profile_dir / "modlist.txt").write_text("+SomeMod\n", encoding="utf-8")
         validator = PathValidator(roots=[tmp_path / "sandbox"])
         ctrl = MO2Controller(other, path_validator=validator)
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             async for _ in ctrl.read_modlist():
                 pass
 
@@ -81,9 +80,7 @@ class TestReadModlist:
     async def test_skips_lines_with_bad_prefix(self, tmp_path: pathlib.Path) -> None:
         profile_dir = tmp_path / "profiles" / "Default"
         profile_dir.mkdir(parents=True)
-        (profile_dir / "modlist.txt").write_text(
-            "!BadPrefix\n+GoodMod-100\n", encoding="utf-8"
-        )
+        (profile_dir / "modlist.txt").write_text("!BadPrefix\n+GoodMod-100\n", encoding="utf-8")
         validator = PathValidator(roots=[tmp_path])
         ctrl = MO2Controller(tmp_path, path_validator=validator)
         entries = [e async for e in ctrl.read_modlist()]
@@ -93,9 +90,7 @@ class TestReadModlist:
 
 class TestRemoveMod:
     @pytest.mark.asyncio
-    async def test_remove_existing_enabled(
-        self, controller: MO2Controller, mo2_root: pathlib.Path
-    ) -> None:
+    async def test_remove_existing_enabled(self, controller: MO2Controller, mo2_root: pathlib.Path) -> None:
         await controller.remove_mod_from_modlist("SKSE-30150-v2-2-6")
         entries = [name async for name, _ in controller.read_modlist()]
         assert "SKSE-30150-v2-2-6" not in entries
@@ -111,25 +106,19 @@ class TestToggleMod:
     @pytest.mark.asyncio
     async def test_disable_mod(self, controller: MO2Controller) -> None:
         await controller.toggle_mod_in_modlist("SKSE-30150-v2-2-6", enable=False)
-        entries = dict(
-            [(name, status) async for name, status in controller.read_modlist()]
-        )
+        entries = dict([(name, status) async for name, status in controller.read_modlist()])
         assert entries.get("SKSE-30150-v2-2-6") is False
 
     @pytest.mark.asyncio
     async def test_enable_mod(self, controller: MO2Controller) -> None:
         await controller.toggle_mod_in_modlist("DisabledMod-9999", enable=True)
-        entries = dict(
-            [(name, status) async for name, status in controller.read_modlist()]
-        )
+        entries = dict([(name, status) async for name, status in controller.read_modlist()])
         assert entries.get("DisabledMod-9999") is True
 
 
 class TestDeleteModFiles:
     @pytest.mark.asyncio
-    async def test_delete_existing_dir(
-        self, controller: MO2Controller, mo2_root: pathlib.Path
-    ) -> None:
+    async def test_delete_existing_dir(self, controller: MO2Controller, mo2_root: pathlib.Path) -> None:
         mod_dir = mo2_root / "mods" / "SomeMod"
         mod_dir.mkdir(parents=True)
         (mod_dir / "plugin.esp").write_text("dummy")
@@ -162,26 +151,18 @@ class TestBomPreservation:
     async def test_remove_mod_preserves_bom(self, bom_controller: BomFixture) -> None:
         await bom_controller.controller.remove_mod_from_modlist("RealMod-1")
         raw = bom_controller.modlist.read_bytes()
-        assert raw[:3] == b"\xef\xbb\xbf", (
-            "UTF-8 BOM must be present after remove_mod_from_modlist rewrite"
-        )
+        assert raw[:3] == b"\xef\xbb\xbf", "UTF-8 BOM must be present after remove_mod_from_modlist rewrite"
 
     @pytest.mark.asyncio
     async def test_toggle_mod_preserves_bom(self, bom_controller: BomFixture) -> None:
-        await bom_controller.controller.toggle_mod_in_modlist(
-            "DisabledMod-2", enable=True
-        )
+        await bom_controller.controller.toggle_mod_in_modlist("DisabledMod-2", enable=True)
         raw = bom_controller.modlist.read_bytes()
-        assert raw[:3] == b"\xef\xbb\xbf", (
-            "UTF-8 BOM must be present after toggle_mod_in_modlist rewrite"
-        )
+        assert raw[:3] == b"\xef\xbb\xbf", "UTF-8 BOM must be present after toggle_mod_in_modlist rewrite"
 
 
 class TestGameControl:
     @pytest.mark.asyncio
-    async def test_launch_game(
-        self, controller: MO2Controller, mo2_root: pathlib.Path, monkeypatch
-    ) -> None:
+    async def test_launch_game(self, controller: MO2Controller, mo2_root: pathlib.Path, monkeypatch) -> None:
         mo2_exe = mo2_root / "ModOrganizer.exe"
         mo2_exe.write_text("dummy")
 
@@ -213,9 +194,7 @@ class TestGameControl:
         mock_proc_2 = MagicMock()
         mock_proc_2.info = {"name": "chrome.exe"}
 
-        monkeypatch.setattr(
-            psutil, "process_iter", lambda x: [mock_proc_1, mock_proc_2]
-        )
+        monkeypatch.setattr(psutil, "process_iter", lambda x: [mock_proc_1, mock_proc_2])
 
         result = await controller.close_game()
         assert result["status"] == "closed"

@@ -65,9 +65,7 @@ class PandoraRunner:
                 **kwargs,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=self.config.timeout_seconds
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.config.timeout_seconds)
 
             duration = time.monotonic() - start_time
             success = process.returncode == 0
@@ -91,4 +89,4 @@ class PandoraRunner:
             )
         except Exception as e:
             logger.error(f"Pandora execution failed: {e}")
-            raise PandoraExecutionError(f"Failed to execute Pandora: {e}")
+            raise PandoraExecutionError(f"Failed to execute Pandora: {e}") from e

@@ -8,8 +8,9 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from sky_claw.local_config import LocalConfig, get_exe_dir, load, save
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 # ---------------------------------------------------------------------------
 # Bug 1: Config path resolves to exe dir when frozen
@@ -50,9 +51,7 @@ class TestExeConfigPath:
 
 
 class TestApiKeyFromConfig:
-    def test_anthropic_key_detection(
-        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_anthropic_key_detection(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Key starting with sk-ant sets ANTHROPIC_API_KEY."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
@@ -73,9 +72,7 @@ class TestApiKeyFromConfig:
 
         assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-my-anthropic-key"
 
-    def test_deepseek_key_detection(
-        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deepseek_key_detection(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Key starting with sk- (non-ant) sets DEEPSEEK_API_KEY."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
@@ -91,15 +88,12 @@ class TestApiKeyFromConfig:
         assert api_key.startswith("sk-")
         assert not api_key.startswith("sk-ant")
 
-        if api_key.startswith("sk-") and not api_key.startswith("sk-ant"):
-            if not os.environ.get("DEEPSEEK_API_KEY"):
-                os.environ["DEEPSEEK_API_KEY"] = api_key
+        if api_key.startswith("sk-") and not api_key.startswith("sk-ant") and not os.environ.get("DEEPSEEK_API_KEY"):
+            os.environ["DEEPSEEK_API_KEY"] = api_key
 
         assert os.environ["DEEPSEEK_API_KEY"] == "sk-deepseek-my-key"
 
-    def test_generic_key_defaults_to_deepseek(
-        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_generic_key_defaults_to_deepseek(self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Generic key (not sk-) maps to DEEPSEEK_API_KEY."""
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
@@ -112,9 +106,12 @@ class TestApiKeyFromConfig:
         api_key = loaded.get_api_key()
         assert api_key is not None
 
-        if not api_key.startswith("sk-ant") and not api_key.startswith("sk-"):
-            if not os.environ.get("DEEPSEEK_API_KEY"):
-                os.environ["DEEPSEEK_API_KEY"] = api_key
+        if (
+            not api_key.startswith("sk-ant")
+            and not api_key.startswith("sk-")
+            and not os.environ.get("DEEPSEEK_API_KEY")
+        ):
+            os.environ["DEEPSEEK_API_KEY"] = api_key
 
         assert os.environ["DEEPSEEK_API_KEY"] == "my-custom-api-key"
 
@@ -126,11 +123,7 @@ class TestApiKeyFromConfig:
         cfg.set_api_key("sk-ant-should-not-replace")
         api_key = cfg.get_api_key()
 
-        if (
-            api_key
-            and api_key.startswith("sk-ant")
-            and not os.environ.get("ANTHROPIC_API_KEY")
-        ):
+        if api_key and api_key.startswith("sk-ant") and not os.environ.get("ANTHROPIC_API_KEY"):
             os.environ["ANTHROPIC_API_KEY"] = api_key
 
         assert os.environ["ANTHROPIC_API_KEY"] == "env-key-stays"
@@ -194,7 +187,7 @@ class TestInstallDirSandbox:
         mo2_root = pathlib.Path("C:/Modding/MO2")
         validator = PathValidator(roots=[mo2_root])
 
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             validator.validate(pathlib.Path("D:/Elsewhere/evil.exe"))
 
     def test_loot_install_in_install_dir(self) -> None:
@@ -254,12 +247,8 @@ class TestMo2RootOverride:
         cfg = LocalConfig(mo2_root="D:/Modding/MO2")
         cli_mo2 = pathlib.Path("C:/MO2Portable")
 
-        _MO2_DEFAULT = str(pathlib.Path("C:/MO2Portable"))
-        result = (
-            pathlib.Path(cfg.mo2_root)
-            if cfg.mo2_root and str(cli_mo2) == _MO2_DEFAULT
-            else cli_mo2
-        )
+        mo2_default = str(pathlib.Path("C:/MO2Portable"))
+        result = pathlib.Path(cfg.mo2_root) if cfg.mo2_root and str(cli_mo2) == mo2_default else cli_mo2
 
         assert result == pathlib.Path("D:/Modding/MO2")
 
@@ -268,12 +257,8 @@ class TestMo2RootOverride:
         cfg = LocalConfig(mo2_root="D:/Modding/MO2")
         cli_mo2 = pathlib.Path("E:/Custom/MO2")
 
-        _MO2_DEFAULT = str(pathlib.Path("C:/MO2Portable"))
-        result = (
-            pathlib.Path(cfg.mo2_root)
-            if cfg.mo2_root and str(cli_mo2) == _MO2_DEFAULT
-            else cli_mo2
-        )
+        mo2_default = str(pathlib.Path("C:/MO2Portable"))
+        result = pathlib.Path(cfg.mo2_root) if cfg.mo2_root and str(cli_mo2) == mo2_default else cli_mo2
 
         assert result == pathlib.Path("E:/Custom/MO2")
 
@@ -282,12 +267,8 @@ class TestMo2RootOverride:
         cfg = LocalConfig()
         cli_mo2 = pathlib.Path("C:/MO2Portable")
 
-        _MO2_DEFAULT = str(pathlib.Path("C:/MO2Portable"))
-        result = (
-            pathlib.Path(cfg.mo2_root)
-            if cfg.mo2_root and str(cli_mo2) == _MO2_DEFAULT
-            else cli_mo2
-        )
+        mo2_default = str(pathlib.Path("C:/MO2Portable"))
+        result = pathlib.Path(cfg.mo2_root) if cfg.mo2_root and str(cli_mo2) == mo2_default else cli_mo2
 
         assert result == pathlib.Path("C:/MO2Portable")
 
@@ -314,9 +295,7 @@ class TestAppContextConfigPath:
 
 class TestSetupWizardConfigPath:
     @pytest.mark.asyncio
-    async def test_setup_saves_to_config_path(
-        self, tmp_path: pathlib.Path, aiohttp_client
-    ) -> None:
+    async def test_setup_saves_to_config_path(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
         """POST /api/setup saves to the config_path provided to WebApp."""
         from sky_claw.web.app import WebApp
 
@@ -344,9 +323,7 @@ class TestSetupWizardConfigPath:
         assert loaded.first_run is False
 
     @pytest.mark.asyncio
-    async def test_setup_loads_from_config_path(
-        self, tmp_path: pathlib.Path, aiohttp_client
-    ) -> None:
+    async def test_setup_loads_from_config_path(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
         """GET /api/setup reads from the config_path provided to WebApp."""
         from sky_claw.web.app import WebApp
 

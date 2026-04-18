@@ -6,11 +6,12 @@ import pathlib
 import zipfile
 
 import pytest
+
 from sky_claw.fomod.installer import (
     FomodInstaller,
     _is_safe_path,
 )
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -215,9 +216,7 @@ class TestFomodInstall:
 
 class TestPreview:
     @pytest.mark.asyncio
-    async def test_preview_fomod_archive(
-        self, installer: FomodInstaller, sandbox: pathlib.Path
-    ) -> None:
+    async def test_preview_fomod_archive(self, installer: FomodInstaller, sandbox: pathlib.Path) -> None:
         archive = _make_simple_zip(
             sandbox / "PreviewMod.zip",
             {"fomod/ModuleConfig.xml": SIMPLE_FOMOD_XML},
@@ -234,9 +233,7 @@ class TestPreview:
         assert "SD Textures" in preview.steps[0]["groups"][0]["options"]
 
     @pytest.mark.asyncio
-    async def test_preview_simple_archive(
-        self, installer: FomodInstaller, sandbox: pathlib.Path
-    ) -> None:
+    async def test_preview_simple_archive(self, installer: FomodInstaller, sandbox: pathlib.Path) -> None:
         archive = _make_simple_zip(
             sandbox / "NoFomod.zip",
             {"plugin.esp": "data"},
@@ -269,7 +266,7 @@ class TestZipSlipProtection:
             info = zipfile.ZipInfo("../../../etc/passwd")
             zf.writestr(info, "malicious content")
 
-        with pytest.raises(PathViolation, match="Zip-slip"):
+        with pytest.raises(PathViolationError, match="Zip-slip"):
             await installer.install(archive_path, mo2_mods_dir)
 
 
@@ -296,16 +293,12 @@ class TestCleanup:
 
         # Count temp dirs before
         temp_base = pathlib.Path(os.environ.get("TEMP", "/tmp"))
-        before = set(
-            p for p in temp_base.iterdir() if p.name.startswith("skyclaw_install_")
-        )
+        before = set(p for p in temp_base.iterdir() if p.name.startswith("skyclaw_install_"))
 
         await installer.install(archive, mo2_mods_dir)
 
         # Count after — should not increase
-        after = set(
-            p for p in temp_base.iterdir() if p.name.startswith("skyclaw_install_")
-        )
+        after = set(p for p in temp_base.iterdir() if p.name.startswith("skyclaw_install_"))
         assert after - before == set()
 
 

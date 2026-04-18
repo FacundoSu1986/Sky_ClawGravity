@@ -66,7 +66,6 @@ dummy_*.py
 # Generated and accidental Windows output
 nul
 .kilo/
-
 # Scratch / temporary exploration directories (not part of the project)
 scratch/
 autoskills_tmp/
@@ -78,4 +77,12 @@ plans/
 
 # Environments and Secrets
 **/.env
+# Environments and Secrets
+**/.env
+
+# Serena MCP data (memories, caches, logs)
+.serena/
+
+# Roo Code project config (local IDE configuration)
+.roo/
 

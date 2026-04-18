@@ -64,7 +64,7 @@ class SecurityAuditor:
     Attributes:
         config: Configuración del sistema a auditar.
     """
-    
+
     # Patrones de datos sensibles
     SENSITIVE_PATTERNS = {
         "api_key": re.compile(r"(?i)(api[_-]?key|apikey)\s*[=:]\s*['\"][a-zA-Z0-9]{20,}['\"]"),
@@ -74,7 +74,7 @@ class SecurityAuditor:
         "aws_key": re.compile(r"(?i)AKIA[0-9A-Z]{16}"),
         "github_token": re.compile(r"(?i)ghp_[a-zA-Z0-9]{36}"),
     }
-    
+
     # Patrones de prompt injection
     INJECTION_PATTERNS = [
         re.compile(r"(?i)ignore\s+(previous|all)\s+(instructions|rules)", re.IGNORECASE),
@@ -83,7 +83,7 @@ class SecurityAuditor:
         re.compile(r"(?i)you\s+are\s+now\s+(in|a)\s+(developer|admin|unrestricted)", re.IGNORECASE),
         re.compile(r"(?i)print\s+(the|your)\s+(system|initial)\s+prompt", re.IGNORECASE),
     ]
-    
+
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         """
         Inicializar el auditor.
@@ -94,7 +94,7 @@ class SecurityAuditor:
         self.config = config or {}
         self.logger = logging.getLogger(__name__)
         self.findings: list[SecurityFinding] = []
-    
+
     def audit_config_file(self, config_path: Path) -> AuditReport:
         """
         Auditar archivo de configuración.
@@ -106,7 +106,7 @@ class SecurityAuditor:
             AuditReport con hallazgos.
         """
         self.logger.info(f"Auditando configuración: {config_path}")
-        
+
         if not config_path.exists():
             self.findings.append(SecurityFinding(
                 severity="CRITICAL",
@@ -116,7 +116,7 @@ class SecurityAuditor:
                 location=str(config_path)
             ))
             return self._generate_report(0)
-        
+
         try:
             with open(config_path, "rb") as f:
                 config = tomli.load(f)
@@ -131,7 +131,7 @@ class SecurityAuditor:
                 location=str(config_path)
             ))
             return self._generate_report(0)
-        
+
         # Ejecutar checks
         checks = [
             self._check_api_keys_exposed,
@@ -143,11 +143,11 @@ class SecurityAuditor:
             self._check_logging_security,
             self._check_encryption,
         ]
-        
+
         passed = 0
         failed = 0
         warnings = 0
-        
+
         for check in checks:
             try:
                 result = check()
@@ -160,13 +160,13 @@ class SecurityAuditor:
             except Exception as e:
                 self.logger.exception(f"Error en check {check.__name__}: {e}")
                 failed += 1
-        
+
         return self._generate_report(passed + failed + warnings)
-    
+
     def _check_api_keys_exposed(self) -> str:
         """Verificar que no haya API keys hardcodeadas."""
         self.logger.debug("Check: API keys expuestas")
-        
+
         config_str = str(self.config)
         for pattern_name, pattern in self.SENSITIVE_PATTERNS.items():
             matches = pattern.findall(config_str)
@@ -179,16 +179,16 @@ class SecurityAuditor:
                     location="config.toml"
                 ))
                 return "FAIL"
-        
+
         return "PASS"
-    
+
     def _check_https_enforcement(self) -> str:
         """Verificar que las URLs usen HTTPS."""
         self.logger.debug("Check: HTTPS enforcement")
-        
+
         urls = self._extract_urls(self.config)
         http_urls = [u for u in urls if u.startswith("http://")]
-        
+
         if http_urls:
             self.findings.append(SecurityFinding(
                 severity="HIGH",
@@ -197,15 +197,15 @@ class SecurityAuditor:
                 recommendation="Cambiar todas las URLs a HTTPS"
             ))
             return "FAIL"
-        
+
         return "PASS"
-    
+
     def _check_rate_limiting(self) -> str:
         """Verificar configuración de rate limiting."""
         self.logger.debug("Check: Rate limiting")
-        
+
         llm_config = self.config.get("llm", {})
-        
+
         if not llm_config.get("rate_limit"):
             self.findings.append(SecurityFinding(
                 severity="MEDIUM",
@@ -214,7 +214,7 @@ class SecurityAuditor:
                 recommendation="Configurar rate_limit para prevenir abuso y controlar costos"
             ))
             return "WARNING"
-        
+
         if llm_config.get("rate_limit", {}).get("requests_per_minute", 0) > 100:
             self.findings.append(SecurityFinding(
                 severity="LOW",
@@ -223,15 +223,15 @@ class SecurityAuditor:
                 recommendation="Considerar reducir para proteger contra abuso"
             ))
             return "WARNING"
-        
+
         return "PASS"
-    
+
     def _check_model_restrictions(self) -> str:
         """Verificar restricciones de modelos permitidos."""
         self.logger.debug("Check: Restricciones de modelos")
-        
+
         allowed_models = self.config.get("llm", {}).get("allowed_models", [])
-        
+
         if not allowed_models:
             self.findings.append(SecurityFinding(
                 severity="MEDIUM",
@@ -240,7 +240,7 @@ class SecurityAuditor:
                 recommendation="Definir allowed_models para controlar qué modelos pueden usarse"
             ))
             return "WARNING"
-        
+
         # Verificar modelos potencialmente problemáticos
         unrestricted_models = ["gpt-4", "claude-3-opus"]  # Modelos caros/sin restricciones
         for model in allowed_models:
@@ -251,15 +251,15 @@ class SecurityAuditor:
                     description=f"Modelo de alto costo permitido: {model}",
                     recommendation="Considerar requerir aprobación para modelos premium"
                 ))
-        
+
         return "PASS"
-    
+
     def _check_hitl_enabled(self) -> str:
         """Verificar que HITL esté habilitado para operaciones críticas."""
         self.logger.debug("Check: HITL enabled")
-        
+
         hitl_config = self.config.get("hitl", {})
-        
+
         if not hitl_config.get("enabled", False):
             self.findings.append(SecurityFinding(
                 severity="MEDIUM",
@@ -268,11 +268,11 @@ class SecurityAuditor:
                 recommendation="Habilitar HITL para descargas externas y operaciones críticas"
             ))
             return "WARNING"
-        
+
         required_approvals = hitl_config.get("require_approval_for", [])
         critical_ops = ["external_download", "model_change", "config_update"]
         missing = [op for op in critical_ops if op not in required_approvals]
-        
+
         if missing:
             self.findings.append(SecurityFinding(
                 severity="LOW",
@@ -281,15 +281,15 @@ class SecurityAuditor:
                 recommendation=f"Añadir {missing} a require_approval_for"
             ))
             return "WARNING"
-        
+
         return "PASS"
-    
+
     def _check_network_gateway(self) -> str:
         """Verificar configuración de NetworkGateway."""
         self.logger.debug("Check: Network Gateway")
-        
+
         gateway_config = self.config.get("network_gateway", {})
-        
+
         if not gateway_config.get("enabled", False):
             self.findings.append(SecurityFinding(
                 severity="MEDIUM",
@@ -298,7 +298,7 @@ class SecurityAuditor:
                 recommendation="Habilitar para restringir dominios autorizados"
             ))
             return "WARNING"
-        
+
         allowed_domains = gateway_config.get("allowed_domains", [])
         if not allowed_domains:
             self.findings.append(SecurityFinding(
@@ -308,7 +308,7 @@ class SecurityAuditor:
                 recommendation="Definir allowed_domains explícitamente"
             ))
             return "FAIL"
-        
+
         # Verificar dominios demasiado permisivos
         wildcard_domains = [d for d in allowed_domains if d.startswith("*.")]
         if len(wildcard_domains) > 3:
@@ -319,15 +319,15 @@ class SecurityAuditor:
                 recommendation="Reducir dominios wildcard a lo esencial"
             ))
             return "WARNING"
-        
+
         return "PASS"
-    
+
     def _check_logging_security(self) -> str:
         """Verificar configuración segura de logging."""
         self.logger.debug("Check: Logging security")
-        
+
         logging_config = self.config.get("logging", {})
-        
+
         # Verificar que no se loggeen datos sensibles
         if logging_config.get("log_request_bodies", False):
             self.findings.append(SecurityFinding(
@@ -337,7 +337,7 @@ class SecurityAuditor:
                 recommendation="Desactivar o implementar redacción de datos sensibles"
             ))
             return "WARNING"
-        
+
         # Verificar rotación de logs
         if not logging_config.get("rotation", {}).get("enabled", False):
             self.findings.append(SecurityFinding(
@@ -347,15 +347,15 @@ class SecurityAuditor:
                 recommendation="Habilitar rotación para evitar llenado de disco"
             ))
             return "WARNING"
-        
+
         return "PASS"
-    
+
     def _check_encryption(self) -> str:
         """Verificar configuración de encriptación."""
         self.logger.debug("Check: Encryption")
-        
+
         db_config = self.config.get("database", {})
-        
+
         if db_config.get("type", "").lower() == "sqlite":
             # SQLite no tiene encriptación nativa
             if not db_config.get("encryption", {}).get("enabled", False):
@@ -366,14 +366,14 @@ class SecurityAuditor:
                     recommendation="Considerar SQLCipher para datos sensibles"
                 ))
                 return "WARNING"
-        
+
         return "PASS"
-    
+
     def _extract_urls(self, config: dict[str, Any], urls: list[str] | None = None) -> list[str]:
         """Extraer todas las URLs de la configuración."""
         if urls is None:
             urls = []
-        
+
         for key, value in config.items():
             if isinstance(value, str):
                 if value.startswith("http://") or value.startswith("https://"):
@@ -384,9 +384,9 @@ class SecurityAuditor:
                 for item in value:
                     if isinstance(item, dict):
                         self._extract_urls(item, urls)
-        
+
         return urls
-    
+
     def _generate_report(self, total_checks: int) -> AuditReport:
         """
         Generar reporte de auditoría.
@@ -400,12 +400,12 @@ class SecurityAuditor:
         passed = sum(1 for f in self.findings if f.severity == "PASS")
         failed = sum(1 for f in self.findings if f.severity in ["CRITICAL", "HIGH", "FAIL"])
         warnings = sum(1 for f in self.findings if f.severity in ["MEDIUM", "LOW", "WARNING"])
-        
+
         # Calcular score de compliance
         severity_weights = {"CRITICAL": 25, "HIGH": 15, "MEDIUM": 8, "LOW": 3, "INFO": 0}
         penalty = sum(severity_weights.get(f.severity, 0) for f in self.findings)
         compliance_score = max(0, 100 - penalty)
-        
+
         return AuditReport(
             timestamp=datetime.now().isoformat(),
             total_checks=total_checks,
@@ -415,7 +415,7 @@ class SecurityAuditor:
             findings=self.findings,
             compliance_score=compliance_score
         )
-    
+
     def generate_report_text(self, report: AuditReport) -> str:
         """
         Generar reporte en formato texto legible.
@@ -441,7 +441,7 @@ class SecurityAuditor:
             f"WARNING: {report.warnings}",
             "",
         ]
-        
+
         # Estado general
         if report.compliance_score >= 80:
             lines.append("Estado: ✅ PASSED - Buen nivel de seguridad")
@@ -449,9 +449,9 @@ class SecurityAuditor:
             lines.append("Estado: ⚠️ WARNING - Mejoras recomendadas")
         else:
             lines.append("Estado: ❌ FAILED - Requiere atención inmediata")
-        
+
         lines.extend(["", "🔍 HALLAZGOS", "-" * 70])
-        
+
         # Agrupar por severidad
         severity_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
         for severity in severity_order:
@@ -459,16 +459,16 @@ class SecurityAuditor:
             if findings:
                 emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🔵", "INFO": "ℹ️"}.get(severity, "")
                 lines.append(f"\n{emoji} {severity} ({len(findings)})")
-                
+
                 for finding in findings:
                     lines.append(f"  • {finding.description}")
                     lines.append(f"    Categoría: {finding.category}")
                     lines.append(f"    Recomendación: {finding.recommendation}")
                     if finding.location:
                         lines.append(f"    Ubicación: {finding.location}")
-        
+
         lines.extend(["", "=" * 70])
-        
+
         return "\n".join(lines)
 
 
@@ -499,24 +499,24 @@ def main() -> int:
         action="store_true",
         help="Salir con código 1 si hay hallazgos CRITICAL"
     )
-    
+
     args = parser.parse_args()
-    
+
     try:
         # Ejecutar auditoría
         auditor = SecurityAuditor()
         report = auditor.audit_config_file(args.config)
-        
+
         # Generar reporte
         report_text = auditor.generate_report_text(report)
         print(report_text)
-        
+
         # Guardar reporte
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(report_text)
         logger.info(f"Reporte guardado en {args.output}")
-        
+
         # Guardar JSON para integración
         json_output = args.output.with_suffix(".json")
         with open(json_output, "w", encoding="utf-8") as f:
@@ -524,15 +524,15 @@ def main() -> int:
             from dataclasses import asdict
             json.dump(asdict(report), f, indent=2, default=str)
         logger.info(f"Resumen JSON guardado en {json_output}")
-        
+
         # Determinar código de salida
         has_critical = any(f.severity == "CRITICAL" for f in report.findings)
         if args.fail_on_critical and has_critical:
             logger.error("Hallazgos CRITICAL detectados")
             return 1
-        
+
         return 0 if report.compliance_score >= 60 else 1
-        
+
     except Exception as e:
         logger.exception(f"Error en auditoría: {e}")
         return 1
