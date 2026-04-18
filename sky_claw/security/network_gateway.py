@@ -270,7 +270,7 @@ class NetworkGateway:
         for pattern in self._policy.allowed_hosts:
             pattern_lower = pattern.lower()
             if pattern_lower.startswith("*."):
-                base_domain = pattern_lower[2:]          # "example.com"
+                base_domain = pattern_lower[2:]  # "example.com"
                 # Must end with ".example.com" (dot + base) — subdomain only
                 if hostname_lower.endswith("." + base_domain):
                     return pattern

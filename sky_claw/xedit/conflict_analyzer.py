@@ -204,7 +204,8 @@ class ConflictAnalyzer:
         if len(full_plugins) > FULL_PLUGIN_LIMIT:
             logger.critical(
                 "CRITICAL ALERT: Full plugin limit exceeded! (%d > %d)",
-                len(full_plugins), FULL_PLUGIN_LIMIT,
+                len(full_plugins),
+                FULL_PLUGIN_LIMIT,
             )
             raise RuntimeError(
                 f"Full plugin limit exceeded: {len(full_plugins)}/{FULL_PLUGIN_LIMIT}. "
@@ -214,7 +215,8 @@ class ConflictAnalyzer:
         if len(light_plugins) > LIGHT_PLUGIN_LIMIT:
             logger.critical(
                 "CRITICAL ALERT: Light plugin limit exceeded! (%d > %d)",
-                len(light_plugins), LIGHT_PLUGIN_LIMIT,
+                len(light_plugins),
+                LIGHT_PLUGIN_LIMIT,
             )
             raise RuntimeError(
                 f"Light plugin limit exceeded: {len(light_plugins)}/{LIGHT_PLUGIN_LIMIT}."
