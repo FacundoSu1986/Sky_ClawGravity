@@ -35,8 +35,7 @@ async def _write_modlist_atomic(path: pathlib.Path, lines: list[str]) -> None:
     """
     tmp: pathlib.Path = path.with_suffix(path.suffix + ".tmp")
     normalised = [
-        (line if line.endswith("\n") else line.rstrip("\r\n") + "\n")
-        for line in lines
+        (line if line.endswith("\n") else line.rstrip("\r\n") + "\n") for line in lines
     ]
     try:
         async with aiofiles.open(tmp, mode="w", encoding="utf-8-sig") as fh:
