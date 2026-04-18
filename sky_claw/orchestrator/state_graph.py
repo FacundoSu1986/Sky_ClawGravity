@@ -466,7 +466,9 @@ class StateGraphNodes:
             }
 
         # El resultado del parcheo se determinará por el callback externo
-        # Este nodo solo actualiza el estado, la lógica está en supervisor.resolve_conflict_with_patch
+        # Este nodo solo actualiza el estado; la lógica vive ahora en
+        # XEditPipelineService.execute_patch (despachado desde supervisor.dispatch_tool
+        # con tool_name="resolve_conflict_with_patch")
         return {
             "current_state": SupervisorState.PATCHING.value,
             "previous_state": SupervisorState.ANALYZING.value,

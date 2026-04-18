@@ -49,17 +49,10 @@ from sky_claw.tools.wrye_bash_runner import (
     WryeBashExecutionError,
     WryeBashRunner,
 )
-from sky_claw.xedit.conflict_analyzer import ConflictAnalyzer, ConflictReport
 
-# FASE 2: Imports de componentes de parcheo transaccional
-from sky_claw.xedit.patch_orchestrator import (
-    PatchingError,
-    PatchOrchestrator,
-    PatchPlan,
-    PatchResult,
-    PatchStrategyType,
-)
-from sky_claw.xedit.runner import ScriptExecutionResult, XEditRunner
+# Sprint-2 Fase 4: XEditPipelineService — extraído del Supervisor
+from sky_claw.tools.xedit_service import XEditPipelineService
+from sky_claw.xedit.conflict_analyzer import ConflictAnalyzer, ConflictReport
 
 logger = logging.getLogger(__name__)
 security_logger = logging.getLogger(f"{__name__}.security")
@@ -118,8 +111,19 @@ class SupervisorAgent:
             / "synthesis_pipeline.json",
         )
 
-        # FASE 2: Inicializar orquestador de parches
-        self._init_patch_orchestrator()
+        # Sprint-2 Fase 4: XEditPipelineService — extraído del Supervisor
+        self._xedit_service = XEditPipelineService(
+            lock_manager=self._lock_manager,
+            snapshot_manager=self.snapshot_manager,
+            journal=self.journal,
+            path_resolver=self._path_resolver,
+            event_bus=self._event_bus,
+        )
+
+        # Lazy init para runners de otras fases (DynDOLOD, AssetDetector, WryeBash)
+        self._dyndolod_runner: DynDOLODRunner | None = None
+        self._asset_detector: AssetConflictDetector | None = None
+        self._wrye_bash_runner: WryeBashRunner | None = None
 
     def _init_rollback_components(self) -> None:
         """FASE 1.5: Inicializa los componentes de resiliencia para rollback.
@@ -155,86 +159,6 @@ class SupervisorAgent:
             backup_dir,
             get_max_backup_size_mb(),
         )
-
-    def _init_patch_orchestrator(self) -> None:
-        """FASE 2: Inicializa el orquestador de parches transaccionales.
-
-        Crea la instancia de PatchOrchestrator con dependencias inyectadas:
-        - XEditRunner: Para ejecución de scripts xEdit
-        - FileSnapshotManager: Para snapshots antes de modificaciones
-        - RollbackManager: Para reversión en caso de fallo
-        """
-        # XEditRunner requiere paths configurados - usar lazy initialization
-        self._xedit_runner: XEditRunner | None = None
-        self._patch_orchestrator: PatchOrchestrator | None = None
-
-        # FASE 4: DynDOLOD/TexGen integration (lazy init)
-        self._dyndolod_runner: DynDOLODRunner | None = None
-
-        # FASE 5: Asset conflict detector (lazy init)
-        self._asset_detector: AssetConflictDetector | None = None
-
-        # FASE 6: Wrye Bash integration (lazy init)
-        self._wrye_bash_runner: WryeBashRunner | None = None
-
-        logger.info("PatchOrchestrator será inicializado lazy bajo demanda")
-
-    def _ensure_patch_orchestrator(self) -> PatchOrchestrator:
-        """Asegura que el PatchOrchestrator esté inicializado.
-
-        Usa inicialización lazy porque XEditRunner requiere paths que
-        pueden no estar disponibles al instanciar SupervisorAgent.
-
-        CRIT-003: Valida XEDIT_PATH y SKYRIM_PATH antes de usar.
-
-        Returns:
-            PatchOrchestrator inicializado.
-
-        Raises:
-            PatchingError: Si no se puede inicializar (falta configuración).
-        """
-        if self._patch_orchestrator is not None:
-            return self._patch_orchestrator
-
-        # Obtener paths de xEdit y juego desde entorno o config
-        xedit_path_str = os.environ.get("XEDIT_PATH", "")
-        game_path_str = os.environ.get("SKYRIM_PATH", "")
-
-        # CRIT-003: Validar paths antes de usar
-        xedit_path = self._path_resolver.validate_env_path(xedit_path_str, "XEDIT_PATH")
-        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
-
-        # Si la validación falla, no continuar
-        if not xedit_path or not game_path:
-            raise PatchingError(
-                "Cannot initialize PatchOrchestrator: "
-                "XEDIT_PATH and SKYRIM_PATH environment variables must be valid paths"
-            )
-
-        if not xedit_path.exists():
-            raise PatchingError(f"xEdit executable not found: {xedit_path}")
-
-        # Crear XEditRunner
-        self._xedit_runner = XEditRunner(
-            xedit_path=xedit_path,
-            game_path=game_path,
-            output_dir=pathlib.Path(BACKUP_STAGING_DIR) / "patches",
-        )
-
-        # Crear PatchOrchestrator con dependencias
-        self._patch_orchestrator = PatchOrchestrator(
-            xedit_runner=self._xedit_runner,
-            snapshot_manager=self.snapshot_manager,
-            rollback_manager=self.rollback_manager,
-        )
-
-        logger.info(
-            "PatchOrchestrator inicializado: xedit=%s, game=%s",
-            xedit_path,
-            game_path,
-        )
-
-        return self._patch_orchestrator
 
     async def start(self) -> None:
         await self.db.init_db()
@@ -376,6 +300,36 @@ class SupervisorAgent:
                     }
 
                 return pipeline_result
+
+            # Sprint-2 Fase 4: xEdit Patch (delegado a XEditPipelineService)
+            case "resolve_conflict_with_patch":
+                try:
+                    target_plugin = pathlib.Path(payload_dict["target_plugin"])
+                    report = ConflictReport(**payload_dict["report"])
+                    patch_result = await self._xedit_service.execute_patch(
+                        report, target_plugin
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "RCA: Falló resolve_conflict_with_patch; se convierte la excepción a error dict."
+                    )
+                    return {
+                        "status": "error",
+                        "reason": "XEditPatchExecutionFailed",
+                        "details": str(exc),
+                    }
+
+                if not isinstance(patch_result, dict):
+                    logger.error(
+                        "RCA: resolve_conflict_with_patch devolvió un tipo inválido: %s",
+                        type(patch_result).__name__,
+                    )
+                    return {
+                        "status": "error",
+                        "reason": "InvalidXEditPatchResult",
+                    }
+
+                return patch_result
 
             # FASE 4: DynDOLOD/TexGen Pipeline Integration
             case "generate_lods":
@@ -1111,220 +1065,6 @@ class SupervisorAgent:
                 rollback_error,
                 exc_info=True,
             )
-
-    # =========================================================================
-    # FASE 2: Parcheo Transaccional
-    # =========================================================================
-
-    async def resolve_conflict_with_patch(
-        self,
-        report: ConflictReport,
-        target_plugin: pathlib.Path,
-    ) -> PatchResult:
-        """FASE 2: Resuelve conflictos aplicando un parche con protocolo transaccional.
-
-        Protocolo (CRÍTICO - orden estricto):
-
-        Paso A: Crear punto de restauración
-            - Invocar FileSnapshotManager.create_snapshot(target_plugin)
-            - Guardar snapshot_path para rollback
-
-        Paso B: Ejecutar parcheo
-            - Invocar PatchOrchestrator.resolve(report)
-            - Si retorna plan con script, ejecutar via XEditRunner.execute_patch()
-
-        Paso C: Verificar resultado
-            - Si xedit_exit_code != 0:
-                - Disparar RollbackManager.restore(snapshot_path)
-                - Lanzar PatchExecutionError
-            - Si xedit_exit_code == 0:
-                - Confirmar éxito
-                - Loggear operación en journal
-
-        Args:
-            report: ConflictReport con los conflictos detectados.
-            target_plugin: Path al plugin objetivo del parcheo.
-
-        Returns:
-            PatchResult con el resultado de la operación.
-
-        Raises:
-            PatchingError: Si falla la creación del snapshot.
-            PatchingError: Si falla la ejecución del parche (después de rollback).
-        """
-        logger.info(
-            "Iniciando parcheo transaccional para %s (%d conflictos)",
-            target_plugin.name,
-            report.total_conflicts,
-        )
-
-        # PASO A: Crear snapshot antes de modificación
-        try:
-            snapshot_info = await self.snapshot_manager.create_snapshot(target_plugin)
-            logger.debug("Snapshot creado: %s", snapshot_info.snapshot_path)
-        except (OSError, RuntimeError) as e:
-            logger.error("Fallo al crear snapshot: %s", e, exc_info=True)
-            raise PatchingError(f"Snapshot falló: {e}") from e
-
-        # PASO B: Ejecutar parcheo
-        try:
-            # Asegurar que el orquestador esté inicializado
-            orchestrator = self._ensure_patch_orchestrator()
-
-            # Resolver conflictos (genera plan)
-            result = await orchestrator.resolve(report)
-
-            # Si el resultado es exitoso y hay output_path, ejecutar script
-            if result.success and result.output_path and self._xedit_runner is not None:
-                # Determinar el tipo de estrategia desde el orquestador
-                strategy_type = PatchStrategyType.CREATE_MERGED_PATCH
-                if orchestrator._strategies:
-                    first_strategy = orchestrator._strategies[0]
-                    strategy_name = first_strategy.__class__.__name__
-                    if strategy_name == "ExecuteXEditScript":
-                        strategy_type = PatchStrategyType.EXECUTE_XEDIT_SCRIPT
-                    elif strategy_name == "ForwardDeclaration":
-                        strategy_type = PatchStrategyType.FORWARD_DECLARATION
-
-                # Crear PatchPlan desde el resultado para ejecutar
-                plan = PatchPlan(
-                    strategy_type=strategy_type,
-                    target_plugins=(
-                        [p.plugin_a for p in report.plugin_pairs[:1]]
-                        if report.plugin_pairs
-                        else []
-                    ),
-                    output_plugin=str(result.output_path),
-                    form_ids=[],
-                    estimated_records=result.records_patched,
-                    requires_hitl=False,
-                )
-
-                try:
-                    script_result: ScriptExecutionResult = (
-                        await self._xedit_runner.execute_patch(plan)
-                    )
-
-                    # Actualizar resultado con datos de ejecución
-                    result = PatchResult(
-                        success=script_result.exit_code == 0,
-                        output_path=result.output_path,
-                        records_patched=script_result.records_processed,
-                        conflicts_resolved=len(report.plugin_pairs),
-                        xedit_exit_code=script_result.exit_code,
-                        warnings=tuple(script_result.warnings),
-                        error=(
-                            None
-                            if script_result.exit_code == 0
-                            else script_result.stderr
-                        ),
-                    )
-                except (OSError, RuntimeError) as script_error:
-                    logger.error(
-                        "Error ejecutando script xEdit: %s", script_error, exc_info=True
-                    )
-                    # PASO C (fallo): Rollback automático
-                    await self._rollback_on_failure(snapshot_info, target_plugin)
-                    raise PatchingError(
-                        f"Ejecución de parche falló, rollback ejecutado: {script_error}"
-                    ) from script_error
-
-        except PatchingError:
-            # Re-lanzar errores de parcheo conocidos
-            raise
-        except (OSError, RuntimeError) as e:
-            logger.error("Error durante parcheo: %s", e, exc_info=True)
-            # PASO C (fallo): Rollback automático
-            await self._rollback_on_failure(snapshot_info, target_plugin)
-            raise PatchingError(f"Parcheo falló, rollback ejecutado: {e}") from e
-
-        # PASO C (verificación): Verificar código de salida
-        if result.xedit_exit_code != 0:
-            logger.error(
-                "xEdit retornó código de salida non-zero: %d",
-                result.xedit_exit_code,
-            )
-            await self._rollback_on_failure(snapshot_info, target_plugin)
-            raise PatchingError(
-                f"xEdit falló con código {result.xedit_exit_code}: {result.error}"
-            )
-
-        # Éxito: Loggear en journal
-        await self._log_patch_success(report, target_plugin, result)
-
-        logger.info(
-            "Parcheo exitoso: %d records procesados, %d conflictos resueltos",
-            result.records_patched,
-            result.conflicts_resolved,
-        )
-
-        return result
-
-    async def _rollback_on_failure(
-        self,
-        snapshot_info: SnapshotInfo,
-        target: pathlib.Path,
-    ) -> None:
-        """Ejecuta rollback automático en caso de fallo de parcheo.
-
-        Este método es crítico para la integridad del sistema. Si el rollback
-        falla, se loggea como CRITICAL porque el archivo puede estar corrupto.
-
-        Args:
-            snapshot_info: Información del snapshot creado antes del fallo.
-            target: Path al archivo objetivo que necesita restauración.
-        """
-        logger.warning("Iniciando rollback para %s", target.name)
-
-        try:
-            await self.snapshot_manager.restore_snapshot(snapshot_info.snapshot_path, target)
-            logger.info("Rollback completado exitosamente")
-        except (OSError, RuntimeError) as rollback_error:
-            # Esto es CRÍTICO - el archivo puede estar corrupto
-            logger.critical(
-                "ROLLBACK FALLÓ para %s: %s. El archivo puede estar corrupto!",
-                target.name,
-                rollback_error,
-                exc_info=True,
-            )
-            # Re-lanzar para notificar al caller
-            raise PatchingError(
-                f"Rollback falló críticamente: {rollback_error}"
-            ) from rollback_error
-
-    async def _log_patch_success(
-        self,
-        report: ConflictReport,
-        target_plugin: pathlib.Path,
-        result: PatchResult,
-    ) -> None:
-        """Registra una operación de parcheo exitosa en el journal.
-
-        Args:
-            report: Reporte de conflictos resueltos.
-            target_plugin: Plugin modificado.
-            result: Resultado del parcheo.
-        """
-        try:
-            await self.journal.log_operation(
-                agent_id="patch_orchestrator",
-                operation_type="patch_execution",
-                file_path=str(target_plugin),
-                details={
-                    "total_conflicts": report.total_conflicts,
-                    "critical_conflicts": report.critical_conflicts,
-                    "records_patched": result.records_patched,
-                    "conflicts_resolved": result.conflicts_resolved,
-                    "output_path": (
-                        str(result.output_path) if result.output_path else None
-                    ),
-                    "warnings": result.warnings,
-                },
-            )
-            logger.debug("Operación de parcheo registrada en journal")
-        except (OSError, sqlite3.Error) as e:
-            # No fallar la operación si el logging falla
-            logger.warning("No se pudo registrar operación en journal: %s", e)
 
 
 if __name__ == "__main__":
