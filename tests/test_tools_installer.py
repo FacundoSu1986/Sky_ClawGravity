@@ -14,8 +14,7 @@ import pytest
 
 from sky_claw.security.hitl import HITLGuard
 from sky_claw.security.network_gateway import EgressPolicy, NetworkGateway
-from sky_claw.security.path_validator import PathValidator
-from sky_claw.security.path_validator import PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 from sky_claw.tools_installer import (
     ToolInstallError,
     ToolsInstaller,
@@ -627,7 +626,7 @@ class TestExtractZipSafe:
         with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr("../evil.txt", "evil content")
 
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             _extract_zip_safe(zip_path, dest)
 
         # No file should have escaped outside dest
@@ -642,7 +641,7 @@ class TestExtractZipSafe:
         with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr("/etc/passwd", "root:x:0:0")
 
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             _extract_zip_safe(zip_path, dest)
 
         # Verify NO file was extracted inside dest

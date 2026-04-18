@@ -3,7 +3,6 @@ import json
 import sys
 import pathlib
 import argparse
-from typing import Any, List, Optional
 
 # Ensure the sky_claw package is in the path
 project_root = pathlib.Path(__file__).resolve().parents[4] / "sky-claw"
@@ -16,7 +15,7 @@ async def run_db_op(command: str, params: dict):
     config = Config()
     registry = AsyncModRegistry(db_path=config.DB_PATH)
     await registry.open()
-    
+
     result = {"status": "success", "data": None}
     try:
         if command == "search":
@@ -53,7 +52,7 @@ async def run_db_op(command: str, params: dict):
         else:
             result["status"] = "error"
             result["message"] = f"Unknown command: {command}"
-            
+
     except Exception as e:
         result = {
             "status": "error",
@@ -61,24 +60,24 @@ async def run_db_op(command: str, params: dict):
         }
     finally:
         await registry.close()
-        
+
     print(json.dumps(result, indent=2))
 
 def main():
     parser = argparse.ArgumentParser(description="Sky-Claw DB Manager Wrapper")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
-    
+
     # Search
     search_parser = subparsers.add_parser("search", help="Search mods by name")
     search_parser.add_argument("pattern", help="Search pattern (LIKE %%pattern%%)")
-    
+
     # Get
     get_parser = subparsers.add_parser("get", help="Get mod by Nexus ID")
     get_parser.add_argument("nexus_id", type=int, help="Nexus Mod ID")
-    
+
     # List IDs
     subparsers.add_parser("list_ids", help="List all Nexus IDs in the DB")
-    
+
     # Upsert
     upsert_parser = subparsers.add_parser("upsert", help="Insert or update a mod")
     upsert_parser.add_argument("--nexus_id", type=int, required=True)
@@ -87,13 +86,13 @@ def main():
     upsert_parser.add_argument("--author", default="")
     upsert_parser.add_argument("--category", default="")
     upsert_parser.add_argument("--download_url", default="")
-    
+
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         return
-        
+
     asyncio.run(run_db_op(args.command, vars(args)))
 
 if __name__ == "__main__":

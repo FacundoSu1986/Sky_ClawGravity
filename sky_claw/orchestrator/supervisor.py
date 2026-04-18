@@ -46,7 +46,6 @@ from sky_claw.tools.wrye_bash_runner import (
 
 # Sprint-2 Fase 4: XEditPipelineService — extraído del Supervisor
 from sky_claw.tools.xedit_service import XEditPipelineService
-from sky_claw.xedit import PatchStrategyType
 from sky_claw.xedit.conflict_analyzer import ConflictAnalyzer, ConflictReport
 
 logger = logging.getLogger(__name__)

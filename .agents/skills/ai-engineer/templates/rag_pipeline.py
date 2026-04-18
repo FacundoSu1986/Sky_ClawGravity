@@ -45,7 +45,7 @@ class RetrievalResult:
 
 class EmbeddingModel(Protocol):
     """Protocolo para modelos de embedding."""
-    
+
     def embed(self, texts: list[str]) -> np.ndarray:
         """Generar embeddings para textos."""
         ...
@@ -53,11 +53,11 @@ class EmbeddingModel(Protocol):
 
 class VectorStore(Protocol):
     """Protocolo para almacén vectorial."""
-    
+
     def add(self, embeddings: np.ndarray, metadata: list[dict[str, Any]]) -> None:
         """Añadir embeddings al almacén."""
         ...
-    
+
     def similarity_search(
         self,
         query_embedding: np.ndarray,
@@ -69,7 +69,7 @@ class VectorStore(Protocol):
 
 class Reranker(Protocol):
     """Protocolo para reranker."""
-    
+
     def rerank(
         self,
         query: str,
@@ -81,11 +81,11 @@ class Reranker(Protocol):
 
 class SemanticCache(Protocol):
     """Protocolo para cache semántico."""
-    
+
     async def get(self, query: str) -> list[Document] | None:
         """Obtener resultados cacheados."""
         ...
-    
+
     async def set(self, query: str, documents: list[Document]) -> None:
         """Cacheear resultados."""
         ...
@@ -99,7 +99,7 @@ class BaseRetriever(ABC):
         embedding_model: Modelo para generar embeddings.
         cache: Cache semántico opcional.
     """
-    
+
     def __init__(
         self,
         embedding_model: EmbeddingModel,
@@ -115,7 +115,7 @@ class BaseRetriever(ABC):
         self.embedding_model = embedding_model
         self.cache = cache
         self.logger = logging.getLogger(__name__)
-    
+
     @abstractmethod
     def retrieve(self, query: str, k: int = 5) -> RetrievalResult:
         """
@@ -129,7 +129,7 @@ class BaseRetriever(ABC):
             RetrievalResult con documentos y metadata.
         """
         pass
-    
+
     def _generate_cache_key(self, query: str) -> str:
         """Generar clave única para cache."""
         return hashlib.sha256(query.encode()).hexdigest()[:16]
@@ -144,7 +144,7 @@ class HybridRetriever(BaseRetriever):
     - Búsqueda BM25 para matching de keywords
     - Reranking cruzado para optimizar relevancia
     """
-    
+
     def __init__(
         self,
         embedding_model: EmbeddingModel,
@@ -173,10 +173,10 @@ class HybridRetriever(BaseRetriever):
         self.reranker = reranker
         self.vector_weight = vector_weight
         self.bm25_weight = bm25_weight
-        
+
         if abs(vector_weight + bm25_weight - 1.0) > 0.01:
             raise ValueError("vector_weight + bm25_weight debe ser 1.0")
-    
+
     @override
     def retrieve(self, query: str, k: int = 5) -> RetrievalResult:
         """
@@ -190,7 +190,7 @@ class HybridRetriever(BaseRetriever):
             RetrievalResult con documentos ordenados.
         """
         start_time = time.perf_counter()
-        
+
         # Verificar cache primero
         if self.cache is not None:
             import asyncio
@@ -204,55 +204,55 @@ class HybridRetriever(BaseRetriever):
                     latency_ms=0.0,
                     source="cache"
                 )
-        
+
         # Generar embedding
         query_embedding = self.embedding_model.embed([query])[0]
-        
+
         # Búsqueda vectorial
         vector_results = self.vector_store.similarity_search(
             query_embedding,
             k=k * 2  # Obtener más para reranking
         )
-        
+
         # Búsqueda BM25
         bm25_scores = self.bm25_index.get_scores(query.split())
         bm25_results = self._get_top_bm25(bm25_scores, k * 2)
-        
+
         # Combinar resultados
         combined = self._combine_results(
             vector_results,
             bm25_results,
             query
         )
-        
+
         # Reranking
         reranked = self.reranker.rerank(query, combined)
-        
+
         # Tomar top k
         final_results = reranked[:k]
-        
+
         latency_ms = (time.perf_counter() - start_time) * 1000
-        
+
         result = RetrievalResult(
             documents=final_results,
             query=query,
             latency_ms=latency_ms,
             source="hybrid"
         )
-        
+
         # Cacheear resultados
         if self.cache is not None and final_results:
             import asyncio
             loop = asyncio.get_event_loop()
             loop.run_until_complete(self.cache.set(query, final_results))
-        
+
         self.logger.debug(
             f"Retrieval completado: {len(final_results)} docs, "
             f"{latency_ms:.2f}ms, source={result.source}"
         )
-        
+
         return result
-    
+
     def _get_top_bm25(
         self,
         scores: np.ndarray,
@@ -262,7 +262,7 @@ class HybridRetriever(BaseRetriever):
         top_indices = np.argsort(scores)[-k:][::-1]
         # Implementación dependiente del índice BM25
         return []  # Placeholder
-    
+
     def _combine_results(
         self,
         vector_results: list[tuple[np.ndarray, dict[str, Any], float]],
@@ -272,7 +272,7 @@ class HybridRetriever(BaseRetriever):
         """Combinar resultados con weighted reciprocal rank fusion."""
         # Implementación de RRF (Reciprocal Rank Fusion)
         combined: dict[str, Document] = {}
-        
+
         for rank, (embedding, metadata, score) in enumerate(vector_results, 1):
             doc_id = metadata.get("id", str(rank))
             if doc_id not in combined:
@@ -284,7 +284,7 @@ class HybridRetriever(BaseRetriever):
                 )
             else:
                 combined[doc_id].score += self.vector_weight / (rank + 60)
-        
+
         for rank, doc in enumerate(bm25_results, 1):
             doc_id = doc.metadata.get("id", str(rank))
             if doc_id not in combined:
@@ -292,7 +292,7 @@ class HybridRetriever(BaseRetriever):
                 combined[doc_id] = doc
             else:
                 combined[doc_id].score += self.bm25_weight / (rank + 60)
-        
+
         # Ordenar por score combinado
         return sorted(combined.values(), key=lambda d: d.score, reverse=True)
 
@@ -308,7 +308,7 @@ class RAGPipeline:
     4. Generación con LLM
     5. Post-procesamiento de respuesta
     """
-    
+
     def __init__(
         self,
         retriever: BaseRetriever,
@@ -330,7 +330,7 @@ class RAGPipeline:
         self.max_context_tokens = max_context_tokens
         self.temperature = temperature
         self.logger = logging.getLogger(__name__)
-    
+
     def generate(
         self,
         query: str,
@@ -349,16 +349,16 @@ class RAGPipeline:
             Diccionario con respuesta y metadata.
         """
         start_time = time.perf_counter()
-        
+
         # Recuperar documentos
         retrieval_result = self.retriever.retrieve(query, k=k)
-        
+
         # Construir contexto
         context = self._build_context(
             retrieval_result.documents,
             self.max_context_tokens
         )
-        
+
         # Generar respuesta
         response = self.llm_client.generate(
             prompt=query,
@@ -366,9 +366,9 @@ class RAGPipeline:
             system_prompt=system_prompt,
             temperature=self.temperature
         )
-        
+
         latency_ms = (time.perf_counter() - start_time) * 1000
-        
+
         return {
             "response": response,
             "query": query,
@@ -377,7 +377,7 @@ class RAGPipeline:
             "total_latency_ms": latency_ms,
             "source": retrieval_result.source
         }
-    
+
     def _build_context(
         self,
         documents: list[Document],
@@ -395,18 +395,18 @@ class RAGPipeline:
         """
         context_parts = []
         current_tokens = 0
-        
+
         # Estimación simple: 4 caracteres ≈ 1 token
         tokens_per_char = 0.25
-        
+
         for doc in documents:
             doc_tokens = len(doc.content) * tokens_per_char
             if current_tokens + doc_tokens > max_tokens:
                 break
-            
+
             context_parts.append(f"[Fuente: {doc.metadata.get('source', 'unknown')}]\n{doc.content}")
             current_tokens += doc_tokens
-        
+
         return "\n\n---\n\n".join(context_parts)
 
 
