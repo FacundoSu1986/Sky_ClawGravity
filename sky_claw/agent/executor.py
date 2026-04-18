@@ -51,9 +51,7 @@ class ManagedToolExecutor:
             if arg.startswith("/mnt/") or arg.startswith("/"):
                 # WSL path — must translate AND pass validation. No fallback.
                 try:
-                    translated_path = await ModdingToolsAgent.translate_path_wsl_to_win(
-                        arg
-                    )
+                    translated_path = await ModdingToolsAgent.translate_path_wsl_to_win(arg)
                 except Exception as te:
                     logger.error(
                         "🚨 ABORT: WSL path translation failed for arg — rejecting. %s",
@@ -63,18 +61,14 @@ class ManagedToolExecutor:
                 try:
                     validator.validate(translated_path)
                 except PathViolationError as pv:
-                    logger.error(
-                        "🚨 ABORT (Fail-Safe): Path Traversal Detected! %s", pv
-                    )
+                    logger.error("🚨 ABORT (Fail-Safe): Path Traversal Detected! %s", pv)
                     return -1
                 win_args.append(translated_path)
             elif pathlib.Path(arg).is_absolute():
                 # Windows absolute path — apply base-directory jailing via pathlib
                 try:
                     resolved = pathlib.Path(arg).resolve(strict=False)
-                    modding_root = pathlib.Path(SystemPaths.modding_root()).resolve(
-                        strict=False
-                    )
+                    modding_root = pathlib.Path(SystemPaths.modding_root()).resolve(strict=False)
                     if not resolved.is_relative_to(modding_root):
                         logger.error(
                             "🚨 ABORT: Base-dir jail violation — '%s' is outside '%s'",
@@ -83,9 +77,7 @@ class ManagedToolExecutor:
                         )
                         return -1
                 except Exception as je:
-                    logger.error(
-                        "🚨 ABORT: Path resolution failed during jailing: %s", je
-                    )
+                    logger.error("🚨 ABORT: Path resolution failed during jailing: %s", je)
                     return -1
                 win_args.append(arg)
             else:
@@ -105,9 +97,7 @@ class ManagedToolExecutor:
             )
 
             # Start monitoring tasks
-            monitor_task = asyncio.create_task(
-                self._stream_telemetry(on_output_callback)
-            )
+            monitor_task = asyncio.create_task(self._stream_telemetry(on_output_callback))
 
             try:
                 # Wait for completion OR timeout OR abort signal
@@ -131,9 +121,7 @@ class ManagedToolExecutor:
             await self.abort()
             return -1
 
-    async def _stream_telemetry(
-        self, callback: Callable[[str], Coroutine[Any, Any, None]] | None
-    ):
+    async def _stream_telemetry(self, callback: Callable[[str], Coroutine[Any, Any, None]] | None):
         """Streams stdout and stderr concurrently to the provided telemetry callback."""
         if not self.proc or not self.proc.stdout or not self.proc.stderr:
             return
@@ -175,9 +163,7 @@ class ManagedToolExecutor:
             try:
                 await asyncio.wait_for(self.proc.wait(), timeout=3.0)
             except TimeoutError:
-                logger.warning(
-                    "💀 ABORT: El proceso no responde a terminate(). Usando kill()."
-                )
+                logger.warning("💀 ABORT: El proceso no responde a terminate(). Usando kill().")
                 self.proc.kill()
                 await self.proc.wait()
         except ProcessLookupError:

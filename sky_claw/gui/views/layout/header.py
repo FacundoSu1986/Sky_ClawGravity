@@ -54,9 +54,7 @@ def create_header(
             search_input = ui.input(
                 placeholder=search_placeholder,
                 value="",
-            ).classes(
-                "w-full px-4 py-3 bg-transparent border-none text-white placeholder-[#6b7280] focus:outline-none"
-            )
+            ).classes("w-full px-4 py-3 bg-transparent border-none text-white placeholder-[#6b7280] focus:outline-none")
 
             if on_search:
                 search_input.on(

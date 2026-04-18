@@ -107,17 +107,9 @@ class DynDOLODPipelineService:
 
         game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
         mo2_path = self._path_resolver.validate_env_path(mo2_path_str, "MO2_PATH")
-        mo2_mods_path = self._path_resolver.validate_env_path(
-            mo2_mods_path_str, "MO2_MODS_PATH"
-        )
-        dyndolod_exe = self._path_resolver.validate_env_path(
-            dyndolod_exe_str, "DYNDLOD_EXE"
-        )
-        texgen_exe = (
-            self._path_resolver.validate_env_path(texgen_exe_str, "TEXGEN_EXE")
-            if texgen_exe_str
-            else None
-        )
+        mo2_mods_path = self._path_resolver.validate_env_path(mo2_mods_path_str, "MO2_MODS_PATH")
+        dyndolod_exe = self._path_resolver.validate_env_path(dyndolod_exe_str, "DYNDLOD_EXE")
+        texgen_exe = self._path_resolver.validate_env_path(texgen_exe_str, "TEXGEN_EXE") if texgen_exe_str else None
 
         if not game_path or not mo2_path or not mo2_mods_path or not dyndolod_exe:
             raise DynDOLODExecutionError(
@@ -127,9 +119,7 @@ class DynDOLODPipelineService:
             )
 
         if not dyndolod_exe.exists():
-            raise DynDOLODExecutionError(
-                f"DynDOLOD executable not found: {dyndolod_exe}"
-            )
+            raise DynDOLODExecutionError(f"DynDOLOD executable not found: {dyndolod_exe}")
 
         config = DynDOLODConfig(
             game_path=game_path,
@@ -260,38 +250,24 @@ class DynDOLODPipelineService:
                 )
 
                 # Validar salida de DynDOLOD si fue exitoso
-                if (
-                    result.success
-                    and result.dyndolod_result
-                    and result.dyndolod_result.output_path
-                ):
-                    is_valid = await runner.validate_dyndolod_output(
-                        result.dyndolod_result.output_path
-                    )
+                if result.success and result.dyndolod_result and result.dyndolod_result.output_path:
+                    is_valid = await runner.validate_dyndolod_output(result.dyndolod_result.output_path)
                     if not is_valid:
                         msg = "DynDOLOD output validation failed"
                         logger.error(msg)
                         raise DynDOLODExecutionError(msg)
 
                 if not result.success:
-                    errors_str = (
-                        "; ".join(result.errors) if result.errors else "Unknown error"
-                    )
-                    raise DynDOLODExecutionError(
-                        f"DynDOLOD pipeline failed: {errors_str}"
-                    )
+                    errors_str = "; ".join(result.errors) if result.errors else "Unknown error"
+                    raise DynDOLODExecutionError(f"DynDOLOD pipeline failed: {errors_str}")
 
                 # Commit en journal
                 await self._journal.commit_transaction(tx_id)
 
                 duration = time.monotonic() - start_time
                 await self._log_result(result, preset, success=True)
-                texgen_ok = (
-                    result.texgen_result.success if result.texgen_result else False
-                )
-                dyndolod_ok = (
-                    result.dyndolod_result.success if result.dyndolod_result else False
-                )
+                texgen_ok = result.texgen_result.success if result.texgen_result else False
+                dyndolod_ok = result.dyndolod_result.success if result.dyndolod_result else False
                 await self._publish_completed(
                     preset=preset,
                     run_texgen=run_texgen,
@@ -315,9 +291,7 @@ class DynDOLODPipelineService:
                     if isinstance(obj, pathlib.Path):
                         return str(obj)
                     if isinstance(obj, dict):
-                        return {
-                            k: normalize_for_serialization(v) for k, v in obj.items()
-                        }
+                        return {k: normalize_for_serialization(v) for k, v in obj.items()}
                     if isinstance(obj, list):
                         return [normalize_for_serialization(v) for v in obj]
                     return obj
@@ -507,22 +481,12 @@ class DynDOLODPipelineService:
             "DynDOLOD pipeline result",
             extra={
                 "agent_id": "dyndolod-pipeline-service",
-                "operation_type": (
-                    "dyndolod_pipeline_complete"
-                    if success
-                    else "dyndolod_pipeline_failed"
-                ),
-                "file_path": (
-                    str(result.dyndolod_mod_path) if result.dyndolod_mod_path else ""
-                ),
+                "operation_type": ("dyndolod_pipeline_complete" if success else "dyndolod_pipeline_failed"),
+                "file_path": (str(result.dyndolod_mod_path) if result.dyndolod_mod_path else ""),
                 "success": success,
                 "preset": preset,
-                "texgen_success": (
-                    result.texgen_result.success if result.texgen_result else False
-                ),
-                "dyndolod_success": (
-                    result.dyndolod_result.success if result.dyndolod_result else False
-                ),
+                "texgen_success": (result.texgen_result.success if result.texgen_result else False),
+                "dyndolod_success": (result.dyndolod_result.success if result.dyndolod_result else False),
                 "errors": result.errors,
             },
         )

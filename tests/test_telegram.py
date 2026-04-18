@@ -66,9 +66,7 @@ class TestTelegramWebhook:
     @pytest.fixture()
     async def webhook_app(
         self,
-    ) -> AsyncGenerator[
-        tuple[web.Application, TelegramWebhook, AsyncMock, AsyncMock], None
-    ]:
+    ) -> AsyncGenerator[tuple[web.Application, TelegramWebhook, AsyncMock, AsyncMock], None]:
         webhook, mock_router, mock_sender = _make_webhook()
         app = web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
@@ -96,9 +94,7 @@ class TestTelegramWebhook:
         # Wait for background task to complete.
         await asyncio.sleep(0.1)
 
-        mock_router.chat.assert_awaited_once_with(
-            "search Requiem", webhook._session, chat_id="123"
-        )
+        mock_router.chat.assert_awaited_once_with("search Requiem", webhook._session, chat_id="123")
         mock_sender.send.assert_awaited_once_with(123, "I found 3 mods")
 
     @pytest.mark.asyncio
@@ -125,9 +121,7 @@ class TestTelegramWebhook:
         assert resp.status == 200
 
     @pytest.mark.asyncio
-    async def test_missing_message_text_returns_200(
-        self, aiohttp_client, webhook_app
-    ) -> None:
+    async def test_missing_message_text_returns_200(self, aiohttp_client, webhook_app) -> None:
         app, _webhook, mock_router, _ = webhook_app
         client = await aiohttp_client(app)
 
@@ -138,9 +132,7 @@ class TestTelegramWebhook:
         mock_router.chat.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_missing_update_id_returns_200(
-        self, aiohttp_client, webhook_app
-    ) -> None:
+    async def test_missing_update_id_returns_200(self, aiohttp_client, webhook_app) -> None:
         app, _webhook, mock_router, _ = webhook_app
         client = await aiohttp_client(app)
 
@@ -165,9 +157,7 @@ class TestTelegramWebhook:
         assert _DEDUP_MAX_SIZE + 49 in webhook._seen_updates
 
     @pytest.mark.asyncio
-    async def test_router_error_sends_error_message(
-        self, aiohttp_client, webhook_app
-    ) -> None:
+    async def test_router_error_sends_error_message(self, aiohttp_client, webhook_app) -> None:
         app, _webhook, mock_router, mock_sender = webhook_app
         mock_router.chat = AsyncMock(side_effect=RuntimeError("API down"))
         client = await aiohttp_client(app)

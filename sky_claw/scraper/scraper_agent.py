@@ -33,9 +33,7 @@ class ScraperAgent:
 
         # 1. Evaluar Circuit Breaker
         if time.time() < state["locked_until"]:
-            logger.error(
-                f"RCA: Circuit Breaker abierto para {domain}. Abortando para proteger IP local."
-            )
+            logger.error(f"RCA: Circuit Breaker abierto para {domain}. Abortando para proteger IP local.")
             raise CircuitBreakerTrippedError(f"Bloqueo activo hasta {state['locked_until']}")
 
         try:
@@ -57,9 +55,7 @@ class ScraperAgent:
                     version="0.0.0",
                     category="other",
                     author="N/A - ToS Blocked",
-                    description=result.get(
-                        "reason", "Scraping bloqueado por cumplimiento ToS Nexus Mods"
-                    ),
+                    description=result.get("reason", "Scraping bloqueado por cumplimiento ToS Nexus Mods"),
                 )
 
             # Convertir resultado dict a ModMetadata
@@ -68,16 +64,10 @@ class ScraperAgent:
         except Exception as e:
             # 2. RCA del fallo y actualización del Circuit Breaker
             new_failures = state["failures"] + 1
-            lock_time = (
-                time.time() + (300 * new_failures)
-                if new_failures >= self.max_failures
-                else 0
-            )
+            lock_time = time.time() + (300 * new_failures) if new_failures >= self.max_failures else 0
             await self.db.update_circuit_breaker(domain, new_failures, lock_time)
 
-            logger.warning(
-                f"Fallo de extracción en {domain}. Fallos: {new_failures}. Error: {e!s}"
-            )
+            logger.warning(f"Fallo de extracción en {domain}. Fallos: {new_failures}. Error: {e!s}")
             raise
 
     async def _api_request(self, query: ScrapingQuery) -> dict:
@@ -125,9 +115,7 @@ class ScraperAgent:
             ValueError: Si los datos son insuficientes para construir ModMetadata.
         """
         if result.get("status") != "success" or not result.get("data"):
-            raise ValueError(
-                f"Consulta fallida: {result.get('reason', 'Unknown error')}"
-            )
+            raise ValueError(f"Consulta fallida: {result.get('reason', 'Unknown error')}")
 
         data = result.get("data", {})
 

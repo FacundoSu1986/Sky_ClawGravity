@@ -152,8 +152,10 @@ class PurpleScanner(ast.NodeVisitor):
 
         # 3. Taint Tracking: ¿Se está pasando variable sucia a un sink?
         for arg in node.args:
-            if isinstance(arg, ast.Name) and arg.id in self.tainted_vars and (
-                func_name in DANGEROUS_SINKS or func_name in OBFUSCATION_INDICATORS
+            if (
+                isinstance(arg, ast.Name)
+                and arg.id in self.tainted_vars
+                and (func_name in DANGEROUS_SINKS or func_name in OBFUSCATION_INDICATORS)
             ):
                 self.report(
                     f"Variable sucia '{arg.id}' fluyendo hacia sink '{func_name}'",
@@ -240,9 +242,7 @@ def _scan_text_payloads(filepath: Path) -> list[dict[str, Any]]:
     for line_num, line in enumerate(content.splitlines(), start=1):
         for pattern, description in MALICIOUS_PAYLOAD_PATTERNS:
             if pattern.search(line):
-                logger.critical(
-                    f"AMENAZA DETECTADA en {filepath}:{line_num} - {description}"
-                )
+                logger.critical(f"AMENAZA DETECTADA en {filepath}:{line_num} - {description}")
                 findings.append(
                     {
                         "message": description,

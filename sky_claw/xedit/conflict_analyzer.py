@@ -218,13 +218,9 @@ class ConflictAnalyzer:
                 len(light_plugins),
                 LIGHT_PLUGIN_LIMIT,
             )
-            raise RuntimeError(
-                f"Light plugin limit exceeded: {len(light_plugins)}/{LIGHT_PLUGIN_LIMIT}."
-            )
+            raise RuntimeError(f"Light plugin limit exceeded: {len(light_plugins)}/{LIGHT_PLUGIN_LIMIT}.")
 
-    async def verify_masters(
-        self, plugins: list[str], xedit_runner: XEditRunner
-    ) -> list[str]:
+    async def verify_masters(self, plugins: list[str], xedit_runner: XEditRunner) -> list[str]:
         """Verify master dependencies for all active plugins.
 
         Args:
@@ -335,11 +331,7 @@ class ConflictAnalyzer:
             )
 
         # Leveled list conflicts.
-        ll_count = (
-            type_counts.get("LVLI", 0)
-            + type_counts.get("LVLN", 0)
-            + type_counts.get("LVSP", 0)
-        )
+        ll_count = type_counts.get("LVLI", 0) + type_counts.get("LVLN", 0) + type_counts.get("LVSP", 0)
         if ll_count > 0:
             suggestions.append(
                 f"{ll_count} leveled list conflict(s) — "
@@ -358,9 +350,7 @@ class ConflictAnalyzer:
         # Info-only conflicts.
         info_count = sum(1 for c in _flat_conflicts(report) if c.severity == "info")
         if info_count > 0 and not suggestions:
-            suggestions.append(
-                f"{info_count} minor conflict(s) (textures, strings) — generally safe to ignore."
-            )
+            suggestions.append(f"{info_count} minor conflict(s) (textures, strings) — generally safe to ignore.")
 
         return suggestions
 
@@ -377,9 +367,7 @@ class ConflictAnalyzer:
             return "warning"
         return "info"
 
-    def _group_by_pair(
-        self, conflicts: list[RecordConflict]
-    ) -> list[PluginConflictPair]:
+    def _group_by_pair(self, conflicts: list[RecordConflict]) -> list[PluginConflictPair]:
         """Group conflicts by (winner, loser) plugin pairs."""
         pair_map: dict[tuple[str, str], list[RecordConflict]] = defaultdict(list)
 
@@ -390,9 +378,7 @@ class ConflictAnalyzer:
                 pair_map[key].append(c)
 
         pairs: list[PluginConflictPair] = []
-        for (a, b), pair_conflicts in sorted(
-            pair_map.items(), key=lambda x: -len(x[1])
-        ):
+        for (a, b), pair_conflicts in sorted(pair_map.items(), key=lambda x: -len(x[1])):
             pairs.append(
                 PluginConflictPair(
                     plugin_a=a,

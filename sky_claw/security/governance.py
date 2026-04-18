@@ -103,9 +103,7 @@ class GovernanceManager:
             except RuntimeError:
                 raise
             except Exception as e:
-                logger.critical(
-                    f"Error crítico cargando whitelist: {e}. Abortando para prevenir pérdida de datos."
-                )
+                logger.critical(f"Error crítico cargando whitelist: {e}. Abortando para prevenir pérdida de datos.")
                 # Evita que el framework inicie con una whitelist comprometida
                 raise RuntimeError(f"Integridad de whitelist comprometida: {e}") from e
         return set()
@@ -149,9 +147,7 @@ class GovernanceManager:
         try:
             async with aiosqlite.connect(self.cache_db_path) as db:
                 await db.execute("PRAGMA journal_mode=WAL")
-                cursor = await db.execute(
-                    "SELECT status FROM scan_cache WHERE file_hash = ?", (file_hash,)
-                )
+                cursor = await db.execute("SELECT status FROM scan_cache WHERE file_hash = ?", (file_hash,))
                 row = await cursor.fetchone()
                 if row and row[0] == "CLEAN":
                     return True
@@ -159,9 +155,7 @@ class GovernanceManager:
             logger.error(f"Error consultando caché de escaneo: {e}")
         return False
 
-    async def update_scan_result(
-        self, file_path: str, results: list[dict], status: str
-    ):
+    async def update_scan_result(self, file_path: str, results: list[dict], status: str):
         """Actualiza el estado de escaneo en la base de datos."""
         file_hash = self.get_file_hash(file_path)
         if file_hash is None:

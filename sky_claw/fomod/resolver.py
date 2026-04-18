@@ -126,15 +126,11 @@ class FomodResolver:
 
         if group_type == GroupType.SELECT_EXACTLY_ONE and len(selected) != 1:
             if not selected:
-                result.pending_decisions.append(
-                    f"{step_name}/{group_name}: must select exactly one"
-                )
+                result.pending_decisions.append(f"{step_name}/{group_name}: must select exactly one")
             return selected
 
         if group_type == GroupType.SELECT_AT_LEAST_ONE and not selected:
-            result.pending_decisions.append(
-                f"{step_name}/{group_name}: must select at least one"
-            )
+            result.pending_decisions.append(f"{step_name}/{group_name}: must select at least one")
 
         return selected
 

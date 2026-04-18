@@ -74,9 +74,8 @@ def create_chat_preview(
         with (
             ui.element("div")
             .classes("p-4 border-b border-[#1f2937]")
-            .style(
-                f"background: linear-gradient(135deg, {COLORS['accent_violet']}20, {COLORS['accent_cyan']}20);"
-            ), ui.row().classes("items-center gap-3")
+            .style(f"background: linear-gradient(135deg, {COLORS['accent_violet']}20, {COLORS['accent_cyan']}20);"),
+            ui.row().classes("items-center gap-3"),
         ):
             # Icono del agente
             ui.html(f"""
@@ -102,9 +101,7 @@ def create_chat_preview(
         # ═══════════════════════════════════════════════════════════════
         # ÁREA DE MENSAJES
         # ═══════════════════════════════════════════════════════════════
-        messages_container = ui.element("div").classes(
-            "p-4 h-48 overflow-y-auto sky-scrollbar"
-        )
+        messages_container = ui.element("div").classes("p-4 h-48 overflow-y-auto sky-scrollbar")
 
         with messages_container:
             # Mostrar mensaje de bienvenida si no hay mensajes
@@ -140,31 +137,31 @@ def create_chat_preview(
         # INPUT AREA
         # ═══════════════════════════════════════════════════════════════
         with ui.element("div").classes("p-4 border-t border-[#1f2937]"), ui.element("div").classes("flex gap-2"):
-                chat_input = ui.input(
-                    placeholder=placeholder,
-                    value="",
-                ).classes(
-                    "flex-1 bg-[#0a0a0a] border border-[#1f2937] rounded-xl "
-                    "px-4 py-3 text-white placeholder-[#6b7280] sky-input-premium"
-                )
+            chat_input = ui.input(
+                placeholder=placeholder,
+                value="",
+            ).classes(
+                "flex-1 bg-[#0a0a0a] border border-[#1f2937] rounded-xl "
+                "px-4 py-3 text-white placeholder-[#6b7280] sky-input-premium"
+            )
 
-                # Función interna para manejar el envío
-                def _handle_send():
-                    msg = chat_input.value.strip()
-                    if msg and on_send_message:
-                        on_send_message(msg)
-                        chat_input.value = ""
+            # Función interna para manejar el envío
+            def _handle_send():
+                msg = chat_input.value.strip()
+                if msg and on_send_message:
+                    on_send_message(msg)
+                    chat_input.value = ""
 
-                # Botón de envío
-                send_button = (
-                    ui.button()
-                    .classes("p-3 rounded-xl transition-colors sky-btn-cta")
-                    .props("ripple")
-                    .on("click", _handle_send)
-                )
+            # Botón de envío
+            send_button = (
+                ui.button()
+                .classes("p-3 rounded-xl transition-colors sky-btn-cta")
+                .props("ripple")
+                .on("click", _handle_send)
+            )
 
-                with send_button:
-                    ui.html("""
+            with send_button:
+                ui.html("""
                         <svg width="20" height="20" viewBox="0 0 24 24"
                              fill="none" stroke="white" stroke-width="2">
                             <line x1="22" y1="2" x2="11" y2="13"/>

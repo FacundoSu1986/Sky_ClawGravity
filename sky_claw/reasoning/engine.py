@@ -117,17 +117,13 @@ class PruningPolicy:
         else:
             return alive_nodes
 
-    def _apply_fixed_threshold(
-        self, nodes: list[ThoughtNode[T]]
-    ) -> list[ThoughtNode[T]]:
+    def _apply_fixed_threshold(self, nodes: list[ThoughtNode[T]]) -> list[ThoughtNode[T]]:
         """Aplica umbral fijo de poda."""
         result = []
         for node in nodes:
             if node.score < self._config.pruning_threshold:
                 node.evaluation = EvaluationResult.DEAD_END
-                logger.debug(
-                    f"Pruned node {node.id} with score {node.score:.2f} < {self._config.pruning_threshold}"
-                )
+                logger.debug(f"Pruned node {node.id} with score {node.score:.2f} < {self._config.pruning_threshold}")
             else:
                 result.append(node)
         return result
@@ -143,9 +139,7 @@ class PruningPolicy:
 
         for node in pruned_nodes:
             node.evaluation = EvaluationResult.DEAD_END
-            logger.debug(
-                f"Pruned node {node.id} with score {node.score:.2f} (not in top {self._config.pruning_top_k})"
-            )
+            logger.debug(f"Pruned node {node.id} with score {node.score:.2f} (not in top {self._config.pruning_top_k})")
 
         return kept_nodes
 
@@ -236,9 +230,7 @@ class TreeOfThoughtEngine(Generic[T, S]):
         self._llm_client = llm_client
 
         # Crear estrategia de búsqueda
-        self._search_strategy = create_search_strategy(
-            self._config.search_strategy, self._config
-        )
+        self._search_strategy = create_search_strategy(self._config.search_strategy, self._config)
 
         # Componentes auxiliares
         self._cycle_detector = CycleDetector(state_hash_func)
@@ -250,9 +242,7 @@ class TreeOfThoughtEngine(Generic[T, S]):
         self._solutions: list[S] = []
         self._start_time: datetime | None = None
 
-        logger.info(
-            f"TreeOfThoughtEngine initialized with strategy={self._config.search_strategy.value}"
-        )
+        logger.info(f"TreeOfThoughtEngine initialized with strategy={self._config.search_strategy.value}")
 
     @property
     def generator(self) -> ThoughtGenerator[T]:
@@ -288,9 +278,7 @@ class TreeOfThoughtEngine(Generic[T, S]):
         """Agrega una solución a la lista de soluciones encontradas."""
         self._solutions.append(solution)
 
-    async def solve(
-        self, initial_state: T, initial_thought: str = "Estado inicial del problema"
-    ) -> S | None:
+    async def solve(self, initial_state: T, initial_thought: str = "Estado inicial del problema") -> S | None:
         """
         Ejecuta el algoritmo ToT para encontrar una solución.
 
@@ -301,9 +289,7 @@ class TreeOfThoughtEngine(Generic[T, S]):
         Returns:
             La solución encontrada o None si no se encuentra
         """
-        logger.info(
-            f"Starting ToT search with strategy={self._config.search_strategy.value}"
-        )
+        logger.info(f"Starting ToT search with strategy={self._config.search_strategy.value}")
         self._start_time = datetime.now(UTC)
 
         # Resetear estado
@@ -311,9 +297,7 @@ class TreeOfThoughtEngine(Generic[T, S]):
         self._cycle_detector.reset()
 
         # Crear nodo raíz
-        self._root = ThoughtNode[T](
-            state=initial_state, thought=initial_thought, depth=0, score=1.0
-        )
+        self._root = ThoughtNode[T](state=initial_state, thought=initial_thought, depth=0, score=1.0)
 
         try:
             # Envolver búsqueda con timeout usando asyncio.wait_for
@@ -323,16 +307,12 @@ class TreeOfThoughtEngine(Generic[T, S]):
             )
 
             elapsed = (datetime.now(UTC) - self._start_time).total_seconds()
-            logger.info(
-                f"ToT search completed in {elapsed:.2f}s, solution_found={solution is not None}"
-            )
+            logger.info(f"ToT search completed in {elapsed:.2f}s, solution_found={solution is not None}")
 
             return solution
 
         except TimeoutError:
-            logger.warning(
-                f"ToT search timed out after {self._config.timeout_seconds}s, returning best solution found"
-            )
+            logger.warning(f"ToT search timed out after {self._config.timeout_seconds}s, returning best solution found")
             return self._get_best_solution()
         except Exception as e:
             logger.error(f"ToT search failed: {e}")
@@ -372,9 +352,7 @@ class TreeOfThoughtEngine(Generic[T, S]):
             children = await self._expand_candidates_parallel(node, candidates, context)
         else:
             # Expansión secuencial
-            children = await self._expand_candidates_sequential(
-                node, candidates, context
-            )
+            children = await self._expand_candidates_sequential(node, candidates, context)
 
         logger.debug(f"Expanded node {node.id}: {len(children)} children")
         return children
@@ -404,18 +382,12 @@ class TreeOfThoughtEngine(Generic[T, S]):
         """Expande candidatos en paralelo usando asyncio.gather."""
         # Limitar paralelismo
         batch_size = min(len(candidates), self._config.max_parallel_expansions)
-        batches = [
-            candidates[i : i + batch_size]
-            for i in range(0, len(candidates), batch_size)
-        ]
+        batches = [candidates[i : i + batch_size] for i in range(0, len(candidates), batch_size)]
 
         all_children = []
 
         for batch in batches:
-            tasks = [
-                self._create_child_node(node, state, thought, context)
-                for state, thought in batch
-            ]
+            tasks = [self._create_child_node(node, state, thought, context) for state, thought in batch]
 
             children = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -481,15 +453,9 @@ class TreeOfThoughtEngine(Generic[T, S]):
             "total_nodes": len(all_nodes),
             "max_depth_reached": max(n.depth for n in all_nodes),
             "solutions_found": len(self._solutions),
-            "pruned_nodes": sum(
-                1 for n in all_nodes if n.evaluation == EvaluationResult.DEAD_END
-            ),
-            "promising_nodes": sum(
-                1 for n in all_nodes if n.evaluation == EvaluationResult.PROMISING
-            ),
-            "avg_score": sum(n.score for n in all_nodes) / len(all_nodes)
-            if all_nodes
-            else 0,
+            "pruned_nodes": sum(1 for n in all_nodes if n.evaluation == EvaluationResult.DEAD_END),
+            "promising_nodes": sum(1 for n in all_nodes if n.evaluation == EvaluationResult.PROMISING),
+            "avg_score": sum(n.score for n in all_nodes) / len(all_nodes) if all_nodes else 0,
             "states_visited": self._cycle_detector.visited_count,
         }
 
@@ -501,9 +467,7 @@ class TreeOfThoughtEngine(Generic[T, S]):
         def node_to_dict(node: ThoughtNode[T]) -> dict[str, Any]:
             return {
                 "id": node.id,
-                "thought": node.thought[:100] + "..."
-                if len(node.thought) > 100
-                else node.thought,
+                "thought": node.thought[:100] + "..." if len(node.thought) > 100 else node.thought,
                 "depth": node.depth,
                 "score": round(node.score, 3),
                 "evaluation": node.evaluation.value,

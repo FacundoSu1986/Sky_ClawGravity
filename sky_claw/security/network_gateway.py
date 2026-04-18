@@ -45,9 +45,7 @@ class EgressPolicy:
     """Immutable snapshot of the egress rules the gateway evaluates."""
 
     allowed_hosts: frozenset[str] = field(default_factory=lambda: ALLOWED_HOSTS)
-    allowed_methods: dict[str, frozenset[str]] = field(
-        default_factory=lambda: dict(ALLOWED_METHODS)
-    )
+    allowed_methods: dict[str, frozenset[str]] = field(default_factory=lambda: dict(ALLOWED_METHODS))
     telegram_path_prefix: str = TELEGRAM_PATH_PREFIX
     block_private_ips: bool = True
 
@@ -75,9 +73,7 @@ class SafeResolver(aiohttp.abc.AbstractResolver):
         self._policy = policy
         self._pinned: dict[tuple[str, int], list[dict[str, Any]]] = {}
 
-    async def resolve(
-        self, host: str, port: int = 0, family: int = socket.AF_INET
-    ) -> list[dict[str, Any]]:
+    async def resolve(self, host: str, port: int = 0, family: int = socket.AF_INET) -> list[dict[str, Any]]:
         pin_key = (host, port)
 
         # DNS Pinning: return the previously validated result if available.
@@ -103,12 +99,8 @@ class SafeResolver(aiohttp.abc.AbstractResolver):
         for info in infos:
             ip_str = info[4][0]
             addr = ipaddress.ip_address(ip_str)  # ValueError → reject unparseable IPs
-            if self._policy.block_private_ips and (
-                addr.is_private or addr.is_loopback or addr.is_link_local
-            ):
-                raise EgressViolationError(
-                    f"Resolved address {addr} for '{host}' is private/loopback (SSRF block)"
-                )
+            if self._policy.block_private_ips and (addr.is_private or addr.is_loopback or addr.is_link_local):
+                raise EgressViolationError(f"Resolved address {addr} for '{host}' is private/loopback (SSRF block)")
 
             result.append(
                 {
@@ -163,12 +155,8 @@ class NetworkGateway:
         # Check raw literal IPs just in case
         try:
             addr = ipaddress.ip_address(hostname)
-            if self._policy.block_private_ips and (
-                addr.is_private or addr.is_loopback or addr.is_link_local
-            ):
-                raise EgressViolationError(
-                    f"Literal address {addr} is a private/loopback IP"
-                )
+            if self._policy.block_private_ips and (addr.is_private or addr.is_loopback or addr.is_link_local):
+                raise EgressViolationError(f"Literal address {addr} is a private/loopback IP")
         except ValueError:
             pass
 
@@ -198,9 +186,7 @@ class NetworkGateway:
 
             parsed = urlparse(current_url)
             if parsed.scheme != "https":
-                raise EgressViolationError(
-                    f"Insecure scheme '{parsed.scheme}' blocked: {current_url}"
-                )
+                raise EgressViolationError(f"Insecure scheme '{parsed.scheme}' blocked: {current_url}")
 
             hop_kwargs = dict(kwargs)
             safe_timeout = aiohttp.ClientTimeout(total=45, connect=10)
@@ -211,9 +197,7 @@ class NetworkGateway:
                 response = await session.request(method, current_url, **hop_kwargs)
             except TimeoutError as _exc:
                 logger.error(f"Timeout al contactar {current_url}")
-                raise NetworkGatewayTimeoutError(
-                    f"La petición a {current_url} excedió el tiempo límite."
-                ) from _exc
+                raise NetworkGatewayTimeoutError(f"La petición a {current_url} excedió el tiempo límite.") from _exc
 
             if response.status in (301, 302, 303, 307, 308):
                 redirect_url = response.headers.get("Location")
@@ -229,9 +213,7 @@ class NetworkGateway:
 
             return response
 
-        raise EgressViolationError(
-            f"Maximum redirect limit ({max_redirects}) exceeded for URL: {url}"
-        )
+        raise EgressViolationError(f"Maximum redirect limit ({max_redirects}) exceeded for URL: {url}")
 
     async def validate_redirection_chain(self, url: str, history: list[str]) -> None:
         """Explicit validation for a chain of URLs (SSRF Protection)."""
@@ -290,15 +272,11 @@ class NetworkGateway:
             return  # already caught by _check_host_allowed
         allowed = self._policy.allowed_methods.get(pattern)
         if allowed is not None and method not in allowed:
-            raise EgressViolationError(
-                f"Method '{method}' is not allowed for host pattern '{pattern}'"
-            )
+            raise EgressViolationError(f"Method '{method}' is not allowed for host pattern '{pattern}'")
 
     def _check_telegram_path(self, hostname: str, path: str) -> None:
         """Ensure Telegram requests go through /bot<token>/…."""
-        if hostname == "api.telegram.org" and not path.startswith(
-            self._policy.telegram_path_prefix
-        ):
+        if hostname == "api.telegram.org" and not path.startswith(self._policy.telegram_path_prefix):
             raise EgressViolationError(
                 f"Telegram path '{path}' does not start with '{self._policy.telegram_path_prefix}'"
             )

@@ -34,9 +34,7 @@ async def _write_modlist_atomic(path: pathlib.Path, lines: list[str]) -> None:
     renamed over the original so the swap is atomic.
     """
     tmp: pathlib.Path = path.with_suffix(path.suffix + ".tmp")
-    normalised = [
-        (line if line.endswith("\n") else line.rstrip("\r\n") + "\n") for line in lines
-    ]
+    normalised = [(line if line.endswith("\n") else line.rstrip("\r\n") + "\n") for line in lines]
     try:
         async with aiofiles.open(tmp, mode="w", encoding="utf-8-sig") as fh:
             await fh.writelines(normalised)
@@ -136,9 +134,7 @@ class MO2Controller:
                 pass
 
             if mod_name in existing_names:
-                logger.info(
-                    "Mod %r already in modlist for profile %r", mod_name, profile
-                )
+                logger.info("Mod %r already in modlist for profile %r", mod_name, profile)
                 return
 
             async with aiofiles.open(validated, mode="a", encoding="utf-8") as fh:
@@ -167,11 +163,7 @@ class MO2Controller:
                 async with aiofiles.open(validated, encoding="utf-8-sig") as fh:
                     async for raw_line in fh:
                         line = raw_line.strip()
-                        if (
-                            line
-                            and line[1:].strip() == mod_name
-                            and line[0] in ("+", "-")
-                        ):
+                        if line and line[1:].strip() == mod_name and line[0] in ("+", "-"):
                             found = True
                             continue  # Skip this line
                         lines.append(raw_line)
@@ -209,11 +201,7 @@ class MO2Controller:
                 async with aiofiles.open(validated, encoding="utf-8-sig") as fh:
                     async for raw_line in fh:
                         line = raw_line.strip()
-                        if (
-                            line
-                            and line[1:].strip() == mod_name
-                            and line[0] in ("+", "-")
-                        ):
+                        if line and line[1:].strip() == mod_name and line[0] in ("+", "-"):
                             if line[0] != target_prefix:
                                 lines.append(f"{target_prefix}{mod_name}\n")
                                 changed = True

@@ -106,9 +106,7 @@ def test_route_classification():
             target_agent="SupervisorAgent",
             requires_context=True,
         )
-        print(
-            f"[PASS] Valid route created: intent={route.intent}, confidence={route.confidence}"
-        )
+        print(f"[PASS] Valid route created: intent={route.intent}, confidence={route.confidence}")
     except Exception as e:
         print(f"[FAIL] Valid route error: {e}")
         return False
@@ -147,9 +145,7 @@ def test_tool_executor():
     try:
         from sky_claw.agent.lcel_chains import ToolExecutor
 
-        executor = ToolExecutor(
-            tool_name="test_tool", tool_description="Test description"
-        )
+        executor = ToolExecutor(tool_name="test_tool", tool_description="Test description")
         result = executor({"param": "value"})
         print(f"[PASS] ToolExecutor executed successfully: {result[:50]}...")
         return True

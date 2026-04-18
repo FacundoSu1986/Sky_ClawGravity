@@ -218,20 +218,14 @@ class XEditPipelineService:
 
                     plan = PatchPlan(
                         strategy_type=strategy_type,
-                        target_plugins=(
-                            [p.plugin_a for p in report.plugin_pairs[:1]]
-                            if report.plugin_pairs
-                            else []
-                        ),
+                        target_plugins=([p.plugin_a for p in report.plugin_pairs[:1]] if report.plugin_pairs else []),
                         output_plugin=str(result.output_path),
                         form_ids=[],
                         estimated_records=result.records_patched,
                         requires_hitl=False,
                     )
 
-                    script_result: ScriptExecutionResult = (
-                        await self._xedit_runner.execute_patch(plan)
-                    )
+                    script_result: ScriptExecutionResult = await self._xedit_runner.execute_patch(plan)
                     result = PatchResult(
                         success=script_result.exit_code == 0,
                         output_path=result.output_path,
@@ -239,16 +233,12 @@ class XEditPipelineService:
                         conflicts_resolved=len(report.plugin_pairs),
                         xedit_exit_code=script_result.exit_code,
                         warnings=tuple(script_result.warnings),
-                        error=(
-                            None if script_result.exit_code == 0 else script_result.stderr
-                        ),
+                        error=(None if script_result.exit_code == 0 else script_result.stderr),
                     )
 
                 # Lanzar DENTRO del context manager para activar rollback automático
                 if result is not None and not result.success:
-                    raise PatchingError(
-                        f"xEdit falló con código {result.xedit_exit_code}: {result.error}"
-                    )
+                    raise PatchingError(f"xEdit falló con código {result.xedit_exit_code}: {result.error}")
 
             # Normal exit — lock context exited without error
             in_lock_context = False
@@ -295,9 +285,7 @@ class XEditPipelineService:
                         rollback_exc,
                         exc_info=True,
                     )
-            logger.error(
-                "Unexpected exception in xedit patch pipeline: %s", exc, exc_info=True
-            )
+            logger.error("Unexpected exception in xedit patch pipeline: %s", exc, exc_info=True)
             result = PatchResult(
                 success=False,
                 output_path=None,
