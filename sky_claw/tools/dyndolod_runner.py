@@ -458,13 +458,13 @@ class DynDOLODRunner:
                 **kwargs,
             )
         except FileNotFoundError:
-            raise DynDOLODNotFoundError(executable)
+            raise DynDOLODNotFoundError(executable) from None
         except OSError as e:
             raise DynDOLODExecutionError(
                 f"Failed to start {tool_name}: {e}",
                 return_code=None,
                 stderr=str(e),
-            )
+            ) from e
 
         stdout_chunks: list[bytes] = []
         stderr_chunks: list[bytes] = []
@@ -509,7 +509,7 @@ class DynDOLODRunner:
                 await asyncio.gather(
                     heartbeat, drain_out, drain_err, return_exceptions=True
                 )
-            raise DynDOLODTimeoutError(effective_timeout, tool_name)
+            raise DynDOLODTimeoutError(effective_timeout, tool_name) from None
         except Exception as e:
             proc.kill()
             with contextlib.suppress(TimeoutError):
@@ -525,7 +525,7 @@ class DynDOLODRunner:
                 f"Unexpected error during {tool_name} execution: {e}",
                 return_code=proc.returncode,
                 stderr=str(e),
-            )
+            ) from e
         else:
             # Process exited normally — cancel heartbeat and wait for drains to finish.
             heartbeat.cancel()
@@ -628,12 +628,12 @@ class DynDOLODRunner:
             raise DynDOLODValidationError(
                 f"Permission denied creating mod: {e}",
                 output_path=mod_path,
-            )
+            ) from e
         except OSError as e:
             raise DynDOLODValidationError(
                 f"Failed to package mod: {e}",
                 output_path=mod_path,
-            )
+            ) from e
 
     async def run_full_pipeline(
         self,
@@ -868,13 +868,13 @@ class DynDOLODRunner:
             mod_name: Nombre del mod.
         """
         # S2-FIX: Validate target path is within MO2 mods sandbox.
-        from sky_claw.security.path_validator import PathValidator, PathViolation
+        from sky_claw.security.path_validator import PathValidator, PathViolationError
 
         meta_ini_path = mod_path / "meta.ini"
         validator = PathValidator(roots=[self._config.mo2_mods_path])
         try:
             validator.validate(meta_ini_path, strict_symlink=False)
-        except PathViolation:
+        except PathViolationError:
             logger.error("Path traversal blocked for meta.ini: %s", meta_ini_path)
             raise
 

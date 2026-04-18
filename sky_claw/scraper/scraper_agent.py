@@ -4,7 +4,7 @@ import time
 from sky_claw.core.database import DatabaseAgent
 
 # Playwright and requests-html strictly banned locally in WSL2 per SRE (Cloudflare constraints).
-from sky_claw.core.models import CircuitBreakerTripped
+from sky_claw.core.models import CircuitBreakerTrippedError
 from sky_claw.core.schemas import ModMetadata, ScrapingQuery
 
 logger = logging.getLogger("SkyClaw.Scraper")
@@ -36,7 +36,7 @@ class ScraperAgent:
             logger.error(
                 f"RCA: Circuit Breaker abierto para {domain}. Abortando para proteger IP local."
             )
-            raise CircuitBreakerTripped(f"Bloqueo activo hasta {state['locked_until']}")
+            raise CircuitBreakerTrippedError(f"Bloqueo activo hasta {state['locked_until']}")
 
         try:
             if not query.force_stealth and self.nexus_api_key:

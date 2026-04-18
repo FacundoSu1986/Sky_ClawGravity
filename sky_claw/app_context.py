@@ -208,8 +208,8 @@ class AppContext:
             mo2_root = self._args.mo2_root
             config_changed = False
 
-            _MO2_DEFAULT = str(SystemPaths.get_base_drive() / "MO2Portable")
-            if local_cfg.mo2_root and str(mo2_root) == _MO2_DEFAULT:
+            _mo2_default = str(SystemPaths.get_base_drive() / "MO2Portable")
+            if local_cfg.mo2_root and str(mo2_root) == _mo2_default:
                 cfg_mo2 = pathlib.Path(local_cfg.mo2_root)
                 mo2_root = cfg_mo2
                 logger.info("Using mo2_root from config: %s", mo2_root)

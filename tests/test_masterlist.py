@@ -6,10 +6,11 @@ from unittest.mock import AsyncMock
 
 import aiohttp
 import pytest
+
 from sky_claw.scraper.masterlist import MasterlistClient, MasterlistFetchError
 from sky_claw.security.network_gateway import (
     EgressPolicy,
-    EgressViolation,
+    EgressViolationError,
     NetworkGateway,
 )
 
@@ -75,5 +76,5 @@ class TestNetworkGatewayRequest:
     @pytest.mark.asyncio
     async def test_request_rejects_blocked_host(self, gw: NetworkGateway) -> None:
         mock_session = AsyncMock(spec=aiohttp.ClientSession)
-        with pytest.raises(EgressViolation, match="not in the allow-list"):
+        with pytest.raises(EgressViolationError, match="not in the allow-list"):
             await gw.request("GET", "https://evil.example.com/x", mock_session)

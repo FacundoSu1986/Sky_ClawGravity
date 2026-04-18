@@ -23,7 +23,7 @@ def test_core_imports():
         from sky_claw.core import (  # noqa: F401
             AgentToolRequest,
             AgentToolResponse,
-            CircuitBreakerTripped,
+            CircuitBreakerTrippedError,
             DatabaseAgent,
             ModMetadata,
             RouteClassification,

@@ -7,7 +7,7 @@ from typing import Any
 
 from sky_claw.config import SystemPaths
 from sky_claw.core.windows_interop import ModdingToolsAgent
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 # Standard 2026 Process Orchestration
 logger = logging.getLogger("SkyClaw.ManagedExecutor")
@@ -62,7 +62,7 @@ class ManagedToolExecutor:
                     return -1
                 try:
                     validator.validate(translated_path)
-                except PathViolation as pv:
+                except PathViolationError as pv:
                     logger.error(
                         "🚨 ABORT (Fail-Safe): Path Traversal Detected! %s", pv
                     )

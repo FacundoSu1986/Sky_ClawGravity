@@ -20,7 +20,7 @@ from sky_claw.config import (
     SystemPaths,
 )
 from sky_claw.security.hitl import Decision, HITLGuard
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 if TYPE_CHECKING:
     from sky_claw.scraper.nexus_downloader import NexusDownloader
@@ -115,7 +115,7 @@ def _extract_zip_safe(archive: pathlib.Path, dest: pathlib.Path) -> None:
             if info.is_dir():
                 continue
             if not _is_safe_path(info.filename):
-                raise PathViolation(f"Zip-slip detected: {info.filename!r}")
+                raise PathViolationError(f"Zip-slip detected: {info.filename!r}")
             zf.extract(info, dest)
 
 
@@ -131,7 +131,7 @@ def _extract_7z_safe(archive: pathlib.Path, dest: pathlib.Path) -> None:
     with py7zr.SevenZipFile(archive, "r") as szf:
         for name in szf.getnames():
             if not _is_safe_path(name):
-                raise PathViolation(f"Zip-slip detected in 7z: {name!r}")
+                raise PathViolationError(f"Zip-slip detected in 7z: {name!r}")
         szf.extractall(dest)
 
 

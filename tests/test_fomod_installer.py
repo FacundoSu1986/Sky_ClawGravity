@@ -6,11 +6,12 @@ import pathlib
 import zipfile
 
 import pytest
+
 from sky_claw.fomod.installer import (
     FomodInstaller,
     _is_safe_path,
 )
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -269,7 +270,7 @@ class TestZipSlipProtection:
             info = zipfile.ZipInfo("../../../etc/passwd")
             zf.writestr(info, "malicious content")
 
-        with pytest.raises(PathViolation, match="Zip-slip"):
+        with pytest.raises(PathViolationError, match="Zip-slip"):
             await installer.install(archive_path, mo2_mods_dir)
 
 

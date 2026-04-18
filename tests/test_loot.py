@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from sky_claw.loot.cli import LOOTConfig, LOOTNotFoundError, LOOTRunner
 from sky_claw.loot.masterlist import MasterlistDownloader
 from sky_claw.loot.parser import LOOTOutputParser, LOOTResult
@@ -131,12 +132,10 @@ class TestLOOTRunner:
 
         with patch(
             "sky_claw.loot.cli.asyncio.create_subprocess_exec", return_value=mock_proc
-        ):
-            with patch(
-                "sky_claw.loot.cli.asyncio.wait_for", side_effect=asyncio.TimeoutError
-            ):
-                with pytest.raises(RuntimeError, match="timed out"):
-                    await runner.sort()
+        ), patch(
+            "sky_claw.loot.cli.asyncio.wait_for", side_effect=asyncio.TimeoutError
+        ), pytest.raises(RuntimeError, match="timed out"):
+            await runner.sort()
 
     @pytest.mark.asyncio
     async def test_sort_with_errors(self, tmp_path: pathlib.Path) -> None:

@@ -152,13 +152,14 @@ class PurpleScanner(ast.NodeVisitor):
 
         # 3. Taint Tracking: ¿Se está pasando variable sucia a un sink?
         for arg in node.args:
-            if isinstance(arg, ast.Name) and arg.id in self.tainted_vars:
-                if func_name in DANGEROUS_SINKS or func_name in OBFUSCATION_INDICATORS:
-                    self.report(
-                        f"Variable sucia '{arg.id}' fluyendo hacia sink '{func_name}'",
-                        node,
-                        severity="HIGH",
-                    )
+            if isinstance(arg, ast.Name) and arg.id in self.tainted_vars and (
+                func_name in DANGEROUS_SINKS or func_name in OBFUSCATION_INDICATORS
+            ):
+                self.report(
+                    f"Variable sucia '{arg.id}' fluyendo hacia sink '{func_name}'",
+                    node,
+                    severity="HIGH",
+                )
 
         # 4. Ofuscación por chr() o base64 en llamadas
         if func_name in OBFUSCATION_INDICATORS:

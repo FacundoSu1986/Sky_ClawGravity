@@ -609,6 +609,40 @@ class OperationJournal:
 
         logger.error("Operation failed", extra={"entry_id": entry_id, "error": error})
 
+    async def log_operation(
+        self,
+        agent_id: str,
+        operation_type: str,
+        file_path: str,
+        details: dict[str, Any] | None = None,
+    ) -> int:
+        """Compatibility method for older clients. Maps a standalone operation to a full transaction."""
+        tx_id = await self.begin_transaction(
+            description=f"Legacy operation: {operation_type}",
+            agent_id=agent_id,
+        )
+
+        try:
+            op_enum = OperationType(operation_type)
+        except ValueError:
+            # Fallback to general modification if operation_type is entirely custom
+            op_enum = OperationType.FILE_MODIFY
+
+        op_id = await self.begin_operation(
+            agent_id=agent_id,
+            operation_type=op_enum,
+            target_path=file_path,
+            transaction_id=tx_id,
+            metadata=details,
+        )
+
+        # Mark as completed if we used the legacy non-transactional log method
+        await self.complete_operation(op_id)
+        await self.commit_transaction(tx_id)
+
+        return op_id
+
+
     async def mark_rolled_back(self, entry_id: int, details: str | None = None) -> None:
         """
         Marcar una operación como revertida.
@@ -841,7 +875,7 @@ class OperationJournal:
     # =========================================================================
 
     @staticmethod
-    def _row_to_entry(row: tuple) -> JournalEntry:
+    def _row_to_entry(row: tuple[Any, ...]) -> JournalEntry:
         """Convierte una fila de BD a JournalEntry."""
         return JournalEntry(
             id=row[0],

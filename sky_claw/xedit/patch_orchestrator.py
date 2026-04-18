@@ -564,7 +564,7 @@ class PatchOrchestrator:
                 records_patched=0,
                 conflicts_resolved=0,
                 xedit_exit_code=0,
-                warnings=["No conflicts to resolve"],
+                warnings=("No conflicts to resolve",),
             )
 
         # Recolectar todos los conflictos del reporte
@@ -602,7 +602,7 @@ class PatchOrchestrator:
                 conflicts_resolved=len(all_conflicts),
                 xedit_exit_code=0,
                 warnings=(
-                    ["Requires Human-in-the-Loop review"] if plan.requires_hitl else []
+                    ("Requires Human-in-the-Loop review",) if plan.requires_hitl else ()
                 ),
             )
 

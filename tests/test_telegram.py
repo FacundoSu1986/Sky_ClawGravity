@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 import pytest
 from aiohttp import web
+
 from sky_claw.comms.telegram import _DEDUP_MAX_SIZE, TelegramWebhook
 from sky_claw.comms.telegram_sender import (
     MAX_MESSAGE_LENGTH,

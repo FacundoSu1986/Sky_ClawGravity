@@ -98,11 +98,7 @@ class _CircuitBreaker:
     def allow_request(self) -> bool:
         """Return ``True`` if a request is currently allowed."""
         state = self.state  # may promote open → half-open
-        if state == "closed":
-            return True
-        if state == "half-open":
-            return True  # allow one probe
-        return False
+        return state in ("closed", "half-open")
 
 
 class MasterlistClient:

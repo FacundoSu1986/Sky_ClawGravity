@@ -6,6 +6,7 @@ import pathlib
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from sky_claw.auto_detect import (
     AutoDetector,
     _parse_steam_library_folders,
@@ -46,9 +47,8 @@ class TestFindMo2:
         mo2_dir.mkdir(parents=True)
         (mo2_dir / "ModOrganizer.exe").touch()
 
-        with patch("sky_claw.auto_detect._MO2_COMMON", ()):
-            with patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
-                result = await AutoDetector.find_mo2()
+        with patch("sky_claw.auto_detect._MO2_COMMON", ()), patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+            result = await AutoDetector.find_mo2()
 
         assert result == mo2_dir
 
@@ -84,15 +84,15 @@ class TestFindSkyrim:
         skyrim_dir.mkdir(parents=True)
         (skyrim_dir / "SkyrimSE.exe").touch()
 
-        vdf_content = (
-            f'"libraryfolders"\n{{\n  "0"\n  {{\n    "path"\t\t"{steam_dir}"\n  }}\n}}'
-        )
+        vdf_content = f'"libraryfolders"\n{{\n  "0"\n  {{\n    "path"\t\t"{steam_dir}"\n  }}\n}}'
         vdf_path = apps_dir / "libraryfolders.vdf"
         vdf_path.write_text(vdf_content, encoding="utf-8")
 
-        with patch("sky_claw.auto_detect._read_registry_value", return_value=None):
-            with patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", (str(steam_dir),)):
-                result = await AutoDetector.find_skyrim()
+        with (
+            patch("sky_claw.auto_detect._read_registry_value", return_value=None),
+            patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", (str(steam_dir),)),
+        ):
+            result = await AutoDetector.find_skyrim()
 
         assert result == skyrim_dir
 
@@ -102,19 +102,23 @@ class TestFindSkyrim:
         skyrim_dir.mkdir()
         (skyrim_dir / "SkyrimSE.exe").touch()
 
-        with patch("sky_claw.auto_detect._read_registry_value", return_value=None):
-            with patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", ()):
-                with patch("sky_claw.auto_detect._SKYRIM_COMMON", (str(skyrim_dir),)):
-                    result = await AutoDetector.find_skyrim()
+        with (
+            patch("sky_claw.auto_detect._read_registry_value", return_value=None),
+            patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", ()),
+            patch("sky_claw.auto_detect._SKYRIM_COMMON", (str(skyrim_dir),)),
+        ):
+            result = await AutoDetector.find_skyrim()
 
         assert result == skyrim_dir
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(self) -> None:
-        with patch("sky_claw.auto_detect._read_registry_value", return_value=None):
-            with patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", ()):
-                with patch("sky_claw.auto_detect._SKYRIM_COMMON", ()):
-                    result = await AutoDetector.find_skyrim()
+        with (
+            patch("sky_claw.auto_detect._read_registry_value", return_value=None),
+            patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", ()),
+            patch("sky_claw.auto_detect._SKYRIM_COMMON", ()),
+        ):
+            result = await AutoDetector.find_skyrim()
 
         assert result is None
 
@@ -180,14 +184,16 @@ class TestDetectAll:
         mo2_dir.mkdir()
         (mo2_dir / "ModOrganizer.exe").touch()
 
-        with patch("sky_claw.auto_detect._MO2_COMMON", (str(mo2_dir),)):
-            with patch("sky_claw.auto_detect._read_registry_value", return_value=None):
-                with patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", ()):
-                    with patch("sky_claw.auto_detect._SKYRIM_COMMON", ()):
-                        with patch("sky_claw.auto_detect._LOOT_COMMON", ()):
-                            with patch("sky_claw.auto_detect._XEDIT_COMMON", ()):
-                                with patch("shutil.which", return_value=None):
-                                    result = await AutoDetector.detect_all()
+        with (
+            patch("sky_claw.auto_detect._MO2_COMMON", (str(mo2_dir),)),
+            patch("sky_claw.auto_detect._read_registry_value", return_value=None),
+            patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", ()),
+            patch("sky_claw.auto_detect._SKYRIM_COMMON", ()),
+            patch("sky_claw.auto_detect._LOOT_COMMON", ()),
+            patch("sky_claw.auto_detect._XEDIT_COMMON", ()),
+            patch("shutil.which", return_value=None),
+        ):
+            result = await AutoDetector.detect_all()
 
         assert isinstance(result, dict)
         assert result["mo2_root"] == str(mo2_dir)
@@ -203,17 +209,17 @@ class TestDetectAll:
         async def _slow() -> None:
             await asyncio.sleep(100)
 
-        with patch.object(AutoDetector, "_find_mo2_inner", side_effect=_slow):
-            with patch("sky_claw.auto_detect._SEARCH_TIMEOUT", 0.01):
-                with patch(
-                    "sky_claw.auto_detect._read_registry_value", return_value=None
-                ):
-                    with patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", ()):
-                        with patch("sky_claw.auto_detect._SKYRIM_COMMON", ()):
-                            with patch("sky_claw.auto_detect._LOOT_COMMON", ()):
-                                with patch("sky_claw.auto_detect._XEDIT_COMMON", ()):
-                                    with patch("shutil.which", return_value=None):
-                                        result = await AutoDetector.detect_all()
+        with (
+            patch.object(AutoDetector, "_find_mo2_inner", side_effect=_slow),
+            patch("sky_claw.auto_detect._SEARCH_TIMEOUT", 0.01),
+            patch("sky_claw.auto_detect._read_registry_value", return_value=None),
+            patch("sky_claw.auto_detect._STEAM_DEFAULT_PATHS", ()),
+            patch("sky_claw.auto_detect._SKYRIM_COMMON", ()),
+            patch("sky_claw.auto_detect._LOOT_COMMON", ()),
+            patch("sky_claw.auto_detect._XEDIT_COMMON", ()),
+            patch("shutil.which", return_value=None),
+        ):
+            result = await AutoDetector.detect_all()
 
         # MO2 should be None (timed out), others should still work.
         assert result["mo2_root"] is None
@@ -259,9 +265,7 @@ class TestRegistryHelper:
 
 class TestAutoDetectEndpoint:
     @pytest.mark.asyncio
-    async def test_auto_detect_endpoint(
-        self, tmp_path: pathlib.Path, aiohttp_client
-    ) -> None:
+    async def test_auto_detect_endpoint(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
         from sky_claw.web.app import WebApp
 
         router = MagicMock()
@@ -295,9 +299,7 @@ class TestAutoDetectEndpoint:
 
 class TestInstallToolsEndpoint:
     @pytest.mark.asyncio
-    async def test_install_tools_no_installer(
-        self, tmp_path: pathlib.Path, aiohttp_client
-    ) -> None:
+    async def test_install_tools_no_installer(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
         from sky_claw.web.app import WebApp
 
         router = MagicMock()
@@ -346,9 +348,7 @@ class TestSystemPromptZeroConfig:
 
 class TestSetupAutoFill:
     @pytest.mark.asyncio
-    async def test_get_setup_includes_tool_paths(
-        self, tmp_path: pathlib.Path, aiohttp_client
-    ) -> None:
+    async def test_get_setup_includes_tool_paths(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
         from sky_claw.web.app import WebApp
 
         router = MagicMock()

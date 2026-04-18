@@ -91,4 +91,4 @@ class PandoraRunner:
             )
         except Exception as e:
             logger.error(f"Pandora execution failed: {e}")
-            raise PandoraExecutionError(f"Failed to execute Pandora: {e}")
+            raise PandoraExecutionError(f"Failed to execute Pandora: {e}") from e

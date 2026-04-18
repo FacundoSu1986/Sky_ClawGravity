@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
     from sky_claw.security.path_validator import PathValidator
 
-from sky_claw.security.path_validator import PathViolation
+from sky_claw.security.path_validator import PathViolationError
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ class AssetConflictDetector:
             if self._path_validator is not None:
                 try:
                     self._path_validator.validate(modlist_path, strict_symlink=False)
-                except PathViolation:
+                except PathViolationError:
                     logger.error("Path traversal blocked for modlist: %s", modlist_path)
                     raise
             with open(modlist_path, encoding="utf-8") as f:
@@ -250,7 +250,7 @@ class AssetConflictDetector:
             if self._path_validator is not None:
                 try:
                     self._path_validator.validate(file_path, strict_symlink=False)
-                except PathViolation:
+                except PathViolationError:
                     logger.error("Path traversal blocked for checksum: %s", file_path)
                     raise
             with open(file_path, "rb") as f:

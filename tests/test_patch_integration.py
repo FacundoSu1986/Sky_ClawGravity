@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from sky_claw.xedit.conflict_analyzer import (
     ConflictReport,
     PluginConflictPair,

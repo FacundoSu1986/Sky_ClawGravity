@@ -66,7 +66,12 @@ dummy_*.py
 # Generated and accidental Windows output
 nul
 .kilo/
-
 # Environments and Secrets
 **/.env
+
+# Serena MCP data (memories, caches, logs)
+.serena/
+
+# Roo Code project config (local IDE configuration)
+.roo/
 

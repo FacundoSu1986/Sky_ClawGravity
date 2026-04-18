@@ -16,6 +16,7 @@ import logging
 from unittest.mock import patch
 
 import pytest
+
 from sky_claw.security.credential_vault import CredentialVault
 
 

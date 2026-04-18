@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+
 from sky_claw.mo2.vfs import MO2Controller
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 if TYPE_CHECKING:
     import pathlib
@@ -70,7 +71,7 @@ class TestReadModlist:
         (profile_dir / "modlist.txt").write_text("+SomeMod\n", encoding="utf-8")
         validator = PathValidator(roots=[tmp_path / "sandbox"])
         ctrl = MO2Controller(other, path_validator=validator)
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             async for _ in ctrl.read_modlist():
                 pass
 

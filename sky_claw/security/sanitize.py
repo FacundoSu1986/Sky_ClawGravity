@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from typing import Any
 
 # Characters that have special meaning in many LLM prompt formats.
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -91,8 +92,8 @@ def sanitize_for_prompt(
     # This prevents reconstructed bypasses (e.g. "[IN[INST]ST]" → "[INST]")
     # by re-applying the regex until no further matches are found.
     # Cap at 10 iterations to avoid performance degradation.
-    _MAX_PASSES = 10
-    for _ in range(_MAX_PASSES):
+    _max_passes = 10
+    for _ in range(_max_passes):
         cleaned = _INJECTION_PATTERNS.sub("", text)
         if cleaned == text:
             break
@@ -104,7 +105,7 @@ def sanitize_for_prompt(
     return text
 
 
-def safe_json_loads(raw: str) -> dict | list | None:
+def safe_json_loads(raw: str) -> dict[str, Any] | list[Any] | None:
     """Attempt to parse *raw* as JSON, returning ``None`` on failure.
 
     Rejects payloads larger than 1 MB to prevent resource exhaustion.

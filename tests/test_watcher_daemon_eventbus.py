@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
+
 from sky_claw.core.event_bus import CoreEventBus, Event
 from sky_claw.core.event_payloads import ModlistChangedPayload
 from sky_claw.orchestrator.watcher_daemon import WatcherDaemon

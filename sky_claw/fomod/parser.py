@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import defusedxml.ElementTree as ET
+import defusedxml.ElementTree as DefusedElementTree
 from defusedxml import (
     DefusedXmlException,
     DTDForbidden,
@@ -58,7 +58,7 @@ def parse_fomod(xml_path: pathlib.Path) -> FomodConfig:
         FomodParseError: If the XML is fundamentally unparseable.
     """
     try:
-        tree = ET.parse(
+        tree = DefusedElementTree.parse(
             xml_path,
             forbid_dtd=True,
             forbid_entities=True,
@@ -71,7 +71,7 @@ def parse_fomod(xml_path: pathlib.Path) -> FomodConfig:
         raise FomodParserSecurityError(
             f"XML security violation in {xml_path}: {exc}"
         ) from exc
-    except (ET.ParseError, DefusedXmlException) as exc:
+    except (DefusedElementTree.ParseError, DefusedXmlException) as exc:
         raise FomodParseError(f"Failed to parse XML: {exc}") from exc
 
     root = tree.getroot()
@@ -105,7 +105,7 @@ def parse_fomod_string(xml_string: str) -> FomodConfig:
         Parsed FOMOD configuration.
     """
     try:
-        root = ET.fromstring(
+        root = DefusedElementTree.fromstring(
             xml_string,
             forbid_dtd=True,
             forbid_entities=True,
@@ -118,7 +118,7 @@ def parse_fomod_string(xml_string: str) -> FomodConfig:
         raise FomodParserSecurityError(
             f"XML security violation in FOMOD string: {exc}"
         ) from exc
-    except (ET.ParseError, DefusedXmlException) as exc:
+    except (DefusedElementTree.ParseError, DefusedXmlException) as exc:
         raise FomodParseError(f"Failed to parse XML: {exc}") from exc
 
     module_name = ""
@@ -166,7 +166,7 @@ def _parse_file_list(element: _stdlib_ET.Element | None) -> list[FileInstall]:
                         FileInstall(source=source, destination=dest, priority=priority)
                     )
             except (ValueError, TypeError):
-                logger.warning("Skipping malformed file element: %s", ET.tostring(el))
+                logger.warning("Skipping malformed file element: %s", DefusedElementTree.tostring(el))
     return files
 
 

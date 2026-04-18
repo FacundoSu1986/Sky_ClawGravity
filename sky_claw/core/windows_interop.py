@@ -35,7 +35,7 @@ class ModdingToolsAgent:
             proc.kill()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=3.0)
-            raise WSLInteropError(f"wslpath tardó más de {timeout}s para: {wsl_path}")
+            raise WSLInteropError(f"wslpath tardó más de {timeout}s para: {wsl_path}") from None
         if proc.returncode != 0:
             err_str = stderr.decode("utf-8", errors="replace").strip()
             raise WSLInteropError(f"Fallo en wslpath: {err_str}")

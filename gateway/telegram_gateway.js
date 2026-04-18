@@ -8,9 +8,6 @@
 
 const { Bot } = require("grammy");
 const { WebSocketServer } = require("ws");
-const { v4: uuidv4 } = require("uuid"); // Optional, will use crypto.randomUUID for less dependencies
-const { chromium, firefox, webkit } = require("playwright");
-const fs = require("fs");
 const crypto = require("crypto");
 require("dotenv").config();
 
@@ -54,36 +51,6 @@ function timingSafeTokenCompare(inputToken) {
     } catch (err) {
         console.error('[GW] Token comparison error:', err.message);
         return false;
-    }
-}
-
-// 0. Persistence & Factory state
-let activeConfig = {
-    browser_engine: "chromium" // Default: Chromium (Reliability 0.95)
-};
-
-/**
- * BROWSER FACTORY (SRE Standard)
- * Devuelve una instancia del motor solicitado con Fallback a Chromium.
- */
-async function launchEngine(preference) {
-    const engineType = preference || activeConfig.browser_engine;
-    const engineMap = { chromium, firefox, webkit };
-    const selected = engineMap[engineType] || chromium;
-
-    try {
-        // Paso 5: Auto-Check de binarios en el Host Windows
-        const binPath = selected.executablePath();
-        if (!fs.existsSync(binPath)) {
-            console.warn(`[GW] Binario ${engineType} ausente en ${binPath}. Aplicando Fallback a Chromium.`);
-            return await chromium.launch({ headless: true });
-        }
-
-        // Paso 2: Launch con fingerprinting base (Confianza: WebKit/FF ~0.8)
-        return await selected.launch({ headless: true });
-    } catch (launchError) {
-        console.error(`[GW] Falló lanzamiento de motor ${engineType}: ${launchError.message}`);
-        return await chromium.launch({ headless: true });
     }
 }
 
@@ -159,85 +126,9 @@ wss.on("connection", (ws, req) => {
                 return;
             }
 
-            // SRE Phase 3: Configuración Dinámica
-            if (message.type === "command" && message.action === "set_config") {
-                if (message.payload?.browser_engine) {
-                    activeConfig.browser_engine = message.payload.browser_engine;
-                    console.log(`[GW] Motor de renderizado actualizado a: ${activeConfig.browser_engine}`);
-                }
-                return;
-            }
-
-            // SRE Phase 2: Passthrough Web Scraper Integration (Multi-Engine)
-            if (message.type === "command" && message.action === "scrape_nexus") {
-                // SEC-039 FIX: Validate URL before passing to Playwright
-                const ALLOWED_SCRAPE_DOMAINS = ["nexusmods.com", "www.nexusmods.com"];
-                let scrapeUrl;
-                try {
-                    scrapeUrl = new URL(message.url);
-                } catch {
-                    console.error(`[GW] Invalid URL rejected: ${message.url}`);
-                    return;
-                }
-                if (scrapeUrl.protocol !== "https:") {
-                    console.error(`[GW] Non-HTTPS URL rejected: ${scrapeUrl.protocol}`);
-                    return;
-                }
-                if (!ALLOWED_SCRAPE_DOMAINS.some(d => scrapeUrl.hostname === d || scrapeUrl.hostname.endsWith("." + d))) {
-                    console.error(`[GW] Domain not in allow-list: ${scrapeUrl.hostname}`);
-                    return;
-                }
-                // Block private/reserved IPs (basic check — DNS resolution happens in Playwright)
-                const blockedPatterns = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.)/;
-                if (blockedPatterns.test(scrapeUrl.hostname)) {
-                    console.error(`[GW] Private IP rejected: ${scrapeUrl.hostname}`);
-                    return;
-                }
-
-                console.log(`[GW] Iniciando Playwright RPC (${activeConfig.browser_engine}) para request: ${message.request_id}`);
-                let browser;
-                try {
-                    // Paso 2: Implementación de Factory
-                    browser = await launchEngine(message.payload?.browser_engine);
-                    // SEC-046 FIX: Do not allow user-controlled User-Agent
-                    const contextOptions = {};
-                    const context = await browser.newContext(contextOptions);
-                    const page = await context.newPage();
-                    // Timeout robusto a 25s dejando 5s de margen al demonio Python
-                    await page.goto(message.url, { waitUntil: "domcontentloaded", timeout: 25000 });
-
-                    const title = await page.title();
-                    // Aquí escalarías la lógica para raspar elementos DOM concretos.
-                    const contentJson = { page_title: title, url: message.url };
-
-                    const scrapeResult = {
-                        type: "scrape_response",
-                        request_id: message.request_id,
-                        data: contentJson,
-                        error: null
-                    };
-                    ws.send(JSON.stringify(scrapeResult));
-                    console.log(`[GW] Playwright RPC exitoso para request: ${message.request_id}`);
-                } catch (scrapeErr) {
-                    console.error(`[GW] Error de Scraping IPC: ${scrapeErr.message}`);
-                    ws.send(JSON.stringify({
-                        type: "scrape_response",
-                        request_id: message.request_id,
-                        data: null,
-                        error: scrapeErr.message
-                    }));
-                } finally {
-                    // Paso 3: Cierre agnóstico y seguro (Evita fugas de memoria)
-                    if (browser) {
-                        try {
-                            await browser.close();
-                        } catch (closeErr) {
-                            console.error(`[GW] Zombie process prevention - Error cerrando motor: ${closeErr.message}`);
-                        }
-                    }
-                }
-                return;
-            }
+            // NOTE: scrape_nexus is intentionally NOT handled here.
+            // All web-scraping logic belongs in the Python backend (sky_claw/scraper/).
+            // This gateway is a stateless message bridge only.
 
             if (message.type === "response" || message.type === "hitl_request") {
                 const text = message.payload?.text || message.data?.reason || "Mensaje del sistema recibido.";

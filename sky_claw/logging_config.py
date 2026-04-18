@@ -86,8 +86,8 @@ def setup_logging(level: int = logging.INFO, log_file: str = "sky_claw.log"):
     redact_filter = SecurityRedactionFilter()
 
     # 10 MB per file, 5 backups
-    MAX_BYTES = 10 * 1024 * 1024
-    BACKUP_COUNT = 5
+    max_bytes = 10 * 1024 * 1024
+    backup_count = 5
 
     # --- Console Handler ---
     console_handler = logging.StreamHandler(sys.stdout)
@@ -109,7 +109,7 @@ def setup_logging(level: int = logging.INFO, log_file: str = "sky_claw.log"):
     def _add_rotating_handler(logger_obj, filename, propagate=True):
         file_path = os.path.join("logs", filename)
         handler = logging.handlers.RotatingFileHandler(
-            file_path, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding="utf-8"
+            file_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
         )
         handler.setFormatter(json_formatter)
         handler.addFilter(corr_filter)

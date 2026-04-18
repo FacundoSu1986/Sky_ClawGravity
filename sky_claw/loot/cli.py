@@ -104,12 +104,12 @@ class LOOTRunner:
                 timeout=self._config.timeout,
             )
         except FileNotFoundError:
-            raise LOOTNotFoundError(f"LOOT executable not found at {loot_path}")
+            raise LOOTNotFoundError(f"LOOT executable not found at {loot_path}") from None
         except TimeoutError:
             proc.kill()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(proc.wait(), timeout=3.0)
-            raise LOOTTimeoutError(self._config.timeout)
+            raise LOOTTimeoutError(self._config.timeout) from None
 
         stdout_text = stdout.decode(errors="replace")
         stderr_text = stderr.decode(errors="replace")

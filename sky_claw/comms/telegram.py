@@ -164,15 +164,14 @@ class TelegramWebhook:
         reply_msg = message_or_callback.get("reply_to_message") or message.get(
             "reply_to_message"
         )
-        if reply_msg:
-            if (
-                reply_msg.get("forward_date") is not None
-                or reply_msg.get("forward_from") is not None
-            ):
-                logger.warning(
-                    "Blocked: reply to forwarded message from potentially unauthorized source"
-                )
-                return False
+        if reply_msg and (
+            reply_msg.get("forward_date") is not None
+            or reply_msg.get("forward_from") is not None
+        ):
+            logger.warning(
+                "Blocked: reply to forwarded message from potentially unauthorized source"
+            )
+            return False
 
         return True
 

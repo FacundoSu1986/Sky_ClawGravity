@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+
 from sky_claw.db.async_registry import AsyncModRegistry
 
 if TYPE_CHECKING:

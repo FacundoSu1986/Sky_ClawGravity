@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+
 from sky_claw.agent.providers import (
     AnthropicProvider,
     DeepSeekProvider,
@@ -303,9 +304,7 @@ class TestOllamaProvider:
 
         session = MagicMock(spec=aiohttp.ClientSession)
 
-        result = await provider.chat(
-            [{"role": "user", "content": "test"}], [], session, gateway=mock_gateway
-        )
+        result = await provider.chat([{"role": "user", "content": "test"}], [], session, gateway=mock_gateway)
 
         assert result["stop_reason"] == "end_turn"
         call_url = mock_gateway.request.call_args[0][1]
@@ -320,9 +319,7 @@ class TestOllamaProvider:
         mock_response.status = 200
         mock_response.raise_for_status = MagicMock()
         mock_response.json = AsyncMock(
-            return_value={
-                "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]
-            }
+            return_value={"choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}]}
         )
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=False)
@@ -332,9 +329,7 @@ class TestOllamaProvider:
 
         session = MagicMock(spec=aiohttp.ClientSession)
 
-        await provider.chat(
-            [{"role": "user", "content": "x"}], [], session, gateway=mock_gateway
-        )
+        await provider.chat([{"role": "user", "content": "x"}], [], session, gateway=mock_gateway)
 
         # Ollama doesn't send auth headers
         call_kwargs = mock_gateway.request.call_args[1]
@@ -407,9 +402,8 @@ class TestCreateProvider:
             create_provider(provider_name="gpt5")
 
     def test_anthropic_without_key_raises(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ProviderConfigError, match="ANTHROPIC_API_KEY"):
-                create_provider(provider_name="anthropic")
+        with patch.dict(os.environ, {}, clear=True), pytest.raises(ProviderConfigError, match="ANTHROPIC_API_KEY"):
+            create_provider(provider_name="anthropic")
 
     def test_auto_detect_anthropic(self) -> None:
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-auto"}, clear=True):

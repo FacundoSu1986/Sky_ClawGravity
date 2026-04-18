@@ -402,7 +402,7 @@ class EnvironmentScanner:
         subfolder names. Does NOT iterate all subdirectories.
         """
         # Known subfolder names where tools are typically installed
-        _KNOWN_SUBDIRS = (
+        _known_subdirs = (
             "LOOT",
             "SSEEdit",
             "xEdit",
@@ -426,7 +426,7 @@ class EnvironmentScanner:
                     return candidate
 
             # Check only known subfolder names (fast)
-            for subdir_name in _KNOWN_SUBDIRS:
+            for subdir_name in _known_subdirs:
                 subdir = root / subdir_name
                 if not subdir.is_dir():
                     continue

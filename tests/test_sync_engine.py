@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from tenacity import wait_none
+
 from sky_claw.db.async_registry import AsyncModRegistry
 from sky_claw.mo2.vfs import MO2Controller
 from sky_claw.orchestrator.sync_engine import (
@@ -18,7 +20,6 @@ from sky_claw.orchestrator.sync_engine import (
 from sky_claw.scraper.masterlist import MasterlistClient, MasterlistFetchError
 from sky_claw.security.network_gateway import NetworkGateway
 from sky_claw.security.path_validator import PathValidator
-from tenacity import wait_none
 
 if TYPE_CHECKING:
     import pathlib

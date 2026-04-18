@@ -49,7 +49,12 @@ class RollbackManager:
     async def __aenter__(self) -> RollbackManager:
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
         pass
 
     async def undo_last_operation(self, agent_id: str) -> RollbackResult:

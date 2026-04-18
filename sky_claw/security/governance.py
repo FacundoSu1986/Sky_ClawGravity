@@ -107,7 +107,7 @@ class GovernanceManager:
                     f"Error crítico cargando whitelist: {e}. Abortando para prevenir pérdida de datos."
                 )
                 # Evita que el framework inicie con una whitelist comprometida
-                raise RuntimeError(f"Integridad de whitelist comprometida: {e}")
+                raise RuntimeError(f"Integridad de whitelist comprometida: {e}") from e
         return set()
 
     def save_whitelist(self):

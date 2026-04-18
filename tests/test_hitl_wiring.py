@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+
 from sky_claw.comms.telegram import TelegramWebhook, _parse_hitl_command
 from sky_claw.comms.telegram_sender import TelegramSender
 from sky_claw.db.async_registry import AsyncModRegistry
@@ -679,13 +680,12 @@ class TestEndToEndHITLFlow:
                 mock_sess.__aexit__ = AsyncMock(return_value=False)
                 mock_cls.return_value = mock_sess
 
-                with patch.object(downloader, "get_file_info", return_value=fi):
-                    with patch.object(
-                        sync_engine, "enqueue_download", side_effect=_fake_enqueue
-                    ):
-                        result_str = await tool_registry.execute(
-                            "download_mod", {"nexus_id": 42, "file_id": 7}
-                        )
+                with patch.object(downloader, "get_file_info", return_value=fi), patch.object(
+                    sync_engine, "enqueue_download", side_effect=_fake_enqueue
+                ):
+                    result_str = await tool_registry.execute(
+                        "download_mod", {"nexus_id": 42, "file_id": 7}
+                    )
             tool_result.update(json.loads(result_str))
 
         tool_task = asyncio.create_task(_run_tool())

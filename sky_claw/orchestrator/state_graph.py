@@ -29,10 +29,10 @@ try:
     LANGGRAPH_AVAILABLE = True
 except ImportError:
     LANGGRAPH_AVAILABLE = False
-    StateGraph = object
-    END = "__END__"
-    START = "__START__"
-    MemorySaver = None
+    StateGraph: Any = object  # type: ignore[no-redef]
+    END: str = "__END__"  # type: ignore[no-redef]
+    START: str = "__START__"  # type: ignore[no-redef]
+    MemorySaver: Any = None  # type: ignore[no-redef]
 
 try:
     from pydantic import BaseModel, Field, field_validator  # noqa: F401
@@ -40,10 +40,12 @@ try:
     PYDANTIC_AVAILABLE = True
 except ImportError:
     PYDANTIC_AVAILABLE = False
-    BaseModel = object
+    BaseModel: Any = object  # type: ignore[no-redef]
 
-    def Field(*args, **kwargs):
+    def field_stub(*args: Any, **kwargs: Any) -> Any:
         return None
+
+    Field: Any = field_stub  # type: ignore[no-redef]
 
 
 logger = logging.getLogger("SkyClaw.StateGraph")
@@ -266,10 +268,10 @@ if PYDANTIC_AVAILABLE:
 
 else:
     # Fallback sin Pydantic
-    class WorkflowState:
+    class WorkflowState:  # type: ignore[no-redef]
         """Estado del workflow sin Pydantic."""
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.workflow_id = f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
             self.current_state = SupervisorState.INIT
             self.previous_state = None
@@ -277,13 +279,13 @@ else:
             self.modlist_path = None
             self.last_mtime = 0.0
             self.pending_event = None
-            self.event_data = {}
+            self.event_data: dict[str, Any] = {}
             self.tool_name = None
-            self.tool_payload = {}
+            self.tool_payload: dict[str, Any] = {}
             self.tool_result = None
             self.hitl_request = None
             self.hitl_response = None
-            self.transition_history = []
+            self.transition_history: list[dict[str, Any]] = []
             self.last_error = None
             self.error_count = 0
             # FASE 1.5: Campos de rollback
@@ -372,7 +374,7 @@ class StateGraphNodes:
     @staticmethod
     def hitl_wait_node(state: StateGraphState) -> dict[str, Any]:
         """Nodo de espera HITL - esperando aprobación humana."""
-        hitl_request = state.get("hitl_request", {})
+        hitl_request: dict[str, Any] = state.get("hitl_request") or {}
         logger.info(
             f"[StateGraph] Esperando aprobación HITL: {hitl_request.get('action_type')}"
         )
@@ -591,7 +593,7 @@ class StateGraphEdges:
             return StateGraphEdges._validate_and_route(
                 SupervisorState.PATCHING, SupervisorState.ERROR
             )
-        elif (
+        elif tool_result and (
             tool_result.get("status") == "success"
             or tool_result.get("status") == "aborted"
         ):
@@ -633,7 +635,7 @@ class StateGraphEdges:
             return StateGraphEdges._validate_and_route(
                 SupervisorState.DISPATCHING, SupervisorState.ERROR
             )
-        elif (
+        elif tool_result and (
             tool_result.get("status") == "success"
             or tool_result.get("status") == "aborted"
         ):
@@ -681,7 +683,7 @@ class StateGraphEdges:
         - IDLE: si el rollback fue exitoso
         - ERROR_FATAL: si el rollback falló
         """
-        rollback_result = state.get("rollback_result", {})
+        rollback_result: dict[str, Any] = state.get("rollback_result") or {}
 
         if rollback_result.get("success", False):
             logger.info("[StateGraph] Rollback exitoso, transicionando a IDLE")
@@ -715,11 +717,11 @@ class SupervisorStateGraph:
 
     def __init__(self, profile_name: str = "Default"):
         self.profile_name = profile_name
-        self.graph: StateGraph | None = None
-        self.checkpointer: MemorySaver | None = None
-        self.compiled_graph = None
+        self.graph: Any = None
+        self.checkpointer: Any = None
+        self.compiled_graph: Any = None
         self._state: WorkflowState | None = None
-        self._callbacks: dict[str, Callable] = {}
+        self._callbacks: dict[str, Callable[..., Any]] = {}
 
         if LANGGRAPH_AVAILABLE:
             self._build_graph()
@@ -820,7 +822,7 @@ class SupervisorStateGraph:
 
         logger.info("[StateGraph] Grafo de estados construido y compilado exitosamente")
 
-    def register_callback(self, state: SupervisorState, callback: Callable) -> None:
+    def register_callback(self, state: SupervisorState, callback: Callable[..., Any]) -> None:
         """Registra un callback para un estado específico."""
         key = f"{state.value}_callback"
         self._callbacks[key] = callback
@@ -872,7 +874,7 @@ class SupervisorStateGraph:
         try:
             # Ejecutar el grafo
             result = await self.compiled_graph.ainvoke(state, config)
-            return result
+            return result  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"[StateGraph] Error ejecutando workflow: {e}")
             state["last_error"] = str(e)
@@ -958,7 +960,7 @@ class SupervisorStateGraph:
                     f.write(mermaid_png)
                 logger.info(f"[StateGraph] Diagrama guardado en: {output_path}")
 
-            return mermaid_png
+            return mermaid_png  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"[StateGraph] Error generando visualización: {e}")
             return None

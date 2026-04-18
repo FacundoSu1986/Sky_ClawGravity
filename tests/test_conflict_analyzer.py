@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from sky_claw.xedit.conflict_analyzer import (
     ConflictAnalyzer,
     ConflictReport,

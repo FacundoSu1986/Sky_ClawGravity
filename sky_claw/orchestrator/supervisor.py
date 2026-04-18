@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 import sqlite3
+from typing import Any
 
 # FASE 5: Imports de componentes de detección de conflictos de assets
 from sky_claw.assets import AssetConflictDetector, AssetConflictReport
@@ -235,7 +236,7 @@ class SupervisorAgent:
 
         return self._patch_orchestrator
 
-    async def start(self):
+    async def start(self) -> None:
         await self.db.init_db()
         # FASE 1.5: Abrir journal de operaciones
         await self.journal.open()
@@ -308,15 +309,16 @@ class SupervisorAgent:
         )
         # Aquí se inyectaría la llamada real a la herramienta de parsing local.
 
-    async def handle_execution_signal(self, payload: dict):
+    async def handle_execution_signal(self, payload: dict[str, Any]) -> None:
         """Reacciona a la señal de ignición forzada desde la GUI."""
         logger.info(
             "Ignición forzada desde GUI detectada. Despertando demonio proactivo."
         )
-        await self._trigger_proactive_analysis()
+        from sky_claw.orchestrator.events import Event
+        await self._trigger_proactive_analysis(Event(topic="system.manual.trigger", payload=payload))
 
     # FASE 1.5: Worker de pruning pasivo
-    async def dispatch_tool(self, tool_name: str, payload_dict: dict) -> dict:
+    async def dispatch_tool(self, tool_name: str, payload_dict: dict[str, Any]) -> dict[str, Any]:
         """
         Enrutador estricto. El LLM devuelve 'tool_name' y 'payload_dict'.
         Se valida con Pydantic inmediatamente.
@@ -350,7 +352,7 @@ class SupervisorAgent:
             # FASE 3: Synthesis Pipeline (delegado a SynthesisPipelineService)
             case "execute_synthesis_pipeline":
                 try:
-                    result = await self._synthesis_service.execute_pipeline(
+                    pipeline_result = await self._synthesis_service.execute_pipeline(
                         **payload_dict
                     )
                 except Exception as exc:
@@ -363,28 +365,32 @@ class SupervisorAgent:
                         "details": str(exc),
                     }
 
-                if not isinstance(result, dict):
+                if not isinstance(pipeline_result, dict):
                     logger.error(
                         "RCA: execute_synthesis_pipeline devolvió un tipo inválido: %s",
-                        type(result).__name__,
+                        type(pipeline_result).__name__,
                     )
                     return {
                         "status": "error",
                         "reason": "InvalidSynthesisPipelineResult",
                     }
 
-                return result
+                return pipeline_result
 
             # FASE 4: DynDOLOD/TexGen Pipeline Integration
             case "generate_lods":
-                return await self.execute_dyndolod_pipeline(**payload_dict)
+                import dataclasses
+                res = await self.execute_dyndolod_pipeline(**payload_dict)
+                return dataclasses.asdict(res)
 
             # FASE 5: Asset Conflict Detection Integration
             case "scan_asset_conflicts":
-                return self.scan_asset_conflicts()
+                import dataclasses
+                conflicts = self.scan_asset_conflicts()
+                return {"status": "success", "conflicts": [dataclasses.asdict(c) for c in conflicts]}
 
             case "scan_asset_conflicts_json":
-                return self.scan_asset_conflicts_json()
+                return {"status": "success", "json_report": self.scan_asset_conflicts_json()}
 
             # FASE 6: Wrye Bash Bashed Patch Integration
             case "generate_bashed_patch":
@@ -400,7 +406,7 @@ class SupervisorAgent:
                 return {"status": "error", "reason": "ToolNotFound"}
 
     # FASE 1.5: Método para ejecutar rollback
-    async def execute_rollback(self, agent_id: str) -> dict:
+    async def execute_rollback(self, agent_id: str) -> dict[str, Any]:
         """FASE 1.5: Ejecuta rollback de la última operación de un agente.
 
         Args:
@@ -571,7 +577,7 @@ class SupervisorAgent:
         )
         return self._wrye_bash_runner
 
-    async def _run_plugin_limit_guard(self, profile: str) -> dict:
+    async def _run_plugin_limit_guard(self, profile: str) -> dict[str, Any]:
         """M-04/M-05: Gate preventivo — valida el límite de 254 plugins.
 
         Recorre el modlist activo y llama a ConflictAnalyzer.validate_load_order_limit().
@@ -641,7 +647,7 @@ class SupervisorAgent:
         self,
         profile: str | None = None,
         validate_limit: bool = True,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """FASE 6: Genera el Bashed Patch con Wrye Bash.
 
         Flujo:
@@ -1154,8 +1160,8 @@ class SupervisorAgent:
 
         # PASO A: Crear snapshot antes de modificación
         try:
-            snapshot_path = await self.snapshot_manager.create_snapshot(target_plugin)
-            logger.debug("Snapshot creado: %s", snapshot_path)
+            snapshot_info = await self.snapshot_manager.create_snapshot(target_plugin)
+            logger.debug("Snapshot creado: %s", snapshot_info.snapshot_path)
         except (OSError, RuntimeError) as e:
             logger.error("Fallo al crear snapshot: %s", e, exc_info=True)
             raise PatchingError(f"Snapshot falló: {e}") from e
@@ -1206,7 +1212,7 @@ class SupervisorAgent:
                         records_patched=script_result.records_processed,
                         conflicts_resolved=len(report.plugin_pairs),
                         xedit_exit_code=script_result.exit_code,
-                        warnings=script_result.warnings,
+                        warnings=tuple(script_result.warnings),
                         error=(
                             None
                             if script_result.exit_code == 0
@@ -1218,7 +1224,7 @@ class SupervisorAgent:
                         "Error ejecutando script xEdit: %s", script_error, exc_info=True
                     )
                     # PASO C (fallo): Rollback automático
-                    await self._rollback_on_failure(snapshot_path, target_plugin)
+                    await self._rollback_on_failure(snapshot_info, target_plugin)
                     raise PatchingError(
                         f"Ejecución de parche falló, rollback ejecutado: {script_error}"
                     ) from script_error
@@ -1229,7 +1235,7 @@ class SupervisorAgent:
         except (OSError, RuntimeError) as e:
             logger.error("Error durante parcheo: %s", e, exc_info=True)
             # PASO C (fallo): Rollback automático
-            await self._rollback_on_failure(snapshot_path, target_plugin)
+            await self._rollback_on_failure(snapshot_info, target_plugin)
             raise PatchingError(f"Parcheo falló, rollback ejecutado: {e}") from e
 
         # PASO C (verificación): Verificar código de salida
@@ -1238,7 +1244,7 @@ class SupervisorAgent:
                 "xEdit retornó código de salida non-zero: %d",
                 result.xedit_exit_code,
             )
-            await self._rollback_on_failure(snapshot_path, target_plugin)
+            await self._rollback_on_failure(snapshot_info, target_plugin)
             raise PatchingError(
                 f"xEdit falló con código {result.xedit_exit_code}: {result.error}"
             )
@@ -1256,7 +1262,7 @@ class SupervisorAgent:
 
     async def _rollback_on_failure(
         self,
-        snapshot_path: pathlib.Path,
+        snapshot_info: SnapshotInfo,
         target: pathlib.Path,
     ) -> None:
         """Ejecuta rollback automático en caso de fallo de parcheo.
@@ -1265,13 +1271,13 @@ class SupervisorAgent:
         falla, se loggea como CRITICAL porque el archivo puede estar corrupto.
 
         Args:
-            snapshot_path: Path al snapshot creado antes del fallo.
+            snapshot_info: Información del snapshot creado antes del fallo.
             target: Path al archivo objetivo que necesita restauración.
         """
         logger.warning("Iniciando rollback para %s", target.name)
 
         try:
-            await self.snapshot_manager.restore_snapshot(snapshot_path, target)
+            await self.snapshot_manager.restore_snapshot(snapshot_info.snapshot_path, target)
             logger.info("Rollback completado exitosamente")
         except (OSError, RuntimeError) as rollback_error:
             # Esto es CRÍTICO - el archivo puede estar corrupto

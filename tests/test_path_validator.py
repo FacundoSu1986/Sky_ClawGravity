@@ -3,15 +3,15 @@
 Covers:
 - PathValidator construction: valid roots, empty roots raises ValueError.
 - validate: path inside sandbox → returned as resolved Path; path outside all
-  roots → PathViolation; path with '..' component → PathViolation (pre-resolve
+  roots → PathViolationError; path with '..' component → PathViolationError (pre-resolve
   guard); deeply nested path still inside root → allowed.
 - Symlinks: symlink pointing inside sandbox with strict_symlink=True → allowed;
-  symlink pointing outside sandbox with strict_symlink=True → PathViolation;
+  symlink pointing outside sandbox with strict_symlink=True → PathViolationError;
   symlink pointing outside sandbox with strict_symlink=False → allowed (resolved
-  normally if target is inside root, else PathViolation on final check).
+  normally if target is inside root, else PathViolationError on final check).
 - Multiple sandbox roots: file in any root is accepted.
 - sandboxed_io decorator: valid positional path → function executes; invalid
-  path → PathViolation; custom arg_name kwarg path → function executes.
+  path → PathViolationError; custom arg_name kwarg path → function executes.
 
 All tests use the `tmp_path` pytest fixture for real filesystem operations.
 No mocks are used where real filesystem calls are appropriate.
@@ -23,9 +23,10 @@ import pathlib
 import sys
 
 import pytest
+
 from sky_claw.security.path_validator import (
     PathValidator,
-    PathViolation,
+    PathViolationError,
     sandboxed_io,
 )
 
@@ -144,7 +145,7 @@ class TestValidateOutsideSandbox:
             outside = pathlib.Path("C:/Windows/System32/cmd.exe")
         else:
             outside = pathlib.Path("/etc/passwd")
-        with pytest.raises(PathViolation, match="outside all sandbox roots"):
+        with pytest.raises(PathViolationError, match="outside all sandbox roots"):
             v.validate(outside)
 
     def test_sibling_directory_outside_root_raises(
@@ -157,7 +158,7 @@ class TestValidateOutsideSandbox:
         v = _make_validator(sandbox)
         sneaky = sibling / "evil.esp"
         sneaky.touch()
-        with pytest.raises(PathViolation, match="outside all sandbox roots"):
+        with pytest.raises(PathViolationError, match="outside all sandbox roots"):
             v.validate(sneaky)
 
     def test_parent_of_root_is_outside(self, tmp_path: pathlib.Path) -> None:
@@ -167,7 +168,7 @@ class TestValidateOutsideSandbox:
         # tmp_path itself is the parent of the sandbox — not allowed.
         f = tmp_path / "outside.txt"
         f.touch()
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             v.validate(f)
 
     def test_violation_message_contains_path(self, tmp_path: pathlib.Path) -> None:
@@ -177,7 +178,7 @@ class TestValidateOutsideSandbox:
             outside = pathlib.Path("C:/Windows/notepad.exe")
         else:
             outside = pathlib.Path("/usr/bin/env")
-        with pytest.raises(PathViolation) as exc_info:
+        with pytest.raises(PathViolationError) as exc_info:
             v.validate(outside)
         assert "outside all sandbox roots" in str(exc_info.value)
 
@@ -192,19 +193,19 @@ class TestValidatePathTraversal:
         v = _make_validator(tmp_path)
         # The validator catches '..' in path parts before resolving.
         traversal = tmp_path / "sub" / ".." / ".." / "etc" / "passwd"
-        with pytest.raises(PathViolation, match="traversal"):
+        with pytest.raises(PathViolationError, match="traversal"):
             v.validate(traversal)
 
     def test_double_dot_at_start_raises(self, tmp_path: pathlib.Path) -> None:
         v = _make_validator(tmp_path)
         traversal = pathlib.Path("..") / "secret.txt"
-        with pytest.raises(PathViolation, match="traversal"):
+        with pytest.raises(PathViolationError, match="traversal"):
             v.validate(traversal)
 
     def test_double_dot_in_middle_raises(self, tmp_path: pathlib.Path) -> None:
         v = _make_validator(tmp_path)
         traversal = tmp_path / "mods" / ".." / ".." / "Windows" / "system32"
-        with pytest.raises(PathViolation, match="traversal"):
+        with pytest.raises(PathViolationError, match="traversal"):
             v.validate(traversal)
 
     @pytest.mark.skipif(
@@ -279,7 +280,7 @@ class TestValidateSymlinks:
         link.symlink_to(outside_file)
 
         v = _make_validator(sandbox)
-        with pytest.raises(PathViolation, match="Symlink strictly escapes sandbox"):
+        with pytest.raises(PathViolationError, match="Symlink strictly escapes sandbox"):
             v.validate(link, strict_symlink=True)
 
         # Clean up manually.
@@ -319,7 +320,7 @@ class TestValidateSymlinks:
         v = _make_validator(sandbox)
         # strict_symlink=False: the pre-resolve symlink check is skipped, but
         # resolve() will give the outside path, which fails the root check.
-        with pytest.raises(PathViolation, match="outside all sandbox roots"):
+        with pytest.raises(PathViolationError, match="outside all sandbox roots"):
             v.validate(link, strict_symlink=False)
 
         # Clean up.
@@ -333,7 +334,7 @@ class TestValidateSymlinks:
         link.symlink_to(tmp_path / "nonexistent_target.txt")
 
         v = _make_validator(tmp_path)
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             v.validate(link, strict_symlink=True)
 
 
@@ -373,7 +374,7 @@ class TestMultipleSandboxRoots:
         f = outside / "forbidden.txt"
         f.touch()
         v = _make_validator(r1, r2)
-        with pytest.raises(PathViolation, match="outside all sandbox roots"):
+        with pytest.raises(PathViolationError, match="outside all sandbox roots"):
             v.validate(f)
 
     def test_three_roots_file_in_third(self, tmp_path: pathlib.Path) -> None:
@@ -428,7 +429,7 @@ class TestSandboxedIODecorator:
             outside = pathlib.Path("C:/Windows/System32/ntdll.dll")
         else:
             outside = pathlib.Path("/etc/shadow")
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             read_file(outside)
 
     def test_custom_arg_name_kwarg(self, tmp_path: pathlib.Path) -> None:
@@ -449,7 +450,7 @@ class TestSandboxedIODecorator:
             outside = pathlib.Path("C:/Windows/win.ini")
         else:
             outside = pathlib.Path("/etc/crontab")
-        with pytest.raises(PathViolation):
+        with pytest.raises(PathViolationError):
             write_file(target=outside)
 
     def test_return_value_preserved(self, tmp_path: pathlib.Path) -> None:
@@ -474,7 +475,7 @@ class TestSandboxedIODecorator:
             pass
 
         traversal = tmp_path / ".." / "etc" / "passwd"
-        with pytest.raises(PathViolation, match="traversal"):
+        with pytest.raises(PathViolationError, match="traversal"):
             process(traversal)
 
     def test_multiple_calls_only_checks_path_arg(self, tmp_path: pathlib.Path) -> None:

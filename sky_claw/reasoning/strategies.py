@@ -324,7 +324,7 @@ class MCTSSearchStrategy(BaseSearchStrategy[T, S]):
         - N_child = visitas del nodo hijo
         """
         node = root
-        C = self._config.mcts_exploration_constant
+        exploration_c = self._config.mcts_exploration_constant
 
         while node.children:
             # LÓGICA: N_parent son las visitas reales del padre, no la suma de los hijos
@@ -349,7 +349,7 @@ class MCTSSearchStrategy(BaseSearchStrategy[T, S]):
 
                 # Calcular UCB1
                 exploitation = child.metadata.get("mcts_avg_score", child.score)
-                exploration = C * math.sqrt(math.log(parent_visits) / visits)
+                exploration = exploration_c * math.sqrt(math.log(parent_visits) / visits)
                 ucb_score = exploitation + exploration
 
                 if ucb_score > best_score:

@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp import web
+
 from sky_claw.security.auth_token_manager import AuthTokenManager
 from sky_claw.web.app import WebApp
 

@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from tenacity import wait_none
+
 from sky_claw.agent.tools import AsyncToolRegistry, DownloadModParams
 from sky_claw.db.async_registry import AsyncModRegistry
 from sky_claw.mo2.vfs import MO2Controller
@@ -28,11 +30,10 @@ from sky_claw.scraper.nexus_downloader import (
 from sky_claw.security.hitl import Decision, HITLGuard
 from sky_claw.security.network_gateway import (
     EgressPolicy,
-    EgressViolation,
+    EgressViolationError,
     NetworkGateway,
 )
 from sky_claw.security.path_validator import PathValidator
-from tenacity import wait_none
 
 if TYPE_CHECKING:
     import pathlib
@@ -713,7 +714,7 @@ class TestDownload:
 
     @pytest.mark.asyncio
     async def test_egress_violation_propagates(self, tmp_path: pathlib.Path) -> None:
-        """A CDN URL not in the allow-list must raise EgressViolation."""
+        """A CDN URL not in the allow-list must raise EgressViolationError."""
         content = b"data"
         resp = _make_aiohttp_response(content=content)
         session = _make_session(resp)
@@ -726,7 +727,7 @@ class TestDownload:
             file_name="blocked.zip",
             download_url="https://premium-files.nexusmods.com/blocked.zip",
         )
-        with pytest.raises(EgressViolation):
+        with pytest.raises(EgressViolationError):
             await d.download(fi, session)
 
 
@@ -1055,18 +1056,16 @@ class TestDownloadModApproved:
             mock_session.__aexit__ = AsyncMock(return_value=False)
             mock_session_cls.return_value = mock_session
 
-            with patch.object(downloader, "get_file_info", return_value=fi):
-                with patch.object(
-                    guard, "request_approval", return_value=Decision.APPROVED
-                ):
-                    with patch.object(
-                        sync_engine, "enqueue_download", side_effect=_fake_enqueue
-                    ):
-                        result = json.loads(
-                            await registry.execute(
-                                "download_mod", {"nexus_id": 55, "file_id": 77}
-                            )
-                        )
+            with patch.object(downloader, "get_file_info", return_value=fi), patch.object(
+                guard, "request_approval", return_value=Decision.APPROVED
+            ), patch.object(
+                sync_engine, "enqueue_download", side_effect=_fake_enqueue
+            ):
+                result = json.loads(
+                    await registry.execute(
+                        "download_mod", {"nexus_id": 55, "file_id": 77}
+                    )
+                )
 
         assert result["status"] == "enqueued"
         assert result["nexus_id"] == 55
@@ -1105,18 +1104,16 @@ class TestDownloadModApproved:
             mock_session.__aexit__ = AsyncMock(return_value=False)
             mock_session_cls.return_value = mock_session
 
-            with patch.object(downloader, "get_file_info", return_value=fi):
-                with patch.object(
-                    guard, "request_approval", return_value=Decision.APPROVED
-                ):
-                    with patch.object(
-                        sync_engine, "enqueue_download", side_effect=_discard_enqueue
-                    ):
-                        result = json.loads(
-                            await registry.execute(
-                                "download_mod", {"nexus_id": 1, "file_id": 1}
-                            )
-                        )
+            with patch.object(downloader, "get_file_info", return_value=fi), patch.object(
+                guard, "request_approval", return_value=Decision.APPROVED
+            ), patch.object(
+                sync_engine, "enqueue_download", side_effect=_discard_enqueue
+            ):
+                result = json.loads(
+                    await registry.execute(
+                        "download_mod", {"nexus_id": 1, "file_id": 1}
+                    )
+                )
 
         assert "staging_dir" in result
         assert str(downloader.staging_dir) == result["staging_dir"]
@@ -1180,11 +1177,11 @@ class TestNetworkGatewayCDN:
     @pytest.mark.asyncio
     async def test_premium_files_post_rejected(self) -> None:
         gw = NetworkGateway(EgressPolicy(block_private_ips=False))
-        with pytest.raises(EgressViolation):
+        with pytest.raises(EgressViolationError):
             await gw.authorize("POST", "https://premium-files.nexusmods.com/file.zip")
 
     @pytest.mark.asyncio
     async def test_cf_files_post_rejected(self) -> None:
         gw = NetworkGateway(EgressPolicy(block_private_ips=False))
-        with pytest.raises(EgressViolation):
+        with pytest.raises(EgressViolationError):
             await gw.authorize("POST", "https://cf-files.nexusmods.com/file.zip")

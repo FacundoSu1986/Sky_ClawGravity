@@ -357,7 +357,7 @@ class ConflictAnalyzer:
         for c in conflicts:
             for loser in c.losers:
                 # Normalize pair key so (A,B) == (B,A).
-                key = tuple(sorted([c.winner, loser]))
+                key = (c.winner, loser) if c.winner < loser else (loser, c.winner)
                 pair_map[key].append(c)
 
         pairs: list[PluginConflictPair] = []

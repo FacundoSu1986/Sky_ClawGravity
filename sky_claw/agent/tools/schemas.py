@@ -29,7 +29,7 @@ def _validate_sandbox_path(v: str) -> str:
     try:
         resolved = pathlib.Path(v).resolve()
     except Exception as exc:
-        raise ValueError(f"Invalid path format: {exc}")
+        raise ValueError(f"Invalid path format: {exc}") from exc
 
     for allowed_dir in ALLOWED_SANDBOX_DIRS:
         try:
@@ -58,8 +58,11 @@ class ProfileParams(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(strict=True)
 
+    # SECURITY: Tightened pattern — removed '%()\[\] to prevent argument injection
+    # into LOOT CLI (loot.exe --game-path ...).  Spaces and dots are still valid
+    # because MO2 profile names frequently contain them.
     profile: str = pydantic.Field(
-        min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$"
+        min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.\- ]+$"
     )
 
 
@@ -82,7 +85,9 @@ class XEditAnalysisParams(pydantic.BaseModel):
     script_name: str = pydantic.Field(
         min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-]+\.pas$"
     )
-    plugins: list[str] = pydantic.Field(min_length=1)
+    # SECURITY: max_length=50 prevents DoS via oversized plugin lists that
+    # would generate a command line exceeding Windows MAX_PATH limits for SSEEdit.exe.
+    plugins: list[str] = pydantic.Field(min_length=1, max_length=50)
 
 
 class DownloadModParams(pydantic.BaseModel):

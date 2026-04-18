@@ -3,6 +3,7 @@
 import pathlib
 
 import pytest
+
 from sky_claw.db.journal import (
     OperationJournal,
     OperationStatus,

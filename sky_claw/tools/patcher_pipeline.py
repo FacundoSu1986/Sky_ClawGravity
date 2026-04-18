@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from sky_claw.security.path_validator import PathValidator
 
-from sky_claw.security.path_validator import PathViolation
+from sky_claw.security.path_validator import PathViolationError
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class PatcherPipeline:
         if self._path_validator is not None:
             try:
                 self._path_validator.validate(path, strict_symlink=False)
-            except PathViolation:
+            except PathViolationError:
                 logger.error("Path traversal blocked for pipeline load: %s", path)
                 raise
 
@@ -432,7 +432,7 @@ class PatcherPipeline:
         if self._path_validator is not None:
             try:
                 self._path_validator.validate(json_path, strict_symlink=False)
-            except PathViolation:
+            except PathViolationError:
                 logger.error("Path traversal blocked for pipeline save: %s", json_path)
                 raise
 

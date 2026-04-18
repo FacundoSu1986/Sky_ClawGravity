@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from sky_claw.xedit.output_parser import XEditConflict, XEditOutputParser, XEditResult
 from sky_claw.xedit.runner import (
     ScriptGenerator,

@@ -179,6 +179,10 @@ class SyncEngine:
         self._hitl = hitl
         self._rollback_manager = rollback_manager  # FASE 1.5
         self._download_tasks: set[asyncio.Task[Any]] = set()
+        # CONCURRENCY: Limit simultaneous downloads to 3 to avoid saturating
+        # bandwidth, exhausting file descriptors, and triggering Nexus Mods
+        # rate-limiting / IP bans.
+        self._download_semaphore = asyncio.Semaphore(3)
         self._shutdown_event = asyncio.Event()
         # Retry wait strategy; override in tests to avoid real sleeps
         self._fetch_retry_wait = (
@@ -729,32 +733,33 @@ class SyncEngine:
         self, coro: Coroutine[Any, Any, Any], context: str = "unknown"
     ) -> asyncio.Task[Any]:
         async def _download_wrapper() -> None:
-            try:
-                await coro
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                # H-02: Logging estructurado para debugging
-                logger.error(
-                    "worker_download_failed",
-                    extra={
-                        "context": context,
-                        "error_type": type(exc).__name__,
-                        "error_message": str(exc),
-                        "timestamp": datetime.utcnow().isoformat(),
-                    },
-                )
-                detail = f"{context} failed: {exc}"
+            async with self._download_semaphore:
                 try:
-                    # H-06: Actualizar estado de tarea a "failed" en SQLite
-                    await self._registry.log_tasks_batch(
-                        [(None, "download_mod", "failed", detail)]
+                    await coro
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    # H-02: Logging estructurado para debugging
+                    logger.error(
+                        "worker_download_failed",
+                        extra={
+                            "context": context,
+                            "error_type": type(exc).__name__,
+                            "error_message": str(exc),
+                            "timestamp": datetime.utcnow().isoformat(),
+                        },
                     )
-                except Exception as comp_exc:
-                    logger.error("Failed to log compensation task: %s", comp_exc)
-                finally:
-                    # BUG-001 FIX: Usar método thread-safe para registrar errores
-                    await self.metrics.increment_error_type(type(exc).__name__)
+                    detail = f"{context} failed: {exc}"
+                    try:
+                        # H-06: Actualizar estado de tarea a "failed" en SQLite
+                        await self._registry.log_tasks_batch(
+                            [(None, "download_mod", "failed", detail)]
+                        )
+                    except Exception as comp_exc:
+                        logger.error("Failed to log compensation task: %s", comp_exc)
+                    finally:
+                        # BUG-001 FIX: Usar método thread-safe para registrar errores
+                        await self.metrics.increment_error_type(type(exc).__name__)
 
         task: asyncio.Task[Any] = asyncio.create_task(_download_wrapper())
         self._download_tasks.add(task)

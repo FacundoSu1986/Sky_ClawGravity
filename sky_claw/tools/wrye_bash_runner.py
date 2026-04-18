@@ -98,4 +98,4 @@ class WryeBashRunner:
             )
         except Exception as e:
             logger.error(f"Wrye Bash execution failed: {e}")
-            raise WryeBashExecutionError(f"Failed to execute Wrye Bash: {e}")
+            raise WryeBashExecutionError(f"Failed to execute Wrye Bash: {e}") from e

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from sky_claw.core.event_bus import CoreEventBus, Event
 from sky_claw.db.locks import (
     DistributedLockManager,

@@ -23,7 +23,7 @@ import aiofiles.os
 
 from sky_claw.fomod.parser import FomodParseError, parse_fomod
 from sky_claw.fomod.resolver import FomodResolver
-from sky_claw.security.path_validator import PathValidator, PathViolation
+from sky_claw.security.path_validator import PathValidator, PathViolationError
 
 if TYPE_CHECKING:
     from sky_claw.fomod.models import FileInstall
@@ -80,10 +80,10 @@ def _extract_zip(archive: pathlib.Path, dest: pathlib.Path) -> None:
             if info.is_dir():
                 continue
             if not _is_safe_path(info.filename):
-                raise PathViolation(f"Zip-slip detected: {info.filename!r}")
+                raise PathViolationError(f"Zip-slip detected: {info.filename!r}")
             target_path = (dest_resolved / info.filename).resolve()
             if not target_path.is_relative_to(dest_resolved):
-                raise PathViolation(
+                raise PathViolationError(
                     f"Path traversal detected: {info.filename!r} escapes sandbox"
                 )
             target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,10 +103,10 @@ def _extract_7z(archive: pathlib.Path, dest: pathlib.Path) -> None:
     with py7zr.SevenZipFile(archive, "r") as szf:
         for name in szf.getnames():
             if not _is_safe_path(name):
-                raise PathViolation(f"Zip-slip detected in 7z: {name!r}")
+                raise PathViolationError(f"Zip-slip detected in 7z: {name!r}")
             target_path = (dest_resolved / name).resolve()
             if not target_path.is_relative_to(dest_resolved):
-                raise PathViolation(
+                raise PathViolationError(
                     f"Path traversal detected in 7z: {name!r} escapes sandbox"
                 )
 
@@ -129,10 +129,10 @@ def _extract_rar(archive: pathlib.Path, dest: pathlib.Path) -> None:
             if info.is_dir():
                 continue
             if not _is_safe_path(info.filename):
-                raise PathViolation(f"Zip-slip detected in rar: {info.filename!r}")
+                raise PathViolationError(f"Zip-slip detected in rar: {info.filename!r}")
             target_path = (dest_resolved / info.filename).resolve()
             if not target_path.is_relative_to(dest_resolved):
-                raise PathViolation(
+                raise PathViolationError(
                     f"Path traversal detected in rar: {info.filename!r} escapes sandbox"
                 )
             target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -239,7 +239,7 @@ class FomodInstaller:
             # Extract
             try:
                 extractor(archive_path, tmp_dir)
-            except PathViolation:
+            except PathViolationError:
                 raise
             except Exception as exc:
                 return InstallResult(

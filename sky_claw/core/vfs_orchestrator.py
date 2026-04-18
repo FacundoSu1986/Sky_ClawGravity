@@ -223,7 +223,7 @@ class VFSOrchestrator:
                     f"Operación excedió {self._timeout_seconds} segundos",
                     timeout_seconds=self._timeout_seconds,
                     tool_path=tool_path,
-                )
+                ) from None
 
             # Decodificación de salidas
             stdout = (

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
+from typing import Any
 
 
 @dataclass
@@ -27,7 +28,7 @@ class AppState:
     form_data: dict[str, str] = field(default_factory=dict)
 
     # Tareas asíncronas de fondo (mantenido por seguridad del event loop)
-    _bg_tasks: set = field(default_factory=set)
+    _bg_tasks: set[Any] = field(default_factory=set)
 
     def clear_chat_messages(self) -> None:
         self._chat_messages.clear()

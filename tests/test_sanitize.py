@@ -14,6 +14,7 @@ import json
 import unicodedata
 
 import pytest
+
 from sky_claw.security.sanitize import (
     _MAX_JSON_SIZE,
     DEFAULT_MAX_LENGTH,

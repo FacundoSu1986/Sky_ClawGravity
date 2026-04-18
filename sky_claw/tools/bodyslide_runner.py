@@ -94,4 +94,4 @@ class BodySlideRunner:
             )
         except Exception as e:
             logger.error(f"BodySlide execution failed: {e}")
-            raise BodySlideExecutionError(f"Failed to execute BodySlide: {e}")
+            raise BodySlideExecutionError(f"Failed to execute BodySlide: {e}") from e

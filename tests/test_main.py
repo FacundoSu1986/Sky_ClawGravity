@@ -6,6 +6,7 @@ import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from sky_claw.__main__ import AppContext, _main, _parse_args
 
 # ------------------------------------------------------------------

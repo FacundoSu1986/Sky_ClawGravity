@@ -16,7 +16,7 @@ from .event_payloads import (
     SynthesisPipelineCompletedPayload,
     SynthesisPipelineStartedPayload,
 )
-from .models import CircuitBreakerTripped, WSLInteropError
+from .models import CircuitBreakerTrippedError, WSLInteropError
 from .path_resolver import PathResolutionService, PathResolver
 from .schemas import (
     AgentToolRequest,
@@ -41,7 +41,7 @@ __all__ = [
     "AgentToolRequest",
     "AgentToolResponse",
     # Excepciones
-    "CircuitBreakerTripped",
+    "CircuitBreakerTrippedError",
     # Event Bus
     "CoreEventBus",
     # Database

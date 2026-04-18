@@ -156,10 +156,9 @@ class DashboardGUI:
             with (
                 ui.element("div")
                 .classes("p-6")
-                .style("border-bottom: 1px solid var(--sky-border);")
+                .style("border-bottom: 1px solid var(--sky-border);"), ui.row().classes("items-center gap-3")
             ):
-                with ui.row().classes("items-center gap-3"):
-                    ui.html(f"""
+                ui.html(f"""
                         <div style="width:40px;height:40px;border-radius:12px;display:flex;
                                     align-items:center;justify-content:center;
                                     background:linear-gradient(135deg, #C8A84E, #8B7332);"
@@ -167,13 +166,13 @@ class DashboardGUI:
                             {_ICON_LAYERS}
                         </div>
                     """)
-                    with ui.column().classes("gap-0"):
-                        ui.label("SKY-CLAW").style(
-                            "color: var(--sky-gold); font-weight:800; font-size:1.1rem; letter-spacing:0.15em;"
-                        )
-                        ui.label("Technical Operations").style(
-                            "color: var(--sky-text-muted); font-size:0.65rem;"
-                        )
+                with ui.column().classes("gap-0"):
+                    ui.label("SKY-CLAW").style(
+                        "color: var(--sky-gold); font-weight:800; font-size:1.1rem; letter-spacing:0.15em;"
+                    )
+                    ui.label("Technical Operations").style(
+                        "color: var(--sky-text-muted); font-size:0.65rem;"
+                    )
 
             # Nav
             with ui.column().classes("flex-1 p-4 gap-1"):
@@ -206,15 +205,14 @@ class DashboardGUI:
             with (
                 ui.element("div")
                 .classes("p-4")
-                .style("border-top: 1px solid var(--sky-border);")
+                .style("border-top: 1px solid var(--sky-border);"), ui.row().classes("items-center gap-2")
             ):
-                with ui.row().classes("items-center gap-2"):
-                    self._status_dot = ui.element("div").classes(
-                        "sky-status-dot sky-status-dot--connected"
-                    )
-                    self._status_label = ui.label("Conectado").style(
-                        "color: var(--sky-text-muted); font-size:0.75rem;"
-                    )
+                self._status_dot = ui.element("div").classes(
+                    "sky-status-dot sky-status-dot--connected"
+                )
+                self._status_label = ui.label("Conectado").style(
+                    "color: var(--sky-text-muted); font-size:0.75rem;"
+                )
 
     def _navigate(self, view: str) -> None:
         if view == "settings":
@@ -343,8 +341,7 @@ class DashboardGUI:
 
     # ── Stat Summary Cards ────────────────────────────────────────────
     def _build_stat_summary(self, title: str, value: str, icon_svg: str) -> None:
-        with ui.element("div").classes("sky-widget-panel flex-1 p-5 sky-card-hover"):
-            with ui.row().classes("items-center justify-between"):
+        with ui.element("div").classes("sky-widget-panel flex-1 p-5 sky-card-hover"), ui.row().classes("items-center justify-between"):
                 with ui.column().classes("gap-1"):
                     ui.label(title).style(
                         "color: var(--sky-text-muted); font-size:0.7rem; "
