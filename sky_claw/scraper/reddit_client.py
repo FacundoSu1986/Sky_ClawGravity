@@ -47,7 +47,8 @@ _DEFAULT_SUBREDDITS: tuple[str, ...] = ("skyrimmods", "skyrimse")
 _DEFAULT_WINDOW_SECONDS = 60.0
 _DEFAULT_SEARCH_LIMIT = 10
 _DEFAULT_TIMEOUT = 15.0
-_SNIPPET_MAX = 180
+_SNIPPET_MAX = 500
+_RESULT_SENTINEL = object()
 
 
 class _TransientHTTPError(Exception):
@@ -143,13 +144,13 @@ class RedditKnowledgeResolver:
         self,
         user_agent: str,
         *,
-        rpm_limit: int = 30,
-        subreddits: tuple[str, ...] = _DEFAULT_SUBREDDITS,
-        window_seconds: float = _DEFAULT_WINDOW_SECONDS,
-        search_limit: int = _DEFAULT_SEARCH_LIMIT,
-        timeout_seconds: float = _DEFAULT_TIMEOUT,
+        subreddits: tuple[str, ...] = ("skyrimmods",),
+        rpm_limit: int = 60,
+        window_seconds: float = 60.0,
+        search_limit: int = 10,
+        timeout_seconds: float = 15.0,
         session: aiohttp.ClientSession | None = None,
-        gateway: NetworkGateway | None = None,
+        gateway: NetworkGateway,
         clock_fn: Callable[[], float] = time.monotonic,
     ) -> None:
         self._config = RedditClientConfig(
@@ -190,7 +191,11 @@ class RedditKnowledgeResolver:
         if self._closed:
             return
         self._closed = True
-        if self._owns_session and self._session is not None and not self._session.closed:
+        if (
+            self._owns_session
+            and self._session is not None
+            and not self._session.closed
+        ):
             await self._session.close()
         async with self._cache_lock:
             self._cache.clear()
@@ -262,6 +267,7 @@ class RedditKnowledgeResolver:
         if not own_request:
             return await pending
 
+        result = _RESULT_SENTINEL
         try:
             try:
                 result = await self._fetch_and_format(cleaned)
@@ -283,15 +289,12 @@ class RedditKnowledgeResolver:
             async with self._cache_lock:
                 inflight = self._inflight.pop(cache_key, None)
                 if inflight is not None and not inflight.done():
-                    # Si terminamos por cancelación o error no capturado,
-                    # resolvemos el future para liberar a otros 'callers'.
-                    # Usamos set_result(result) si result existe (error controlado)
-                    # o cancelamos si fue una cancelación real.
-                    if "result" in locals():
+                    if result is not _RESULT_SENTINEL:
                         inflight.set_result(result)
                     else:
                         inflight.cancel()
 
+        final_result = result if result is not _RESULT_SENTINEL else ""
         logger.info(
             "reddit.search_completed",
             extra={
@@ -300,7 +303,7 @@ class RedditKnowledgeResolver:
                 "latency_ms": round((time.perf_counter() - started) * 1000, 2),
             },
         )
-        return result
+        return str(final_result)
 
     async def _fetch_and_format(self, mod_name: str) -> str:
         posts = await self._search(mod_name)
@@ -310,7 +313,9 @@ class RedditKnowledgeResolver:
 
     async def _search(self, mod_name: str) -> list[dict[str, Any]]:
         await self._acquire_slot()
-        subreddit_filter = " OR ".join(f"subreddit:{s}" for s in self._config.subreddits)
+        subreddit_filter = " OR ".join(
+            f"subreddit:{s}" for s in self._config.subreddits
+        )
         query = f"{mod_name} ({subreddit_filter})"
         params = {
             "q": query,
@@ -338,10 +343,7 @@ class RedditKnowledgeResolver:
     async def _execute_request(
         self, session: aiohttp.ClientSession, url: str
     ) -> list[RedditPostData]:
-        if self._gateway is not None:
-            resp_cm = await self._gateway.request("GET", url, session)
-        else:
-            resp_cm = session.get(url)
+        resp_cm = await self._gateway.request("GET", url, session)
 
         async with resp_cm as response:
             status = response.status
