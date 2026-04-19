@@ -17,6 +17,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from sky_claw.core.models import CircuitBreakerTrippedError
+from sky_claw.security.loop_guardrail import AgenticLoopGuardrail
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -122,6 +125,7 @@ class StateGraphValidator:
             SupervisorState.IDLE,
             SupervisorState.ERROR,
             SupervisorState.GENERATING_LODS,
+            SupervisorState.HITL_WAIT,
         },
         SupervisorState.HITL_WAIT: {
             SupervisorState.DISPATCHING,
@@ -312,6 +316,9 @@ class StateGraphState(TypedDict):
     rollback_triggered: bool
     rollback_result: dict[str, Any] | None
     rollback_transaction_id: int | None
+    # Cortacircuitos cognitivo: AgenticLoopGuardrail sets these on trip.
+    loop_detected: bool
+    loop_context: dict[str, Any] | None
 
 
 # =============================================================================
@@ -574,6 +581,8 @@ class StateGraphEdges:
         """Determina la transición desde DISPATCHING."""
         tool_result = state.get("tool_result", {})
 
+        if state.get("loop_detected"):
+            return StateGraphEdges._validate_and_route(SupervisorState.DISPATCHING, SupervisorState.HITL_WAIT)
         if state.get("last_error"):
             return StateGraphEdges._validate_and_route(SupervisorState.DISPATCHING, SupervisorState.ERROR)
         elif tool_result and (tool_result.get("status") == "success" or tool_result.get("status") == "aborted"):
@@ -646,6 +655,8 @@ class SupervisorStateGraph:
         self.compiled_graph: Any = None
         self._state: WorkflowState | None = None
         self._callbacks: dict[str, Callable[..., Any]] = {}
+        # Cortacircuitos cognitivo: per-graph singleton (el grafo es serial por perfil).
+        self.loop_guardrail = AgenticLoopGuardrail(max_repeats=3, window_size=5)
 
         if LANGGRAPH_AVAILABLE:
             self._build_graph()
@@ -743,6 +754,9 @@ class SupervisorStateGraph:
             "rollback_triggered": False,
             "rollback_result": None,
             "rollback_transaction_id": None,
+            # Cortacircuitos cognitivo
+            "loop_detected": False,
+            "loop_context": None,
         }
 
     async def execute(self, initial_state: StateGraphState | None = None) -> StateGraphState:
@@ -962,21 +976,60 @@ class StateGraphIntegration:
             await self._supervisor._trigger_proactive_analysis()
 
     async def _on_dispatching(self, state: StateGraphState) -> None:
-        """Callback para estado DISPATCHING."""
-        if self._supervisor:
-            tool_name = state.get("tool_name")
-            payload = state.get("tool_payload", {})
-            result = await self._supervisor.dispatch_tool(tool_name, payload)
-            state["tool_result"] = result
+        """Callback para estado DISPATCHING.
+
+        Invoca el AgenticLoopGuardrail antes de dispatch. Si detecta un bucle,
+        marca ``loop_detected`` y ``hitl_request`` para que ``route_from_dispatching``
+        transite a HITL_WAIT; no invoca la tool.
+        """
+        if not self._supervisor:
+            return
+        tool_name = state.get("tool_name")
+        payload = state.get("tool_payload") or {}
+
+        # FIX 2: Validate tool_name before guardrail invocation
+        if not tool_name or not isinstance(tool_name, str):
+            state["last_error"] = "tool_name is None or invalid"
+            state["tool_result"] = {
+                "status": "error",
+                "error": "Tool dispatch aborted: tool_name is missing or invalid",
+            }
+            return
+
+        try:
+            self.state_graph.loop_guardrail.register_and_check(tool_name, payload)
+        except CircuitBreakerTrippedError as exc:
+            state["loop_detected"] = True
+            state["loop_context"] = {
+                "tool_name": exc.tool_name,
+                "occurrences": exc.occurrences,
+            }
+            # FIX 1: Use valid action_type and move context into context_data
+            state["hitl_request"] = {
+                "action_type": "circuit_breaker_halt",
+                "reason": str(exc),
+                "context_data": {
+                    "trip_reason": "Loop detected",
+                    "tool_name": exc.tool_name,
+                    "occurrences": exc.occurrences,
+                },
+            }
+            return
+        result = await self._supervisor.dispatch_tool(tool_name, payload)
+        state["tool_result"] = result
 
     async def _on_hitl_wait(self, state: StateGraphState) -> None:
         """Callback para estado HITL_WAIT."""
         if self._supervisor:
-            hitl_request = state.get("hitl_request", {})
+            hitl_request = state.get("hitl_request") or {}
             response = await self._supervisor.interface.request_hitl(
                 self._supervisor._create_hitl_request(hitl_request)
             )
             state["hitl_response"] = response
+            if response == "approved" and state.get("loop_detected"):
+                self.state_graph.loop_guardrail.reset()
+                state["loop_detected"] = False
+                state["loop_context"] = None
 
     def translate_modlist_event(self, mtime: float, path: str) -> dict[str, Any]:
         """Traduce un evento de cambio de modlist al formato del grafo."""

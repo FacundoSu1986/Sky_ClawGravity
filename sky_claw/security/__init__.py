@@ -8,6 +8,7 @@ from sky_claw.security.agent_guardrail import (
 )
 from sky_claw.security.governance import GovernanceManager
 from sky_claw.security.hitl import HITLGuard
+from sky_claw.security.loop_guardrail import AgenticLoopGuardrail
 from sky_claw.security.metacognitive_logic import SecurityMetacognition, audit_resource
 from sky_claw.security.network_gateway import NetworkGateway
 from sky_claw.security.path_validator import PathValidator, sandboxed_io
@@ -21,6 +22,7 @@ __all__ = [
     # Titan v7.0 guardrail
     "AgentGuardrail",
     "AgentGuardrailConfig",
+    "AgenticLoopGuardrail",
     "GovernanceManager",
     "HITLGuard",
     "NetworkGateway",
