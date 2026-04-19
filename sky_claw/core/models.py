@@ -7,9 +7,22 @@ logger = logging.getLogger("SkyClaw.Models")
 
 
 class CircuitBreakerTrippedError(Exception):
-    """Excepción lanzada cuando la IP está en riesgo de baneo."""
+    """Excepción lanzada cuando un cortacircuitos se abre.
 
-    pass
+    Usada tanto por el cortacircuitos de red (masterlist.py) como por el
+    cortacircuitos cognitivo (AgenticLoopGuardrail).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        tool_name: str | None = None,
+        occurrences: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.tool_name = tool_name
+        self.occurrences = occurrences
 
 
 class WSLInteropError(Exception):
