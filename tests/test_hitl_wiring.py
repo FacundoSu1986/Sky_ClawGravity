@@ -79,6 +79,42 @@ def _make_file_info(
     )
 
 
+def _install_webhook_sync(webhook: TelegramWebhook) -> None:
+    """Replace `asyncio.sleep(...)` synchronisation with deterministic task-drain.
+
+    Wraps ``webhook.process_update`` so the coroutine awaits every background
+    task it spawns before returning. Because aiohttp only emits the 200 OK
+    response after ``handle_update`` (which awaits ``process_update``) returns,
+    ``await client.post(...)`` in tests becomes the natural sync point — no
+    timing-based ``asyncio.sleep`` required.
+    """
+    original = webhook.process_update
+
+    async def _wrapped(data: dict[str, Any]) -> None:
+        await original(data)
+        pending = {t for t in webhook._tasks if not t.done()}
+        if pending:
+            await asyncio.wait(pending)
+
+    webhook.process_update = _wrapped  # type: ignore[method-assign]
+
+
+def _make_registration_signal() -> tuple[asyncio.Event, Any]:
+    """Return ``(event, notify_fn)`` — event fires once HITLGuard registers the request.
+
+    Replaces ``await asyncio.sleep(0)`` or ``sleep(0.05)`` used to let the
+    background ``request_approval`` coroutine reach its wait state. The
+    ``notify_fn`` is invoked by HITLGuard **after** the pending entry is stored,
+    so by the time the event fires the operator response can safely target it.
+    """
+    registered = asyncio.Event()
+
+    async def _notify(_req: Any) -> None:
+        registered.set()
+
+    return registered, _notify
+
+
 # ---------------------------------------------------------------------------
 # _parse_hitl_command
 # ---------------------------------------------------------------------------
@@ -133,20 +169,22 @@ class TestParseHITLCommand:
 class TestWebhookHITLApprove:
     @pytest.mark.asyncio
     async def test_approve_found_calls_respond_and_confirms(self, aiohttp_client) -> None:
-        guard = HITLGuard(notify_fn=None, timeout=5)
+        registered, notify = _make_registration_signal()
+        guard = HITLGuard(notify_fn=notify, timeout=5)
         webhook, _router, sender = _make_webhook(hitl=guard)
+        _install_webhook_sync(webhook)
 
-        # Register a pending request manually.
+        # Register a pending request; the Event fires once HITLGuard has stored it.
         req_task = asyncio.create_task(guard.request_approval(reason="test_reason", request_id="download-10-20"))
-        await asyncio.sleep(0)  # Let the coroutine register the request.
+        await asyncio.wait_for(registered.wait(), timeout=2.0)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
+        # client.post unblocks only after process_update has drained its tasks.
         resp = await client.post("/webhook", json=_make_update(1, text="/approve download-10-20"))
         assert resp.status == 200
-        await asyncio.sleep(0.05)
 
         decision = await req_task
         assert decision is Decision.APPROVED
@@ -154,18 +192,19 @@ class TestWebhookHITLApprove:
 
     @pytest.mark.asyncio
     async def test_deny_found_calls_respond_and_confirms(self, aiohttp_client) -> None:
-        guard = HITLGuard(notify_fn=None, timeout=5)
+        registered, notify = _make_registration_signal()
+        guard = HITLGuard(notify_fn=notify, timeout=5)
         webhook, _router, sender = _make_webhook(hitl=guard)
+        _install_webhook_sync(webhook)
 
         req_task = asyncio.create_task(guard.request_approval(reason="test_reason", request_id="download-5-6"))
-        await asyncio.sleep(0)
+        await asyncio.wait_for(registered.wait(), timeout=2.0)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
         await client.post("/webhook", json=_make_update(2, text="/deny download-5-6"))
-        await asyncio.sleep(0.05)
 
         decision = await req_task
         assert decision is Decision.DENIED
@@ -175,13 +214,13 @@ class TestWebhookHITLApprove:
     async def test_approve_unknown_id_sends_not_found(self, aiohttp_client) -> None:
         guard = HITLGuard(notify_fn=None, timeout=5)
         webhook, router, sender = _make_webhook(hitl=guard)
+        _install_webhook_sync(webhook)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
         await client.post("/webhook", json=_make_update(3, text="/approve nonexistent-id"))
-        await asyncio.sleep(0.05)
 
         router.chat.assert_not_awaited()
         sender.send.assert_awaited_once()
@@ -193,13 +232,13 @@ class TestWebhookHITLApprove:
     async def test_deny_unknown_id_sends_not_found(self, aiohttp_client) -> None:
         guard = HITLGuard(notify_fn=None, timeout=5)
         webhook, router, sender = _make_webhook(hitl=guard)
+        _install_webhook_sync(webhook)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
         await client.post("/webhook", json=_make_update(4, text="/deny ghost-req"))
-        await asyncio.sleep(0.05)
 
         router.chat.assert_not_awaited()
         msg = sender.send.call_args[0][1]
@@ -209,13 +248,13 @@ class TestWebhookHITLApprove:
     async def test_hitl_command_does_not_reach_llm_router(self, aiohttp_client) -> None:
         guard = HITLGuard(notify_fn=None, timeout=5)
         webhook, router, _sender = _make_webhook(hitl=guard)
+        _install_webhook_sync(webhook)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
         await client.post("/webhook", json=_make_update(5, text="/approve some-req"))
-        await asyncio.sleep(0.05)
 
         router.chat.assert_not_awaited()
 
@@ -223,13 +262,13 @@ class TestWebhookHITLApprove:
     async def test_regular_text_still_routes_to_llm(self, aiohttp_client) -> None:
         guard = HITLGuard(notify_fn=None, timeout=5)
         webhook, router, sender = _make_webhook(hitl=guard, router_response="42 mods")
+        _install_webhook_sync(webhook)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
         await client.post("/webhook", json=_make_update(6, text="search Requiem"))
-        await asyncio.sleep(0.05)
 
         router.chat.assert_awaited_once()
         sender.send.assert_awaited_once_with(999, "42 mods")
@@ -238,13 +277,13 @@ class TestWebhookHITLApprove:
     async def test_approve_without_hitl_falls_through_to_llm(self, aiohttp_client) -> None:
         """When hitl=None, /approve is treated as normal text by the LLM."""
         webhook, router, _sender = _make_webhook(hitl=None)
+        _install_webhook_sync(webhook)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
         await client.post("/webhook", json=_make_update(7, text="/approve some-req"))
-        await asyncio.sleep(0.05)
 
         router.chat.assert_awaited_once()
 
@@ -253,13 +292,13 @@ class TestWebhookHITLApprove:
         """'/approve' with no ID is not a valid HITL command — goes to LLM."""
         guard = HITLGuard(notify_fn=None, timeout=5)
         webhook, router, _sender = _make_webhook(hitl=guard)
+        _install_webhook_sync(webhook)
 
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
 
         await client.post("/webhook", json=_make_update(8, text="/approve"))
-        await asyncio.sleep(0.05)
 
         router.chat.assert_awaited_once()
 
@@ -274,6 +313,9 @@ class TestHITLNotifyFn:
     async def test_notify_sends_to_operator_chat(self) -> None:
         sender = _make_sender()
         operator_chat_id = 777
+        # Event fires after the production notify closure finishes → request is
+        # registered in _pending, so respond() will find it deterministically.
+        notify_done = asyncio.Event()
 
         # Replicate the closure logic from AppContext.start().
         async def _hitl_notify(req: Any) -> None:
@@ -285,12 +327,12 @@ class TestHITLNotifyFn:
                 f"Deny:    /deny {req.request_id}"
             )
             await sender.send(operator_chat_id, msg)
+            notify_done.set()
 
         guard = HITLGuard(notify_fn=_hitl_notify, timeout=5)
 
-        # Trigger request but immediately respond so it doesn't block.
         async def _respond() -> None:
-            await asyncio.sleep(0.01)
+            await notify_done.wait()
             await guard.respond("req-notify-test", approved=True)
 
         asyncio.create_task(_respond())
@@ -308,16 +350,20 @@ class TestHITLNotifyFn:
     async def test_notify_noop_when_sender_is_none(self) -> None:
         """notify_fn must not raise when sender is None."""
         _sender: TelegramSender | None = None
+        notify_done = asyncio.Event()
 
         async def _hitl_notify(req: Any) -> None:
-            if _sender is None:
-                return
-            await _sender.send(0, "msg")
+            try:
+                if _sender is None:
+                    return
+                await _sender.send(0, "msg")
+            finally:
+                notify_done.set()
 
         guard = HITLGuard(notify_fn=_hitl_notify, timeout=5)
 
         async def _respond() -> None:
-            await asyncio.sleep(0.01)
+            await notify_done.wait()
             await guard.respond("safe-req", approved=False)
 
         asyncio.create_task(_respond())
@@ -329,16 +375,20 @@ class TestHITLNotifyFn:
         """notify_fn must not raise when operator_chat_id is None."""
         sender = _make_sender()
         operator_chat_id: int | None = None
+        notify_done = asyncio.Event()
 
         async def _hitl_notify(req: Any) -> None:
-            if sender is None or operator_chat_id is None:
-                return
-            await sender.send(operator_chat_id, "msg")
+            try:
+                if sender is None or operator_chat_id is None:
+                    return
+                await sender.send(operator_chat_id, "msg")
+            finally:
+                notify_done.set()
 
         guard = HITLGuard(notify_fn=_hitl_notify, timeout=5)
 
         async def _respond() -> None:
-            await asyncio.sleep(0.01)
+            await notify_done.wait()
             await guard.respond("no-chat-req", approved=True)
 
         asyncio.create_task(_respond())
@@ -349,18 +399,17 @@ class TestHITLNotifyFn:
 
     @pytest.mark.asyncio
     async def test_notify_failure_does_not_crash_request_approval(self) -> None:
-        """If the notify_fn raises, request_approval still completes."""
+        """If the notify_fn raises, request_approval still completes.
+
+        No sleep/event needed here: HITLGuard.request_approval short-circuits
+        with TIMEOUT when notify_fn raises, so the test awaits the guard itself.
+        """
 
         async def _bad_notify(req: Any) -> None:
             raise RuntimeError("Telegram is down")
 
         guard = HITLGuard(notify_fn=_bad_notify, timeout=5)
 
-        async def _respond() -> None:
-            await asyncio.sleep(0.05)
-            await guard.respond("bad-notify-req", approved=True)
-
-        asyncio.create_task(_respond())
         # It should not propagate the exception; it returns TIMEOUT.
         decision = await guard.request_approval(reason="test", request_id="bad-notify-req")
         assert decision is Decision.TIMEOUT
@@ -595,9 +644,11 @@ class TestEndToEndHITLFlow:
         # HITLGuard with a sender mock as notify_fn.
         operator_chat_id = 555
         notifications: list[str] = []
+        request_registered = asyncio.Event()
 
         async def _notify(req: Any) -> None:
             notifications.append(req.request_id)
+            request_registered.set()
 
         guard = HITLGuard(notify_fn=_notify, timeout=10)
 
@@ -624,6 +675,7 @@ class TestEndToEndHITLFlow:
             hitl=guard,
             authorized_user_id=operator_chat_id,
         )
+        _install_webhook_sync(webhook)
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
@@ -657,16 +709,18 @@ class TestEndToEndHITLFlow:
 
         tool_task = asyncio.create_task(_run_tool())
 
-        # Let the tool reach request_approval and register the pending request.
-        await asyncio.sleep(0.05)
+        # Event-based sync: _notify sets request_registered once HITLGuard
+        # stores the pending request. Replaces `await asyncio.sleep(0.05)`.
+        await asyncio.wait_for(request_registered.wait(), timeout=5.0)
 
         # ---- Operator sends /approve via Telegram ----
+        # _install_webhook_sync ensures client.post only returns after the
+        # webhook's background tasks have completed, replacing `sleep(0.1)`.
         expected_request_id = "download-42-7"
         await client.post(
             "/webhook",
             json=_make_update(100, chat_id=operator_chat_id, text=f"/approve {expected_request_id}"),
         )
-        await asyncio.sleep(0.1)
 
         # ---- Await tool completion ----
         await tool_task
@@ -704,7 +758,12 @@ class TestEndToEndHITLFlow:
         masterlist = MasterlistClient(gateway=gw, api_key="fake")
         sync_engine = SyncEngine(mo2=mo2, masterlist=masterlist, registry=db)
 
-        guard = HITLGuard(notify_fn=None, timeout=10)
+        request_registered = asyncio.Event()
+
+        async def _notify(_req: Any) -> None:
+            request_registered.set()
+
+        guard = HITLGuard(notify_fn=_notify, timeout=10)
         downloader = NexusDownloader(api_key="nexus-key", gateway=gw, staging_dir=tmp_path / "staging")
         tool_registry = AsyncToolRegistry(
             registry=db,
@@ -722,6 +781,7 @@ class TestEndToEndHITLFlow:
             hitl=guard,
             authorized_user_id=999,
         )
+        _install_webhook_sync(webhook)
         app = aiohttp.web.Application()
         app.router.add_post("/webhook", webhook.handle_update)
         client = await aiohttp_client(app)
@@ -740,13 +800,12 @@ class TestEndToEndHITLFlow:
             tool_result.update(json.loads(result_str))
 
         tool_task = asyncio.create_task(_run_tool())
-        await asyncio.sleep(0.05)
+        await asyncio.wait_for(request_registered.wait(), timeout=5.0)
 
         await client.post(
             "/webhook",
             json=_make_update(200, text="/deny download-1-2"),
         )
-        await asyncio.sleep(0.1)
         await tool_task
 
         assert tool_result["status"] == "denied"
