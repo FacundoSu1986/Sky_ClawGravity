@@ -115,3 +115,54 @@ class TestAgenticLoopGuardrail:
         ):
             guardrail.register_and_check("a", {"x": 1})
         assert any("Loop Detectado" in record.message for record in caplog.records)
+
+    def test_non_consecutive_pattern_does_not_trip(self) -> None:
+        """FIX 4: Verify that non-consecutive repeats do NOT trigger the breaker.
+
+        Pattern: A (registered), B (registered), A (registered), A (registered)
+        Expected: No CircuitBreakerTrippedError raised because A is not in the
+        last 3 slots consecutively. The last 3 elements are [B, A, A], which
+        are not all identical.
+        """
+        guardrail = AgenticLoopGuardrail(max_repeats=3, window_size=5)
+
+        # Register A (hash 1)
+        guardrail.register_and_check("tool_a", {"arg": "value"})
+        assert len(guardrail.snapshot()) == 1
+
+        # Register B (hash 2) — breaks the sequence
+        guardrail.register_and_check("tool_b", {"arg": "other"})
+        assert len(guardrail.snapshot()) == 2
+
+        # Register A again (hash 1)
+        guardrail.register_and_check("tool_a", {"arg": "value"})
+        assert len(guardrail.snapshot()) == 3
+
+        # Register A third time (still not consecutive from position 0)
+        guardrail.register_and_check("tool_a", {"arg": "value"})
+        assert len(guardrail.snapshot()) == 4
+
+        # At this point, history is [hash(A), hash(B), hash(A), hash(A)]
+        # The last 3 elements are [hash(B), hash(A), hash(A)] — NOT all identical
+        # So the breaker should NOT trip
+        # Verify guardrail is still active (not cleared)
+        assert len(guardrail._history) == 4
+
+    def test_consecutive_pattern_trips_correctly(self) -> None:
+        """FIX 4: Verify that consecutive repeats DO trigger the breaker correctly.
+
+        Pattern: A, A, A (three consecutive identical actions)
+        Expected: CircuitBreakerTrippedError raised on the 3rd attempt.
+        """
+        guardrail = AgenticLoopGuardrail(max_repeats=3, window_size=5)
+
+        guardrail.register_and_check("tool_a", {"arg": "value"})
+        guardrail.register_and_check("tool_a", {"arg": "value"})
+
+        with pytest.raises(CircuitBreakerTrippedError) as exc_info:
+            guardrail.register_and_check("tool_a", {"arg": "value"})
+
+        assert exc_info.value.tool_name == "tool_a"
+        assert exc_info.value.occurrences == 3
+        # Verify history was cleared after trip
+        assert guardrail.snapshot() == ()

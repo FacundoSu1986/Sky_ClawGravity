@@ -50,21 +50,23 @@ class AgenticLoopGuardrail:
         action_hash = hashlib.sha256(f"{tool_name}|{args_str}".encode()).hexdigest()
 
         self._history.append(action_hash)
-        occurrences = self._history.count(action_hash)
 
-        if occurrences >= self._max_repeats:
-            logger.critical(
-                "Loop Detectado: el agente intentó ejecutar %s %d veces seguidas. Activando cortacircuitos cognitivo.",
-                tool_name,
-                occurrences,
-            )
-            self._history.clear()
-            raise CircuitBreakerTrippedError(
-                f"Has entrado en un bucle intentando usar '{tool_name}'. "
-                "DETENTE. Solicita asistencia humana (HITL) inmediatamente.",
-                tool_name=tool_name,
-                occurrences=occurrences,
-            )
+        # FIX 3: Check if the last max_repeats elements are all identical (consecutive detection)
+        if len(self._history) >= self._max_repeats:
+            last_n = list(self._history)[-self._max_repeats :]
+            if all(h == last_n[0] for h in last_n):
+                logger.critical(
+                    "Loop Detectado: el agente intentó ejecutar %s %d veces seguidas consecutivas. Activando cortacircuitos cognitivo.",
+                    tool_name,
+                    self._max_repeats,
+                )
+                self._history.clear()
+                raise CircuitBreakerTrippedError(
+                    f"Has entrado en un bucle intentando usar '{tool_name}'. "
+                    "DETENTE. Solicita asistencia humana (HITL) inmediatamente.",
+                    tool_name=tool_name,
+                    occurrences=self._max_repeats,
+                )
 
     def reset(self) -> None:
         """Limpia el historial. Úsalo cuando un humano aprueba retomar tras HITL."""

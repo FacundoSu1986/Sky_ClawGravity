@@ -986,19 +986,33 @@ class StateGraphIntegration:
             return
         tool_name = state.get("tool_name")
         payload = state.get("tool_payload") or {}
+
+        # FIX 2: Validate tool_name before guardrail invocation
+        if not tool_name or not isinstance(tool_name, str):
+            state["last_error"] = "tool_name is None or invalid"
+            state["tool_result"] = {
+                "status": "error",
+                "error": "Tool dispatch aborted: tool_name is missing or invalid",
+            }
+            return
+
         try:
-            self.state_graph.loop_guardrail.register_and_check(tool_name or "", payload)
+            self.state_graph.loop_guardrail.register_and_check(tool_name, payload)
         except CircuitBreakerTrippedError as exc:
             state["loop_detected"] = True
             state["loop_context"] = {
                 "tool_name": exc.tool_name,
                 "occurrences": exc.occurrences,
             }
+            # FIX 1: Use valid action_type and move context into context_data
             state["hitl_request"] = {
-                "action_type": "loop_detected",
+                "action_type": "circuit_breaker_halt",
                 "reason": str(exc),
-                "tool_name": exc.tool_name,
-                "occurrences": exc.occurrences,
+                "context_data": {
+                    "trip_reason": "Loop detected",
+                    "tool_name": exc.tool_name,
+                    "occurrences": exc.occurrences,
+                },
             }
             return
         result = await self._supervisor.dispatch_tool(tool_name, payload)

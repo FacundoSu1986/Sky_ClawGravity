@@ -78,9 +78,9 @@ class TestDispatchingLoopDetection:
 
         assert sup.dispatch_tool.await_count == 2  # 3ra NO invoca la tool
         assert state["loop_detected"] is True
-        assert state["hitl_request"]["action_type"] == "loop_detected"
-        assert state["hitl_request"]["tool_name"] == "patch_plugin"
-        assert state["hitl_request"]["occurrences"] == 3
+        assert state["hitl_request"]["action_type"] == "circuit_breaker_halt"
+        assert state["hitl_request"]["context_data"]["tool_name"] == "patch_plugin"
+        assert state["hitl_request"]["context_data"]["occurrences"] == 3
         assert state["loop_context"]["tool_name"] == "patch_plugin"
 
     async def test_different_args_do_not_trip(self) -> None:
