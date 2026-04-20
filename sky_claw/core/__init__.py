@@ -10,7 +10,8 @@ from .contracts import (
     verify_contract,
 )
 from .database import DatabaseAgent
-from .event_bus import CoreEventBus, Event
+from .dlq_manager import DLQManager, DLQRow
+from .event_bus import CoreEventBus, Event, create_bus_with_dlq
 from .event_payloads import (
     ModlistChangedPayload,
     SynthesisPipelineCompletedPayload,
@@ -42,10 +43,14 @@ __all__ = [
     "AgentToolResponse",
     # Excepciones
     "CircuitBreakerTrippedError",
-    # Event Bus
+    # Event Bus + DLQ
     "CoreEventBus",
+    "create_bus_with_dlq",
     # Database
     "DatabaseAgent",
+    # DLQ
+    "DLQManager",
+    "DLQRow",
     "Event",
     # Schemas
     "ModMetadata",

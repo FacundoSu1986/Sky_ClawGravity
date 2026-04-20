@@ -307,8 +307,9 @@ class DLQManager:
         """Retorna filas pendientes cuyo next_retry_at ya venció."""
         now = self._clock()
         await self._ensure_schema()
-        async with self._connect() as db:
-            async with db.execute(
+        async with (
+            self._connect() as db,
+            db.execute(
                 """
                 SELECT id, topic, payload_json, source, event_ts_ms, handler_name,
                        error_type, error_message, attempts, next_retry_at,
@@ -319,8 +320,9 @@ class DLQManager:
                 LIMIT ?
                 """,
                 (now, limit),
-            ) as cur:
-                rows = await cur.fetchall()
+            ) as cur,
+        ):
+            rows = await cur.fetchall()
         return [self._row_from_sqlite(r) for r in rows]
 
     # ------------------------------------------------------------------
@@ -328,8 +330,9 @@ class DLQManager:
     # ------------------------------------------------------------------
 
     async def _select_by_status(self, status: str) -> list[DLQRow]:
-        async with self._connect() as db:
-            async with db.execute(
+        async with (
+            self._connect() as db,
+            db.execute(
                 """
                 SELECT id, topic, payload_json, source, event_ts_ms, handler_name,
                        error_type, error_message, attempts, next_retry_at,
@@ -339,8 +342,9 @@ class DLQManager:
                 ORDER BY id ASC
                 """,
                 (status,),
-            ) as cur:
-                rows = await cur.fetchall()
+            ) as cur,
+        ):
+            rows = await cur.fetchall()
         return [self._row_from_sqlite(r) for r in rows]
 
     @staticmethod
