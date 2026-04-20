@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import aiosqlite
 import pytest
 
-from sky_claw.core.dlq_manager import DLQManager, DLQRow
+from sky_claw.core.dlq_manager import DLQManager
 from sky_claw.core.event_bus import Event, Subscriber
 
 # ---------------------------------------------------------------------------
@@ -222,30 +221,9 @@ async def test_poisoning_after_max_attempts(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_backoff_schedule_is_exponential(tmp_path: Path) -> None:
     """Los deltas de next_retry_at deben ser 2000, 4000, 8000, 16000 ms."""
-    call_count = [0]
 
     async def always_fail_handler(event: Event) -> None:
         raise RuntimeError("boom")
-
-    handler_name = DLQManager._handler_name(always_fail_handler)
-
-    # Clock que devuelve siempre 0 para next_retry_at calculable, pero
-    # hace que todas las filas estén "vencidas" (next_retry_at siempre > clock)
-    # Usamos clock que avanza para que las filas estén vencidas cada tick
-    tick = [0]
-
-    def advancing_clock() -> int:
-        t = tick[0]
-        tick[0] += 1_000_000  # siempre vencido
-        return t
-
-    dlq = DLQManager(
-        db_path=tmp_path / "dlq.db",
-        handler_resolver={handler_name: always_fail_handler}.get,
-        max_attempts=5,
-        poll_interval_s=0,
-        clock=advancing_clock,
-    )
 
     # Enqueue con clock fijo para verificar primer next_retry_at
     fixed_dlq = DLQManager(
