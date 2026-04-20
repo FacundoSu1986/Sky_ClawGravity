@@ -21,8 +21,32 @@ from sky_claw.orchestrator.tool_strategies.base import (
     ToolNotFoundError,
     ToolStrategy,
 )
+from sky_claw.orchestrator.tool_strategies.execute_loot_sorting import (
+    ExecuteLootSortingStrategy,
+)
+from sky_claw.orchestrator.tool_strategies.execute_synthesis import (
+    ExecuteSynthesisPipelineStrategy,
+)
+from sky_claw.orchestrator.tool_strategies.generate_bashed_patch import (
+    GenerateBashedPatchStrategy,
+)
+from sky_claw.orchestrator.tool_strategies.generate_lods import GenerateLodsStrategy
+from sky_claw.orchestrator.tool_strategies.middleware import (
+    DictResultGuardMiddleware,
+    ErrorWrappingMiddleware,
+)
 from sky_claw.orchestrator.tool_strategies.query_mod_metadata import (
     QueryModMetadataStrategy,
+)
+from sky_claw.orchestrator.tool_strategies.resolve_conflict_patch import (
+    ResolveConflictWithPatchStrategy,
+)
+from sky_claw.orchestrator.tool_strategies.scan_asset_conflicts import (
+    ScanAssetConflictsJsonStrategy,
+    ScanAssetConflictsStrategy,
+)
+from sky_claw.orchestrator.tool_strategies.validate_plugin_limit import (
+    ValidatePluginLimitStrategy,
 )
 
 if TYPE_CHECKING:
@@ -117,7 +141,62 @@ def build_orchestration_dispatcher(
     tool names that have been moved over.
     """
     dispatcher = OrchestrationToolDispatcher()
+
     dispatcher.register(QueryModMetadataStrategy(scraper=supervisor.scraper))
+
+    dispatcher.register(
+        ExecuteLootSortingStrategy(
+            tools=supervisor.tools,
+            interface=supervisor.interface,
+        ),
+    )
+
+    dispatcher.register(
+        ExecuteSynthesisPipelineStrategy(service=supervisor._synthesis_service),
+        middleware=[
+            ErrorWrappingMiddleware("SynthesisPipelineExecutionFailed"),
+            DictResultGuardMiddleware("InvalidSynthesisPipelineResult"),
+        ],
+    )
+
+    dispatcher.register(
+        ResolveConflictWithPatchStrategy(service=supervisor._xedit_service),
+        middleware=[
+            ErrorWrappingMiddleware("XEditPatchExecutionFailed"),
+            DictResultGuardMiddleware("InvalidXEditPatchResult"),
+        ],
+    )
+
+    dispatcher.register(GenerateLodsStrategy(service=supervisor._dyndolod_service))
+
+    # Lambdas re-resolve attributes on each call so test fixtures can
+    # monkey-patch the supervisor methods AFTER the dispatcher is wired
+    # (and so the lazy `asset_detector` property keeps its semantics).
+    dispatcher.register(
+        ScanAssetConflictsStrategy(
+            scan_callable=lambda: supervisor.scan_asset_conflicts(),
+        ),
+    )
+
+    dispatcher.register(
+        ScanAssetConflictsJsonStrategy(
+            scan_json_callable=lambda: supervisor.scan_asset_conflicts_json(),
+        ),
+    )
+
+    dispatcher.register(
+        GenerateBashedPatchStrategy(
+            wrye_bash_pipeline=lambda **kwargs: supervisor.execute_wrye_bash_pipeline(**kwargs),
+        ),
+    )
+
+    dispatcher.register(
+        ValidatePluginLimitStrategy(
+            plugin_limit_guard=lambda profile: supervisor._run_plugin_limit_guard(profile),
+            default_profile_getter=lambda: supervisor.profile_name,
+        ),
+    )
+
     return dispatcher
 
 

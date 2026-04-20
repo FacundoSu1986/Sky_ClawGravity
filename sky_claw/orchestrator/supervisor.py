@@ -8,7 +8,6 @@ from sky_claw.assets import AssetConflictDetector, AssetConflictReport
 from sky_claw.comms.interface import InterfaceAgent
 from sky_claw.core.database import DatabaseAgent
 from sky_claw.core.event_bus import CoreEventBus, Event
-from sky_claw.core.models import HitlApprovalRequest, LootExecutionParams
 from sky_claw.core.path_resolver import PathResolutionService
 from sky_claw.core.windows_interop import ModdingToolsAgent
 from sky_claw.db.journal import OperationJournal
@@ -34,7 +33,7 @@ from sky_claw.tools.wrye_bash_runner import (
     WryeBashRunner,
 )
 from sky_claw.tools.xedit_service import XEditPipelineService
-from sky_claw.xedit.conflict_analyzer import ConflictAnalyzer, ConflictReport
+from sky_claw.xedit.conflict_analyzer import ConflictAnalyzer
 
 logger = logging.getLogger(__name__)
 security_logger = logging.getLogger(f"{__name__}.security")
@@ -245,104 +244,22 @@ class SupervisorAgent:
         - execute_synthesis_pipeline redirige a SynthesisPipelineService
         - resolve_conflict_with_patch redirige a XEditPipelineService
         """
+        # Strangler Fig commit 5/6: todos los branches ya rutean a través del
+        # OrchestrationToolDispatcher. El match/case se mantiene una iteración
+        # más por reviewability; commit 6 lo colapsa al one-liner final.
         match tool_name:
-            case "query_mod_metadata":
-                # Strangler Fig: migrado a QueryModMetadataStrategy (canary).
+            case (
+                "query_mod_metadata"
+                | "execute_loot_sorting"
+                | "execute_synthesis_pipeline"
+                | "resolve_conflict_with_patch"
+                | "generate_lods"
+                | "scan_asset_conflicts"
+                | "scan_asset_conflicts_json"
+                | "generate_bashed_patch"
+                | "validate_plugin_limit"
+            ):
                 return await self._tool_dispatcher.dispatch(tool_name, payload_dict)
-
-            case "execute_loot_sorting":
-                params = LootExecutionParams(**payload_dict)
-                # Requiere HITL si implica cambios destructivos o sobreescritura de metadatos sensibles
-                hitl_req = HitlApprovalRequest(
-                    action_type="destructive_xedit",  # Reusado conceptualmente
-                    reason="Se va a reordenar el Load Order, lo que podría afectar partidas guardadas.",
-                    context_data={"profile": params.profile_name},
-                )
-                decision = await self.interface.request_hitl(hitl_req)
-
-                if decision == "approved":
-                    return await self.tools.run_loot(params)
-                else:
-                    return {
-                        "status": "aborted",
-                        "reason": "Usuario denegó la operación.",
-                    }
-
-            # FASE 3: Synthesis Pipeline (delegado a SynthesisPipelineService)
-            case "execute_synthesis_pipeline":
-                try:
-                    pipeline_result = await self._synthesis_service.execute_pipeline(**payload_dict)
-                except Exception as exc:
-                    logger.exception("RCA: Falló execute_synthesis_pipeline; se convierte la excepción a error dict.")
-                    return {
-                        "status": "error",
-                        "reason": "SynthesisPipelineExecutionFailed",
-                        "details": str(exc),
-                    }
-
-                if not isinstance(pipeline_result, dict):
-                    logger.error(
-                        "RCA: execute_synthesis_pipeline devolvió un tipo inválido: %s",
-                        type(pipeline_result).__name__,
-                    )
-                    return {
-                        "status": "error",
-                        "reason": "InvalidSynthesisPipelineResult",
-                    }
-
-                return pipeline_result
-
-            # Sprint-2 Fase 4: xEdit Patch (delegado a XEditPipelineService)
-            case "resolve_conflict_with_patch":
-                try:
-                    target_plugin = pathlib.Path(payload_dict["target_plugin"])
-                    report = ConflictReport(**payload_dict["report"])
-                    patch_result = await self._xedit_service.execute_patch(
-                        target_plugin=target_plugin,
-                        report=report,
-                    )
-                except Exception as exc:
-                    logger.exception("RCA: Falló resolve_conflict_with_patch; se convierte la excepción a error dict.")
-                    return {
-                        "status": "error",
-                        "reason": "XEditPatchExecutionFailed",
-                        "details": str(exc),
-                    }
-
-                if not isinstance(patch_result, dict):
-                    logger.error(
-                        "RCA: resolve_conflict_with_patch devolvió un tipo inválido: %s",
-                        type(patch_result).__name__,
-                    )
-                    return {
-                        "status": "error",
-                        "reason": "InvalidXEditPatchResult",
-                    }
-
-                return patch_result
-
-            # FASE 4: DynDOLOD/TexGen Pipeline — delegado a DynDOLODPipelineService
-            case "generate_lods":
-                return await self._dyndolod_service.execute(**payload_dict)
-
-            # FASE 5: Asset Conflict Detection Integration
-            case "scan_asset_conflicts":
-                import dataclasses
-
-                conflicts = self.scan_asset_conflicts()
-                return {"status": "success", "conflicts": [dataclasses.asdict(c) for c in conflicts]}
-
-            case "scan_asset_conflicts_json":
-                return {"status": "success", "json_report": self.scan_asset_conflicts_json()}
-
-            # FASE 6: Wrye Bash Bashed Patch Integration
-            case "generate_bashed_patch":
-                return await self.execute_wrye_bash_pipeline(**payload_dict)
-
-            # M-04/M-05: Plugin Limit Validation
-            case "validate_plugin_limit":
-                profile = payload_dict.get("profile", self.profile_name)
-                return await self._run_plugin_limit_guard(profile)
 
             case _:
                 logger.error(f"RCA: LLM alucinó la herramienta '{tool_name}'.")
