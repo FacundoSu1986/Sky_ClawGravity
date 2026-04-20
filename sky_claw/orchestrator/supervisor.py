@@ -233,37 +233,18 @@ class SupervisorAgent:
         logger.info("Ignición forzada desde GUI detectada. Despertando demonio proactivo.")
         await self._trigger_proactive_analysis(Event(topic="system.manual.trigger", payload=payload))
 
-    # FASE 1.5: Worker de pruning pasivo
     async def dispatch_tool(self, tool_name: str, payload_dict: dict[str, Any]) -> dict[str, Any]:
-        """
-        Enrutador estricto. El LLM devuelve 'tool_name' y 'payload_dict'.
-        Se valida con Pydantic inmediatamente.
+        """Enrutador estricto. Delega al OrchestrationToolDispatcher.
 
-        Puntos de inyección (Sprints recientes):
-        - generate_lods redirige a DynDOLODPipelineService
-        - execute_synthesis_pipeline redirige a SynthesisPipelineService
-        - resolve_conflict_with_patch redirige a XEditPipelineService
-        """
-        # Strangler Fig commit 5/6: todos los branches ya rutean a través del
-        # OrchestrationToolDispatcher. El match/case se mantiene una iteración
-        # más por reviewability; commit 6 lo colapsa al one-liner final.
-        match tool_name:
-            case (
-                "query_mod_metadata"
-                | "execute_loot_sorting"
-                | "execute_synthesis_pipeline"
-                | "resolve_conflict_with_patch"
-                | "generate_lods"
-                | "scan_asset_conflicts"
-                | "scan_asset_conflicts_json"
-                | "generate_bashed_patch"
-                | "validate_plugin_limit"
-            ):
-                return await self._tool_dispatcher.dispatch(tool_name, payload_dict)
+        El dispatcher mapea `tool_name` a una `ToolStrategy` registrada (ver
+        :func:`sky_claw.orchestrator.tool_dispatcher.build_orchestration_dispatcher`)
+        y aplica la cadena de middleware correspondiente (Pydantic dentro de
+        la strategy, ErrorWrapping + DictResultGuard alrededor según se registren).
 
-            case _:
-                logger.error(f"RCA: LLM alucinó la herramienta '{tool_name}'.")
-                return {"status": "error", "reason": "ToolNotFound"}
+        Si el LLM alucina un `tool_name` no registrado, devuelve el contrato
+        legacy preservado verbatim: ``{"status": "error", "reason": "ToolNotFound"}``.
+        """
+        return await self._tool_dispatcher.dispatch(tool_name, payload_dict)
 
     # FASE 1.5: Método para ejecutar rollback
     async def execute_rollback(self, agent_id: str) -> dict[str, Any]:
