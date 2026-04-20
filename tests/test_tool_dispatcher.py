@@ -90,7 +90,7 @@ async def test_dispatch_routes_to_strategy():
 
 
 async def test_dispatch_unknown_tool_returns_legacy_dict():
-    """Preserves the exact error shape from supervisor.py:345-347."""
+    """Preserves the legacy unknown-tool contract with reason ``ToolNotFound``."""
     d = OrchestrationToolDispatcher()
     d.register(_FakeStrategy("alpha"))
 

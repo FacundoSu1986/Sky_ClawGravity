@@ -1,7 +1,7 @@
 """Characterization tests for SupervisorAgent.dispatch_tool.
 
-These tests lock in the EXACT behavior of the current match/case dispatcher
-(supervisor.py:233-347) BEFORE any refactor moves a line of production code.
+These tests lock in the EXACT behavior of the public dispatch_tool contract
+(signature, error shapes, tool routing) independently of implementation.
 They serve as the regression net for the Strangler Fig extraction to
 OrchestrationToolDispatcher + tool_strategies/.
 

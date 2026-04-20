@@ -45,7 +45,13 @@ class ToolMiddleware(Protocol):
 
 
 class ToolNotFoundError(KeyError):
-    """Raised by the dispatcher when no strategy is registered for a tool name."""
+    """Exception type for unknown tool names in exception-based flows.
+
+    Note: `OrchestrationToolDispatcher.dispatch()` currently preserves the
+    legacy contract for missing tools and returns
+    ``{"status": "error", "reason": "ToolNotFound"}`` instead of raising this
+    exception. This class exists for potential future exception-based APIs.
+    """
 
 
 class DuplicateToolError(ValueError):
