@@ -74,9 +74,7 @@ async def test_schema_bootstraps_on_first_use(tmp_path: Path) -> None:
     assert db_file.exists(), "El archivo de DB debe haberse creado"
 
     async with aiosqlite.connect(db_file) as db:
-        async with db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='dead_letter_events'"
-        ) as cur:
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dead_letter_events'") as cur:
             row = await cur.fetchone()
         assert row is not None, "La tabla dead_letter_events debe existir"
 
@@ -250,6 +248,7 @@ async def test_backoff_schedule_is_exponential(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_missing_handler_is_transient(tmp_path: Path) -> None:
     """Si handler_resolver retorna None, la fila vuelve a pending (transient, no dead)."""
+
     async def some_handler(event: Event) -> None:
         pass
 
