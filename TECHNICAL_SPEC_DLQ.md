@@ -1,5 +1,9 @@
 # TECHNICAL_SPEC_DLQ.md — Dead Letter Queue para CoreEventBus
 
+> **Nota:** Este documento está almacenado en la raíz del repo (`TECHNICAL_SPEC_DLQ.md`), 
+> espejando el patrón de `TECHNICAL_SPEC_DISPATCHER.md` existente (ambos son specs 
+> de infraestructura Core).
+
 ## 1. Context
 
 **Problema detectado.** `CoreEventBus` en `sky_claw/core/event_bus.py` implementa pub/sub asíncrono
@@ -115,8 +119,8 @@ async def _retry_loop(self) -> None:
 ```
 
 `_process_row(row)`:
-1. `UPDATE ... SET status='in_progress'`
-2. Resolver handler: si `None` → `_mark_dead(reason="handler_not_registered")`
+1. `UPDATE ... SET status='in_progress'`, con timeout de 60s (si queda stancado por crash/cancel, se recovery)
+2. Resolver handler: si `None` (no registrado aún) → Tratar como transient: `status='pending'`, `next_retry_at=now+60s`
 3. Reconstruir `Event` desde columnas DB
 4. `await handler(event)`:
    - Éxito → `DELETE WHERE id=?`
@@ -126,13 +130,16 @@ async def _retry_loop(self) -> None:
 
 Fórmula: `next_retry_at_ms = now_ms + (2 ** attempts) * 1000`
 
-| Fallo # | Espera |
-|---|---|
-| 1 | 2 s |
-| 2 | 4 s |
-| 3 | 8 s |
-| 4 | 16 s |
-| 5 | → `dead` |
+Nota sobre conteo: `enqueue()` guarda `attempts=0`. El worker suma `+1` cada reintento en DLQ.
+Total de ejecuciones = 1 (dispatch inicial) + max_attempts (DLQ retries, máx 5) = máx 6 ejecuciones.
+
+| Reintento DLQ # | Espera | Attempts DB |
+|---|---|---|
+| 1 (tras dispatch) | 2 s | 1 |
+| 2 | 4 s | 2 |
+| 3 | 8 s | 3 |
+| 4 | 16 s | 4 |
+| 5 | → `dead` | 5 |
 
 El worker es **stateless**; el estado de backoff vive en SQLite — sobrevive a reinicios del proceso.
 
@@ -267,8 +274,10 @@ ruff check sky_claw/core/dlq_manager.py sky_claw/core/event_bus.py
 
 | Riesgo | Mitigación |
 |---|---|
-| Dos handlers con mismo `module.qualname` | Log WARN; resolver retorna el último registrado |
-| Corrupción DB mid-write | WAL + `synchronous=NORMAL` |
-| DLQ crece sin tope | Log CRITICAL si `COUNT(dead) > 10_000` |
+| Dos handlers con mismo `module.qualname` | Improbable con `__qualname__`; resolver retorna el último registrado |
+| Corrupción DB mid-write | WAL + `synchronous=NORMAL`, CHECK constraint |
+| `in_progress` stancadas (crash/cancel) | Recovery automático en `_fetch_due_batch`: revert a `pending` tras 60s |
+| Handler no registrado al retry | Tratar como transient: `next_retry_at=now+60s`, reintentar en 1 min |
+| `_retry_loop` crash | Wrapped en try/except: log y continúa (worker resilente) |
 | `enqueue()` falla (disco lleno) | Try/except en `_safe_execute`, log CRITICAL, best-effort |
 | Race `stop()` / `enqueue()` in-flight | `dlq.stop()` se llama DESPUÉS del drenado del bus |

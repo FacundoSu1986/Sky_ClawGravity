@@ -243,29 +243,28 @@ async def test_backoff_schedule_is_exponential(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test #6 — handler no registrado → dead
+# Test #6 — handler no registrado → transient (reintenta luego)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_missing_handler_marks_dead(tmp_path: Path) -> None:
-    """Si handler_resolver retorna None, la fila va a dead con 'handler_not_registered'."""
+async def test_missing_handler_is_transient(tmp_path: Path) -> None:
+    """Si handler_resolver retorna None, la fila vuelve a pending (transient, no dead)."""
     async def some_handler(event: Event) -> None:
         pass
 
-    tick = [0]
+    # Clock que no avanza mucho — para que next_retry_at quede en el futuro
+    fixed_now = [1_000_000]
 
-    def advancing_clock() -> int:
-        t = tick[0]
-        tick[0] += 100_000
-        return t
+    def fixed_clock() -> int:
+        return fixed_now[0]
 
     # Resolver vacío — handler no encontrado
     dlq = DLQManager(
         db_path=tmp_path / "dlq.db",
         handler_resolver={}.get,
         poll_interval_s=0,
-        clock=advancing_clock,
+        clock=fixed_clock,
     )
 
     await dlq.enqueue(_make_event(), some_handler, RuntimeError("x"))
@@ -273,9 +272,12 @@ async def test_missing_handler_marks_dead(tmp_path: Path) -> None:
     await asyncio.sleep(0.1)
     await dlq.stop()
 
+    # Debe quedar pending (transient, no dead), y next_retry_at > updated_at
+    pending = await dlq.list_pending()
     dead = await dlq.list_dead()
-    assert len(dead) == 1
-    assert "handler_not_registered" in dead[0].error_message
+    assert len(pending) == 1  # Transient: será reintentado
+    assert len(dead) == 0
+    assert pending[0].next_retry_at > pending[0].updated_at  # Scheduled para reintento
 
 
 # ---------------------------------------------------------------------------

@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS dead_letter_events (
     next_retry_at INTEGER NOT NULL,
     status        TEXT    NOT NULL DEFAULT 'pending',
     enqueued_at   INTEGER NOT NULL,
-    updated_at    INTEGER NOT NULL
+    updated_at    INTEGER NOT NULL,
+    CHECK(status IN ('pending', 'in_progress', 'dead'))
 );
 CREATE INDEX IF NOT EXISTS idx_dlq_status_retry
     ON dead_letter_events(status, next_retry_at);
@@ -214,12 +215,20 @@ class DLQManager:
         await self._ensure_schema()
         try:
             while True:
-                rows = await self._fetch_due_batch(limit=self._batch_size)
-                if not rows:
+                try:
+                    rows = await self._fetch_due_batch(limit=self._batch_size)
+                    if not rows:
+                        await asyncio.sleep(self._poll_interval_s)
+                        continue
+                    for row in rows:
+                        await self._process_row(row)
+                except Exception as exc:
+                    logger.error(
+                        "DLQ worker error (continuando): %s",
+                        exc,
+                        exc_info=True,
+                    )
                     await asyncio.sleep(self._poll_interval_s)
-                    continue
-                for row in rows:
-                    await self._process_row(row)
         except asyncio.CancelledError:
             raise
 
@@ -235,7 +244,19 @@ class DLQManager:
 
         handler = self._handler_resolver(row.handler_name)
         if handler is None:
-            await self._mark_dead(row, "handler_not_registered")
+            # Handler no registrado aún: tratar como transient, reintent en 60s
+            now2 = self._clock()
+            next_retry = now2 + 60_000  # Retry en 1 minuto
+            async with self._connect() as db:
+                await db.execute(
+                    "UPDATE dead_letter_events SET status='pending', next_retry_at=?, updated_at=? WHERE id=?",
+                    (next_retry, now2, row.id),
+                )
+                await db.commit()
+            logger.debug(
+                "DLQ: handler '%s' no registrado aún, reintentando en 60s",
+                row.handler_name,
+            )
             return
 
         event = Event(
@@ -304,9 +325,21 @@ class DLQManager:
             await db.commit()
 
     async def _fetch_due_batch(self, limit: int) -> list[DLQRow]:
-        """Retorna filas pendientes cuyo next_retry_at ya venció."""
+        """Retorna filas pendientes cuyo next_retry_at ya venció.
+
+        También recupera filas `in_progress` stancadas (crash/cancel) y las marca como `pending`.
+        """
         now = self._clock()
         await self._ensure_schema()
+
+        # Recuperar filas stancadas: in_progress + updated_at + 60s < now → pending
+        async with self._connect() as db:
+            await db.execute(
+                "UPDATE dead_letter_events SET status='pending' WHERE status='in_progress' AND updated_at + 60000 < ?",
+                (now,),
+            )
+            await db.commit()
+
         async with (
             self._connect() as db,
             db.execute(

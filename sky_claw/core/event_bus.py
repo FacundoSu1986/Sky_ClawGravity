@@ -52,7 +52,7 @@ class CoreEventBus:
     """Bus de eventos asíncrono con pattern-matching y dispatch concurrente.
 
     Instanciable para permitir testing aislado. Los patrones de suscripción
-    usan ``fnmatch`` (``*`` matchea un nivel, no cruza puntos).
+    usan ``fnmatch`` (``*`` matchea cualquier cadena, incluso con puntos).
 
     Los eventos fallidos se encolan en la DLQ inyectada (si hay una).
     Usar ``create_bus_with_dlq()`` para obtener una instancia pre-cableada.
