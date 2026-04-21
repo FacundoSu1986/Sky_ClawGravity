@@ -363,9 +363,10 @@
 
     </div>
 
-    <!-- Phase 2+ scripts mount here -->
-    <!-- <script src="js/appstate.js"></script>       [Phase 2] -->
-    <!-- <script src="js/websocket-client.js"></script> [Phase 2] -->
-    <!-- <script src="js/operations-hub.js"></script>   [Phase 2] -->
+    <!-- Operations Hub reactive layer (ES6 modules, no bundler) -->
+    <!-- operations-hub.js auto-bootstraps on DOMContentLoaded and exposes
+         window.SkyClawOperationsHub = { state, client, dispose } for Phase 4/5
+         DOM binders. -->
+    <script type="module" src="js/operations-hub.js"></script>
 </body>
 </html>
