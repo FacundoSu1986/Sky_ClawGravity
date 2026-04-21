@@ -1,4 +1,5 @@
 """Tests for AsyncToolRegistry.hermes_system_prompt_block()."""
+
 from __future__ import annotations
 
 import json

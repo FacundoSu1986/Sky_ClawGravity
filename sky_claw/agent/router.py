@@ -43,7 +43,7 @@ MAX_HERMES_RETRIES = 3
 
 _HERMES_TOOL_INSTRUCTIONS = (
     "\n\nYou have access to the following tools. To call a tool, respond with a "
-    "<tool_call> block containing a JSON object with \"name\" and \"arguments\" keys. "
+    '<tool_call> block containing a JSON object with "name" and "arguments" keys. '
     "Wait for the tool result before continuing. If no tool is needed, reply normally.\n\n"
 )
 
@@ -145,6 +145,8 @@ class LLMRouter:
         self._gateway = gateway
         self._guardrail = guardrail
         self._hermes_mode = hermes_mode
+        if hermes_mode and tool_registry is None:
+            raise ValueError("hermes_mode=True requires a tool_registry")
 
         # LangChain LCEL Integration
         self._lcel_prompt_composer = PromptComposer(
@@ -301,9 +303,7 @@ class LLMRouter:
                 effective_tools = tool_schemas
                 if self._hermes_mode and self._tools:
                     effective_system = (
-                        effective_system
-                        + _HERMES_TOOL_INSTRUCTIONS
-                        + self._tools.hermes_system_prompt_block()
+                        effective_system + _HERMES_TOOL_INSTRUCTIONS + self._tools.hermes_system_prompt_block()
                     )
                     effective_tools = []
 
@@ -337,9 +337,7 @@ class LLMRouter:
                 # ── Hermes mode: detect <tool_call> tags in plain text ──────────────
                 if self._hermes_mode:
                     full_text = "\n".join(
-                        block.get("text", "")
-                        for block in content_blocks
-                        if block.get("type") == "text"
+                        block.get("text", "") for block in content_blocks if block.get("type") == "text"
                     )
                     if has_tool_calls(full_text):
                         try:
@@ -348,9 +346,8 @@ class LLMRouter:
                             hermes_error_count += 1
                             if hermes_error_count >= MAX_HERMES_RETRIES:
                                 return "Error: max self-healing retries exceeded (parse error)."
-                            messages.append(
-                                {"role": "tool", "content": f"Error parsing tool call: {exc}"}
-                            )
+                            # role="user" — Hermes mode has no native tool_call_id contract
+                            messages.append({"role": "user", "content": f"[Tool Error] Error parsing tool call: {exc}"})
                             continue
                         for call in calls:
                             tool_name_h = call["name"]
@@ -358,22 +355,35 @@ class LLMRouter:
                             try:
                                 result_str_h = await self._tools.execute(tool_name_h, tool_args_h)
                                 hermes_error_count = 0
-                            except Exception as exc:
+                            except (asyncio.CancelledError, KeyboardInterrupt):
+                                raise
+                            except (KeyError, ValueError, TypeError, RuntimeError, OSError) as exc:
                                 hermes_error_count += 1
                                 if hermes_error_count >= MAX_HERMES_RETRIES:
                                     return "Error: max self-healing retries exceeded (execution error)."
-                                messages.append(
-                                    {
-                                        "role": "tool",
-                                        "content": f"Error executing {tool_name_h}: {exc}",
-                                    }
-                                )
-                                break
-                            messages.append({"role": "tool", "content": result_str_h})
+                                error_content = f"[Tool Error] Error executing {tool_name_h}: {exc}"
+                                await self._save_message(chat_id, "user", error_content)
+                                messages.append({"role": "user", "content": error_content})
+                                continue  # give every call its own error response; don't drop the rest
+                            if len(result_str_h) > 4000:
+                                result_str_h = result_str_h[:4000] + "\n\n[... truncated ...]"
+                            tool_content = f"[Tool Result] {result_str_h}"
+                            await self._save_message(chat_id, "user", tool_content)
+                            messages.append({"role": "user", "content": tool_content})
                         messages = messages[-self._max_context :]
                         continue
                     else:
                         hermes_error_count = 0
+                        # Output gate — apply same guardrail as non-Hermes path
+                        if self._guardrail:
+                            try:
+                                await self._guardrail.after_model_callback(full_text)
+                            except SecurityViolationError as exc:
+                                logger.warning("Guardrail blocked Hermes output: %s", exc)
+                                return "\u26a0\ufe0f La respuesta fue bloqueada por una pol\u00edtica de seguridad."
+                            except AgentOrchestrationError as exc:
+                                logger.error("Schema violation in Hermes output: %s", exc)
+                                return "\u26a0\ufe0f La respuesta del modelo no cumple el esquema esperado."
                         return full_text
                 # ── end Hermes branch ────────────────────────────────────────────────
 

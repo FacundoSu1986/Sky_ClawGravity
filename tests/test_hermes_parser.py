@@ -1,4 +1,5 @@
 """Tests for sky_claw.agent.hermes_parser — zero-trust XML tool-call extraction."""
+
 from __future__ import annotations
 
 import pytest
@@ -54,17 +55,25 @@ def test_extract_missing_name_raises() -> None:
 
 
 def test_extract_ignores_surrounding_text() -> None:
-    text = "I'll call the tool now.\n<tool_call>{\"name\": \"close_game\"}</tool_call>\nDone."
+    text = 'I\'ll call the tool now.\n<tool_call>{"name": "close_game"}</tool_call>\nDone.'
     calls = extract_tool_calls(text)
     assert len(calls) == 1
     assert calls[0]["name"] == "close_game"
 
 
 def test_extract_multiline_json() -> None:
-    text = (
-        "<tool_call>\n"
-        '{"name": "search_mod",\n "arguments": {"mod_name": "SkyUI"}}\n'
-        "</tool_call>"
-    )
+    text = '<tool_call>\n{"name": "search_mod",\n "arguments": {"mod_name": "SkyUI"}}\n</tool_call>'
     calls = extract_tool_calls(text)
     assert calls[0]["arguments"]["mod_name"] == "SkyUI"
+
+
+def test_extract_non_dict_payload_raises() -> None:
+    text = "<tool_call>[1, 2, 3]</tool_call>"
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        extract_tool_calls(text)
+
+
+def test_extract_non_dict_arguments_raises() -> None:
+    text = '<tool_call>{"name": "search_mod", "arguments": "bad"}</tool_call>'
+    with pytest.raises(ValueError, match="'arguments' must be a JSON object"):
+        extract_tool_calls(text)

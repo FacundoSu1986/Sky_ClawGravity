@@ -1,4 +1,5 @@
 """Tests for LLMRouter in hermes_mode=True."""
+
 from __future__ import annotations
 
 import pathlib
@@ -80,6 +81,24 @@ async def hermes_router(tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path
 
 
 # ------------------------------------------------------------------
+# Init-time guard
+# ------------------------------------------------------------------
+
+
+class TestHermesInitGuard:
+    def test_hermes_mode_without_registry_raises(self, tmp_path: pathlib.Path) -> None:
+        """hermes_mode=True without a tool_registry must fail at construction time."""
+        with pytest.raises(ValueError, match="tool_registry"):
+            LLMRouter(
+                provider=AnthropicProvider("test-key"),
+                tool_registry=None,
+                db_path=str(tmp_path / "x.db"),
+                gateway=MagicMock(),
+                hermes_mode=True,
+            )
+
+
+# ------------------------------------------------------------------
 # System prompt injection
 # ------------------------------------------------------------------
 
@@ -114,9 +133,7 @@ class TestHermesSystemPrompt:
 
 class TestHermesToolExecution:
     @pytest.mark.asyncio
-    async def test_tool_call_in_text_triggers_execution(
-        self, hermes_router: LLMRouter
-    ) -> None:
+    async def test_tool_call_in_text_triggers_execution(self, hermes_router: LLMRouter) -> None:
         """LLM returns <tool_call> in text → router calls registry.execute."""
         responses = [
             {
@@ -144,9 +161,7 @@ class TestHermesToolExecution:
         hermes_router._provider.chat = fake_chat  # type: ignore[method-assign]
         mock_session = MagicMock(spec=aiohttp.ClientSession)
 
-        with patch.object(
-            hermes_router._tools, "execute", new_callable=AsyncMock
-        ) as mock_exec:
+        with patch.object(hermes_router._tools, "execute", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = '{"matches": []}'
             result = await hermes_router.chat("Search for SKSE", mock_session, chat_id="h-2")
 
@@ -175,9 +190,7 @@ class TestHermesSelfHealing:
             },
             {
                 "stop_reason": "end_turn",
-                "content": [
-                    {"type": "text", "text": "Sorry, I could not sort. Please check the profile name."}
-                ],
+                "content": [{"type": "text", "text": "Sorry, I could not sort. Please check the profile name."}],
             },
         ]
         call_index = 0
@@ -199,17 +212,13 @@ class TestHermesSelfHealing:
         assert call_index == 2
 
     @pytest.mark.asyncio
-    async def test_max_retries_exceeded_returns_error_message(
-        self, hermes_router: LLMRouter
-    ) -> None:
+    async def test_max_retries_exceeded_returns_error_message(self, hermes_router: LLMRouter) -> None:
         """After MAX_HERMES_RETRIES consecutive failures, router returns an error string."""
 
         async def fake_chat(**kwargs: Any) -> dict[str, Any]:
             return {
                 "stop_reason": "end_turn",
-                "content": [
-                    {"type": "text", "text": '<tool_call>{"name": "close_game"}</tool_call>'}
-                ],
+                "content": [{"type": "text", "text": '<tool_call>{"name": "close_game"}</tool_call>'}],
             }
 
         hermes_router._provider.chat = fake_chat  # type: ignore[method-assign]
@@ -223,9 +232,7 @@ class TestHermesSelfHealing:
         assert mock_exec.call_count == MAX_HERMES_RETRIES
 
     @pytest.mark.asyncio
-    async def test_malformed_tool_call_json_injected_as_error(
-        self, hermes_router: LLMRouter
-    ) -> None:
+    async def test_malformed_tool_call_json_injected_as_error(self, hermes_router: LLMRouter) -> None:
         """Malformed <tool_call> JSON is caught and fed back as a tool-role error."""
         responses = [
             {

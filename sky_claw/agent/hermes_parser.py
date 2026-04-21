@@ -1,4 +1,5 @@
 """Zero-trust Hermes-style XML tool-call parser."""
+
 from __future__ import annotations
 
 import json
@@ -25,9 +26,12 @@ def extract_tool_calls(text: str) -> list[dict[str, Any]]:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ValueError(f"Malformed JSON in <tool_call>: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError(f"<tool_call> payload must be a JSON object, got {type(parsed).__name__}: {raw!r}")
         if "name" not in parsed:
             raise ValueError(f"Missing 'name' key in tool call: {raw!r}")
-        results.append(
-            {"name": str(parsed["name"]), "arguments": parsed.get("arguments") or {}}
-        )
+        arguments = parsed.get("arguments") or {}
+        if not isinstance(arguments, dict):
+            raise ValueError(f"'arguments' must be a JSON object, got {type(arguments).__name__}")
+        results.append({"name": str(parsed["name"]), "arguments": arguments})
     return results
