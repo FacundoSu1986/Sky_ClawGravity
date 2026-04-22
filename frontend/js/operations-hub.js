@@ -13,6 +13,10 @@
 import { AppState } from './appstate.js';
 import { WebSocketClient, buildWsUrl } from './websocket-client.js';
 import { LogView } from './log-view.js';
+import { ArsenalBinder } from './arsenal.js';
+import { TelemetryBinder } from './telemetry.js';
+import { PanelCollapseBinder } from './panel-collapse.js';
+import { StatusBarBinder } from './status-bar.js';
 
 /** WebSocket endpoint served by OperationsHubWSHandler. */
 export const WS_PATH = '/api/status';
@@ -231,16 +235,19 @@ export function createOperationsHub({
 
 /**
  * Mount the DOM binders that are ready to bind against the given state.
- * Today: LogView (Phase 4). Phase 5 will append Arsenal/Telemetría binders.
+ * Phase 4 introduced LogView; Phase 5 adds Arsenal, Telemetría, the panel
+ * collapse toggle, and the status-bar reactive binder.
  *
  * Exported so tests and future reuse can opt in/out granularly.
  *
  * @param {AppState} state
- * @returns {{logView: LogView|null, dispose: () => void}}
+ * @param {WebSocketClient} [client] Optional — Arsenal needs it to send commands.
+ * @returns {{logView: LogView|null, arsenal: ArsenalBinder|null, telemetry: TelemetryBinder|null, panelCollapse: PanelCollapseBinder|null, statusBar: StatusBarBinder|null, dispose: () => void}}
  */
-export function mountDomBinders(state) {
+export function mountDomBinders(state, client = null) {
     const binders = [];
 
+    // ── Orbe de Visión (logs) ───────────────────────────────────────────────
     const logContainer = document.getElementById('ops-log-stream');
     const filterButtons = document.querySelectorAll('.ops-orbe__filter-btn');
     const clearButton = document.getElementById('ops-clear-logs');
@@ -263,13 +270,65 @@ export function mountDomBinders(state) {
         console.warn('[OperationsHub] #ops-log-stream not found; LogView not mounted');
     }
 
+    // ── Arsenal (command buttons) ───────────────────────────────────────────
+    const arsenalButtons = document.querySelectorAll('.ops-arsenal__btn[data-command]');
+    let arsenal = null;
+    if (arsenalButtons && arsenalButtons.length > 0) {
+        arsenal = new ArsenalBinder({ state, client, buttons: arsenalButtons });
+        binders.push(arsenal);
+    }
+
+    // ── Telemetría (CPU / RAM / procs / uptime) ─────────────────────────────
+    let telemetry = null;
+    const telemetryElements = {
+        cpuValue: document.getElementById('ops-cpu'),
+        cpuBar:   document.getElementById('ops-cpu-bar'),
+        memValue: document.getElementById('ops-mem'),
+        memUnit:  document.getElementById('ops-mem-unit'),
+        memBar:   document.getElementById('ops-mem-bar'),
+        procs:    document.getElementById('ops-procs'),
+        uptime:   document.getElementById('ops-uptime'),
+    };
+    if (Object.values(telemetryElements).some(Boolean)) {
+        telemetry = new TelemetryBinder({ state, elements: telemetryElements });
+        binders.push(telemetry);
+    }
+
+    // ── Panel collapse (Ctrl+B) ─────────────────────────────────────────────
+    const root = document.getElementById('ops-hub');
+    const collapseToggle = document.getElementById('ops-collapse-toggle');
+    const panelsScroller = document.getElementById('ops-panels-scroller');
+    let panelCollapse = null;
+    if (root && collapseToggle) {
+        panelCollapse = new PanelCollapseBinder({
+            root,
+            toggleButton: collapseToggle,
+            scroller: panelsScroller,
+        });
+        binders.push(panelCollapse);
+    }
+
+    // ── Status bar (connection + HITL) ──────────────────────────────────────
+    const indicator = document.getElementById('ops-conn-indicator');
+    const statusBarElements = {
+        dot: indicator?.querySelector?.('.ops-statusbar__dot') ?? null,
+        indicator: indicator ?? null,
+        connText: document.getElementById('ops-conn-text'),
+        hitlText: document.getElementById('ops-hitl-text'),
+    };
+    let statusBar = null;
+    if (statusBarElements.connText || statusBarElements.hitlText) {
+        statusBar = new StatusBarBinder({ state, elements: statusBarElements });
+        binders.push(statusBar);
+    }
+
     const dispose = () => {
         for (const b of binders) {
             try { b.dispose?.(); } catch { /* no-op */ }
         }
     };
 
-    return { logView, dispose };
+    return { logView, arsenal, telemetry, panelCollapse, statusBar, dispose };
 }
 
 
@@ -278,8 +337,8 @@ export function mountDomBinders(state) {
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     const boot = () => {
         const hub = createOperationsHub();
-        const binders = mountDomBinders(hub.state);
-        // Expose on window for Phase 5 binders + DevTools debugging.
+        const binders = mountDomBinders(hub.state, hub.client);
+        // Expose on window for binders + DevTools debugging.
         window.SkyClawOperationsHub = { ...hub, binders };
     };
     if (document.readyState === 'loading') {
