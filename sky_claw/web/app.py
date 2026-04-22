@@ -27,9 +27,14 @@ from sky_claw.auto_detect import AutoDetector
 from sky_claw.local_config import load as load_local_config
 from sky_claw.local_config import save as save_local_config
 from sky_claw.logging_config import correlation_id_var
+from sky_claw.web.operations_hub_ws import (
+    OperationsHubWSHandler,
+    register_operations_hub_routes,
+)
 
 if TYPE_CHECKING:
     from sky_claw.agent.router import LLMRouter
+    from sky_claw.core.event_bus import CoreEventBus
     from sky_claw.security.auth_token_manager import AuthTokenManager
 
 logger = logging.getLogger(__name__)
@@ -81,6 +86,7 @@ class WebApp:
         tools_installer: Any = None,
         on_setup_complete: OnSetupComplete | None = None,
         auth_manager: AuthTokenManager | None = None,
+        event_bus: CoreEventBus | None = None,
     ) -> None:
         self._router = router
         self._session = session
@@ -89,6 +95,11 @@ class WebApp:
         self._tools_installer = tools_installer
         self._on_setup_complete = on_setup_complete
         self._auth_manager = auth_manager
+        self._event_bus = event_bus
+        # Populated by create_app() when an event_bus is supplied.  Callers
+        # should invoke ``await webapp.ops_hub_handler.start()`` once their
+        # CoreEventBus is running, and ``stop()`` during shutdown.
+        self.ops_hub_handler: OperationsHubWSHandler | None = None
 
     @web.middleware
     async def _correlation_middleware(
@@ -159,6 +170,13 @@ class WebApp:
         app.router.add_post("/api/install-tools", self._handle_install_tools)
         app.router.add_post("/api/chat", self._handle_chat)
         app.router.add_static("/static", _STATIC_DIR, name="static")
+
+        # Operations Hub WebSocket bridge — wired only when a CoreEventBus is
+        # supplied.  The handler is started/stopped by the enclosing AppContext
+        # so its lifecycle matches the bus it forwards from.
+        if self._event_bus is not None:
+            self.ops_hub_handler = register_operations_hub_routes(app, self._event_bus)
+
         return app
 
     async def _handle_index(self, request: web.Request) -> web.Response:
