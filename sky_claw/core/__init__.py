@@ -1,5 +1,6 @@
 """Core package for Sky-Claw daemon components."""
 
+from .async_path_resolver import AsyncPathResolutionError, AsyncPathResolver
 from .contracts import (
     get_contract_schema,
     get_schema_class,
@@ -41,6 +42,9 @@ from .validators import (
 __all__ = [
     "AgentToolRequest",
     "AgentToolResponse",
+    # Async Path Resolver (primitiva de infraestructura no bloqueante)
+    "AsyncPathResolutionError",
+    "AsyncPathResolver",
     # Excepciones
     "CircuitBreakerTrippedError",
     # Event Bus + DLQ
