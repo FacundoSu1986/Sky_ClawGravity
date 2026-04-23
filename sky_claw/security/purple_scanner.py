@@ -204,52 +204,31 @@ class PurpleScanner(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _scan_text_payloads(filepath: Path) -> list[dict[str, Any]]:
+def _scan_text_payloads(content: str, filename: str) -> list[dict[str, Any]]:
     """
     Escanea archivos de texto (.bat, .ps1, .ini) buscando payloads maliciosos.
 
     Args:
-        filepath: Ruta al archivo a escanear
-
+        content: Contenido del archivo
+        filename: Nombre del archivo
+    
     Returns:
         Lista de hallazgos detectados
     """
     findings: list[dict[str, Any]] = []
 
-    # Lectura robusta con múltiples encodings
-    content: str | None = None
-    for encoding in ["utf-8", "latin-1"]:
-        try:
-            content = filepath.read_text(encoding=encoding, errors="ignore")
-            break
-        except (UnicodeDecodeError, OSError) as e:
-            logger.debug(f"Error leyendo {filepath} con {encoding}: {e}")
-            continue
-
-    if content is None:
-        logger.error(f"No se pudo leer el archivo: {filepath}")
-        return [
-            {
-                "message": "Error de lectura: archivo inaccesible",
-                "line": 0,
-                "severity": "HIGH",
-                "confidence": 0.8,
-                "file": str(filepath),
-            }
-        ]
-
     # Escanear contra patrones maliciosos
     for line_num, line in enumerate(content.splitlines(), start=1):
         for pattern, description in MALICIOUS_PAYLOAD_PATTERNS:
             if pattern.search(line):
-                logger.critical(f"AMENAZA DETECTADA en {filepath}:{line_num} - {description}")
+                logger.critical(f"AMENAZA DETECTADA en {filename}:{line_num} - {description}")
                 findings.append(
                     {
                         "message": description,
                         "line": line_num,
                         "severity": "CRITICAL",
                         "confidence": 0.95,
-                        "file": str(filepath),
+                        "file": filename,
                         "matched_line": line.strip()[:200],  # Truncar líneas largas
                     }
                 )
@@ -270,7 +249,7 @@ def run_scan(code: str, filename: str = "main.py") -> list[dict[str, Any]]:
 
     # Routing según extensión
     if extension in TEXT_SCAN_EXTENSIONS:
-        return _scan_text_payloads(filepath)
+        return _scan_text_payloads(code, filename)
 
     # Escaneo AST para archivos Python
     try:
@@ -306,12 +285,11 @@ def scan_file(filepath: Path) -> list[dict[str, Any]]:
     """
     extension = filepath.suffix.lower()
 
-    if extension in TEXT_SCAN_EXTENSIONS:
-        return _scan_text_payloads(filepath)
-
-    if extension == ".py":
+    if extension in TEXT_SCAN_EXTENSIONS or extension == ".py":
         try:
             code = filepath.read_text(encoding="utf-8", errors="ignore")
+            if extension in TEXT_SCAN_EXTENSIONS:
+                return _scan_text_payloads(code, str(filepath))
             return run_scan(code, str(filepath))
         except OSError as e:
             logger.error(f"Error leyendo archivo {filepath}: {e}")
