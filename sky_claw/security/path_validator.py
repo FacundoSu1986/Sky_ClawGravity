@@ -114,8 +114,12 @@ def sandboxed_io(
             raw_path = kwargs.get(arg_name)
             if raw_path is None and args:
                 raw_path = args[0]  # type: ignore[arg-type]
-            if raw_path is not None:
-                validator.validate(raw_path)  # type: ignore[arg-type]
+            if raw_path is None:
+                raise PathViolationError(
+                    f"Sandboxed function '{fn.__name__}' called without "
+                    f"required path argument '{arg_name}'"
+                )
+            validator.validate(raw_path)  # type: ignore[arg-type]
             return fn(*args, **kwargs)
 
         return wrapper

@@ -13,6 +13,8 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sky_claw.security.file_permissions import restrict_to_owner
+
 import aiosqlite
 from pydantic import BaseModel
 
@@ -36,12 +38,21 @@ class GovernanceManager:
 
     @classmethod
     def get_instance(cls, base_path: str = ".") -> "GovernanceManager":
-        """Método factory con lazy loading thread-safe."""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = cls(base_path)
-        return cls._instance
+        """Método factory con lazy loading thread-safe.
+
+        Raises RuntimeError if called with a different base_path than the
+        existing singleton — prevents silent misconfiguration.
+        """
+        with cls._lock:
+            if cls._instance is not None:
+                if str(cls._instance.base_path.resolve()) != str(Path(base_path).resolve()):
+                    raise RuntimeError(
+                        f"GovernanceManager singleton conflict: "
+                        f"existing={cls._instance.base_path}, requested={base_path}"
+                    )
+                return cls._instance
+            cls._instance = cls(base_path)
+            return cls._instance
 
     def __init__(self, base_path: str = "."):
         self.base_path = Path(base_path)
@@ -70,11 +81,16 @@ class GovernanceManager:
             logger.error(f"Error inicializando DB de gobernanza: {e}")
 
     def _get_or_create_hmac_key(self) -> bytes:
-        """Obtiene la clave HMAC del disco o genera una nueva."""
+        """Obtiene la clave HMAC del disco o genera una nueva.
+
+        The key file is restricted to owner-only permissions to prevent
+        local users from reading the key and forging whitelist signatures.
+        """
         if self._hmac_key_path.exists():
             return self._hmac_key_path.read_bytes()
         key = os.urandom(32)
         self._hmac_key_path.write_bytes(key)
+        restrict_to_owner(self._hmac_key_path)
         return key
 
     def _compute_hmac(self, content: bytes, key: bytes) -> str:
