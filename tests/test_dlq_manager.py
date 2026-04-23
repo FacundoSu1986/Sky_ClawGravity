@@ -134,12 +134,14 @@ async def test_retry_worker_reinvokes_only_failed_handler(tmp_path: Path) -> Non
     """Handler que falla 1 vez y después tiene éxito → fila borrada, llamado 2 veces."""
     calls: list[Event] = []
     fail_on_first = [True]
+    retry_succeeded = asyncio.Event()  # sincronización por condición, no por tiempo
 
     async def flaky_handler(event: Event) -> None:
         calls.append(event)
         if fail_on_first[0]:
             fail_on_first[0] = False
             raise RuntimeError("first attempt fails")
+        retry_succeeded.set()  # señala éxito en 2do intento
 
     handler_name = DLQManager._handler_name(flaky_handler)
     tick = [0]
@@ -159,7 +161,10 @@ async def test_retry_worker_reinvokes_only_failed_handler(tmp_path: Path) -> Non
     exc = RuntimeError("first attempt fails")
     await dlq.enqueue(_make_event(), flaky_handler, exc)
     await dlq.start()
-    await asyncio.sleep(0.15)
+    # Esperar condición en lugar de tiempo fijo — determinístico independientemente
+    # de la velocidad del runner. El asyncio.sleep(0.15) previo era insuficiente
+    # en Windows CI con SQLite I/O overhead (2 ciclos de DB en 150ms = frágil).
+    await asyncio.wait_for(retry_succeeded.wait(), timeout=5.0)
     await dlq.stop()
 
     # La fila debe haber sido eliminada (éxito en 2do intento)

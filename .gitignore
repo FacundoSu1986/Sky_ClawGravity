@@ -86,3 +86,8 @@ plans/
 # Roo Code project config (local IDE configuration)
 .roo/
 
+# Antigravity metadata (session state, caches, plans)
+.antigravity/*
+!/.antigravity/config.json
+!/.antigravity/settings.json
+
