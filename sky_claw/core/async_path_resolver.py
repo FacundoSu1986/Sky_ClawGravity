@@ -11,6 +11,10 @@ Invariantes de diseño:
 * **Concurrencia pura**: toda I/O de disco se delega a ``asyncio.to_thread``.
 * **Caché thread-safe**: diccionario interno protegido por ``asyncio.Lock``.
 * **Fast-Path / Slow-Path**: lookup O(1) antes de incurrir en I/O.
+* **Deduplicación de I/O**: corutinas concurrentes sobre la misma clave
+  comparten el mismo ``Future`` en vuelo; solo una incurre en I/O.
+* **Clave compuesta**: ``(raw_path, strict)`` para evitar que una resolución
+  ``strict=False`` envenene el caché de una posterior ``strict=True``.
 * **Manejo de errores quirúrgico**: sólo ``OSError`` y ``RuntimeError`` son
   traducidos a :class:`AsyncPathResolutionError`; cualquier otra excepción
   es un bug upstream y se propaga sin modificación.
@@ -45,15 +49,20 @@ class AsyncPathResolver:
     ``asyncio.Lock`` para garantizar seguridad frente a corutinas
     concurrentes.
 
-    La clase no utiliza variables globales ni estado compartido fuera de
-    la instancia, respetando el principio SRP: su única responsabilidad
-    es trasladar I/O bloqueante a un pool de hilos y memoizar el resultado.
+    La clave de caché es ``(raw_path, strict)`` para que resultados con
+    distintos valores de ``strict`` se almacenen independientemente.
+
+    La deduplicación de I/O se implementa mediante un diccionario de
+    ``Future`` en vuelo: si N corutinas llegan simultáneamente con la misma
+    clave, solo la primera lanza ``asyncio.to_thread``; las restantes
+    aguardan el mismo ``Future`` sin incurrir en I/O adicional.
     """
 
-    __slots__ = ("_cache", "_lock", "_logger")
+    __slots__ = ("_cache", "_inflight", "_lock", "_logger")
 
     def __init__(self, *, logger: logging.Logger | None = None) -> None:
-        self._cache: dict[str, pathlib.Path] = {}
+        self._cache: dict[tuple[str, bool], pathlib.Path] = {}
+        self._inflight: dict[tuple[str, bool], asyncio.Future[pathlib.Path]] = {}
         self._lock: Final[asyncio.Lock] = asyncio.Lock()
         self._logger: Final[logging.Logger] = logger or logging.getLogger(
             "SkyClaw.AsyncPathResolver",
@@ -70,9 +79,11 @@ class AsyncPathResolver:
         Algoritmo:
             1. **Fast-Path**: consulta el caché bajo el lock; si hay hit,
                retorna en O(1).
-            2. **Slow-Path**: delega ``Path(raw_path).resolve(strict=strict)``
+            2. **Deduplicación**: si otra corutina ya está resolviendo la
+               misma clave, se une a su ``Future`` sin lanzar I/O adicional.
+            3. **Slow-Path**: delega ``Path(raw_path).resolve(strict=strict)``
                a ``asyncio.to_thread``.
-            3. **Memoización**: guarda el resultado en el caché bajo el lock.
+            4. **Memoización**: guarda el resultado en el caché bajo el lock.
 
         Args:
             raw_path: Ruta textual sin resolver. No se normaliza previamente
@@ -89,11 +100,26 @@ class AsyncPathResolver:
                 ``OSError`` (incluye ``FileNotFoundError``, ``PermissionError``,
                 etc.) o ``RuntimeError`` (p. ej. loops de symlinks).
         """
-        # Fast-Path — lookup protegido por lock.
+        key = (raw_path, strict)
+
         async with self._lock:
-            cached = self._cache.get(raw_path)
-        if cached is not None:
-            return cached
+            # Fast-Path — hit de caché.
+            if key in self._cache:
+                return self._cache[key]
+            # Deduplicación — unirse a una resolución en vuelo.
+            if key in self._inflight:
+                fut = self._inflight[key]
+                is_owner = False
+            else:
+                loop = asyncio.get_running_loop()
+                fut = loop.create_future()
+                # Suppress "Future exception was never retrieved" when no waiters joined.
+                fut.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
+                self._inflight[key] = fut
+                is_owner = True
+
+        if not is_owner:
+            return await asyncio.shield(fut)
 
         # Slow-Path — I/O delegada a un hilo secundario.
         try:
@@ -110,13 +136,20 @@ class AsyncPathResolver:
                 exc,
                 exc_info=True,
             )
-            raise AsyncPathResolutionError(
+            domain_exc = AsyncPathResolutionError(
                 f"No se pudo resolver la ruta {raw_path!r} (strict={strict})"
-            ) from exc
+            )
+            domain_exc.__cause__ = exc
+            async with self._lock:
+                self._inflight.pop(key, None)
+            fut.set_exception(domain_exc)
+            raise domain_exc from exc
 
-        # Memoización — setdefault previene sobreescritura en carreras.
         async with self._lock:
-            return self._cache.setdefault(raw_path, resolved)
+            self._cache[key] = resolved
+            self._inflight.pop(key, None)
+        fut.set_result(resolved)
+        return resolved
 
     @staticmethod
     def _resolve_blocking(raw_path: str, strict: bool) -> pathlib.Path:

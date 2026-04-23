@@ -6,6 +6,7 @@ Cubre:
 - Cirugía de errores: solo OSError y RuntimeError se traducen a AsyncPathResolutionError.
 - Concurrencia: múltiples corutinas sobre la misma ruta sólo realizan una llamada a I/O.
 - Invariantes: logger inyectable, no hay variables globales, __slots__.
+- Cache+strict: clave compuesta (raw_path, strict) evita colisiones entre strict=True/False.
 """
 
 from __future__ import annotations
@@ -13,12 +14,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import pathlib
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from sky_claw.core.async_path_resolver import AsyncPathResolutionError, AsyncPathResolver
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -29,7 +29,8 @@ from sky_claw.core.async_path_resolver import AsyncPathResolutionError, AsyncPat
 def resolver() -> AsyncPathResolver:
     """AsyncPathResolver listo para usar con logger silencioso."""
     null_logger = logging.getLogger("tests.async_path_resolver")
-    null_logger.addHandler(logging.NullHandler())
+    if not null_logger.handlers:
+        null_logger.addHandler(logging.NullHandler())
     return AsyncPathResolver(logger=null_logger)
 
 
@@ -99,7 +100,7 @@ class TestFastPath:
     ) -> None:
         raw = str(existing_path)
         await resolver.resolve_safe(raw)
-        assert raw in resolver._cache
+        assert (raw, True) in resolver._cache
 
     async def test_different_raw_paths_cached_independently(
         self,
@@ -114,8 +115,8 @@ class TestFastPath:
         await resolver.resolve_safe(str(path_a))
         await resolver.resolve_safe(str(path_b))
 
-        assert str(path_a) in resolver._cache
-        assert str(path_b) in resolver._cache
+        assert (str(path_a), True) in resolver._cache
+        assert (str(path_b), True) in resolver._cache
 
 
 # ---------------------------------------------------------------------------
@@ -192,13 +193,15 @@ class TestErrorHandling:
     ) -> None:
         raw = str(existing_path)
 
-        with patch(
-            "sky_claw.core.async_path_resolver.asyncio.to_thread",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("simulated runtime failure"),
+        with (
+            patch(
+                "sky_claw.core.async_path_resolver.asyncio.to_thread",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("simulated runtime failure"),
+            ),
+            pytest.raises(AsyncPathResolutionError) as exc_info,
         ):
-            with pytest.raises(AsyncPathResolutionError) as exc_info:
-                await resolver.resolve_safe(raw)
+            await resolver.resolve_safe(raw)
 
         assert isinstance(exc_info.value.__cause__, RuntimeError)
 
@@ -209,13 +212,15 @@ class TestErrorHandling:
     ) -> None:
         raw = str(existing_path)
 
-        with patch(
-            "sky_claw.core.async_path_resolver.asyncio.to_thread",
-            new_callable=AsyncMock,
-            side_effect=ValueError("bug upstream inesperado"),
+        with (
+            patch(
+                "sky_claw.core.async_path_resolver.asyncio.to_thread",
+                new_callable=AsyncMock,
+                side_effect=ValueError("bug upstream inesperado"),
+            ),
+            pytest.raises(ValueError, match="bug upstream inesperado"),
         ):
-            with pytest.raises(ValueError, match="bug upstream inesperado"):
-                await resolver.resolve_safe(raw)
+            await resolver.resolve_safe(raw)
 
     async def test_error_is_logged_with_exc_info(
         self,
@@ -247,7 +252,7 @@ class TestErrorHandling:
         with pytest.raises(AsyncPathResolutionError):
             await resolver.resolve_safe(raw, strict=True)
 
-        assert raw not in resolver._cache
+        assert (raw, True) not in resolver._cache
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +281,7 @@ class TestConcurrency:
             results = await asyncio.gather(*[resolver.resolve_safe(raw) for _ in range(10)])
 
         assert all(r == existing_path.resolve() for r in results)
-        assert call_count >= 1
+        assert call_count == 1
 
     async def test_concurrent_different_paths_all_succeed(
         self,
@@ -292,3 +297,43 @@ class TestConcurrency:
         results = await asyncio.gather(*[resolver.resolve_safe(str(p)) for p in paths])
         assert len(results) == 5
         assert all(r.exists() for r in results)
+
+
+# ---------------------------------------------------------------------------
+# Cache + strict interaction
+# ---------------------------------------------------------------------------
+
+
+class TestCacheStrictInteraction:
+    """Verifica que la clave (raw_path, strict) aísla resoluciones strict=True/False."""
+
+    async def test_nonexistent_strict_false_does_not_poison_strict_true(
+        self,
+        resolver: AsyncPathResolver,
+        tmp_path: pathlib.Path,
+    ) -> None:
+        ghost = tmp_path / "ghost_dir"
+        raw = str(ghost)
+
+        # strict=False → cachea un Path resuelto sin verificar existencia.
+        result_false = await resolver.resolve_safe(raw, strict=False)
+        assert result_false == ghost.resolve(strict=False)
+
+        # strict=True → debe fallar porque el path no existe, no servir desde caché.
+        with pytest.raises(AsyncPathResolutionError) as exc_info:
+            await resolver.resolve_safe(raw, strict=True)
+
+        assert isinstance(exc_info.value.__cause__, OSError)
+
+    async def test_strict_true_and_false_cached_independently(
+        self,
+        resolver: AsyncPathResolver,
+        existing_path: pathlib.Path,
+    ) -> None:
+        raw = str(existing_path)
+
+        await resolver.resolve_safe(raw, strict=True)
+        await resolver.resolve_safe(raw, strict=False)
+
+        assert (raw, True) in resolver._cache
+        assert (raw, False) in resolver._cache
