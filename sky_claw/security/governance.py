@@ -106,8 +106,15 @@ class GovernanceManager:
             try:
                 raw = self.whitelist_path.read_bytes()
 
-                # Validar HMAC si los archivos de integridad existen
-                if self._hmac_key_path.exists() and self._hmac_sig_path.exists():
+                # Validar HMAC si los archivos de integridad existen.
+                # Si existe la clave pero falta la firma, fallar cerrado:
+                # podría indicar que un atacante borró la firma para evadir la verificación.
+                if self._hmac_key_path.exists():
+                    if not self._hmac_sig_path.exists():
+                        raise RuntimeError(
+                            "Archivo de firma HMAC ausente pero la clave existe: "
+                            "la integridad de la whitelist no puede verificarse"
+                        )
                     key = self._hmac_key_path.read_bytes()
                     expected = self._hmac_sig_path.read_text().strip()
                     actual = self._compute_hmac(raw, key)
@@ -137,6 +144,7 @@ class GovernanceManager:
             key = self._get_or_create_hmac_key()
             sig = self._compute_hmac(raw, key)
             self._hmac_sig_path.write_text(sig)
+            restrict_to_owner(self._hmac_sig_path)
         except Exception as e:
             logger.error("Error guardando whitelist: %s", e)
 
