@@ -22,6 +22,18 @@ $ErrorActionPreference = "Stop"
 # CONSTANTES DEL ENTORNO
 # ============================================================
 $AG_USER_DATA      = "$env:APPDATA\Antigravity"
+
+# Guard: validar que APPDATA este definido y que la ruta resuelta contenga \Antigravity
+# antes de cualquier Remove-Item con wildcards sobre directorios de cache.
+if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
+    Write-Error "APPDATA no esta definido en este entorno. No es seguro ejecutar operaciones de limpieza."
+    exit 1
+}
+if ($AG_USER_DATA -notlike "*\Antigravity") {
+    Write-Error "La ruta de datos '$AG_USER_DATA' no contiene '\Antigravity'. Abortando para evitar borrados accidentales."
+    exit 1
+}
+
 $AG_INSTALL_DIR    = "$env:LOCALAPPDATA\Programs\Antigravity"
 $AG_EXTENSIONS     = "$env:USERPROFILE\.antigravity\extensions"
 $GEMINI_EXT_ID     = "google.geminicodeassist"
@@ -157,20 +169,12 @@ Write-Status "OK" "Respaldo completado: $BACKUP_DIR" "Green"
 # ============================================================
 Write-Step 2 "REINICIO DEL PROCESO GEMINI A2A SERVER"
 
-# Método 1: Comando interno de Antigravity (preferred)
-Write-Status ">" "Intentando reinicio graceful vía Developer Commands..." "Cyan"
+# Reinicio efectivo del backend: terminacion directa del proceso A2A.
+# Nota: este script no implementa un reinicio graceful via IPC/Developer Commands.
+# Para reinicio graceful usa Ctrl+Shift+P -> "Developer: Reload Window" despues de ejecutar.
+Write-Status ">" "Terminando proceso Gemini A2A Server (kill directo)..." "Cyan"
 
-# Enviar comando de reload de la extensión Gemini via IPC
-# Esto usa el command palette interno: "Gemini Code Assist: Restart"
-$reloadScript = @"
-// Intenta enviar señal de reload al extension host
-const cp = require('child_process');
-// Buscar el puerto de debug del extension host
-const result = cp.execSync('netstat -ano | findstr "17896"', {encoding: 'utf8'});
-console.log(result);
-"@
-
-# Método 2: Kill directo del proceso A2A
+# Kill directo del proceso A2A
 if ($geminiProcs) {
     foreach ($gp in $geminiProcs) {
         Write-Status ">" "Terminando Gemini A2A Server (PID: $($gp.ProcessId))..." "Yellow"

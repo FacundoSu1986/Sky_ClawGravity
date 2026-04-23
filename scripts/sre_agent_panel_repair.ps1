@@ -171,7 +171,9 @@ if (-not $SkipGit) {
         if ($needsFix -and -not $DryRun) {
             Copy-Item $gitConfig "$gitConfig.sre_backup_$TIMESTAMP" -Force
             $content = $content -replace 'repositoryformatversion\s*=\s*\d+', 'repositoryformatversion = 0'
-            $content = $content -replace '\[extensions\]\s*\r?\n(\t.*\r?\n)*', ''
+            # Regex ampliado: captura la seccion [extensions] completa tanto con tabs como
+            # con espacios (formato comun en git configs generados por distintas herramientas).
+            $content = $content -replace '(?ms)^\[extensions\]\s*\r?\n.*?(?=^\[|\z)', ''
             $content = $content.TrimEnd() + "`n"
             Set-Content $gitConfig $content -NoNewline
             Write-Status "OK" ".git/config corregido" "Green"
@@ -323,7 +325,9 @@ foreach ($sp in $statePaths) {
         try {
             $json = Get-Content $sp -Raw
             $null = $json | ConvertFrom-Json
-            if ($json -match "undefined|null|NaN") {
+            # Nota: 'null' es un valor JSON valido; solo 'undefined' y 'NaN' indican
+            # valores de JavaScript serializados incorrectamente como strings literales.
+            if ($json -match "\bundefined\b|\bNaN\b") {
                 Write-Status "!" "  Puntero corrupto en $sp" "Red"
                 Add-Diag "ERROR" "Puntero corrupto" $sp
                 if (-not $DryRun) {

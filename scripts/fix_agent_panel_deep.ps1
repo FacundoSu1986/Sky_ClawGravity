@@ -15,6 +15,17 @@ $ErrorActionPreference = "Continue"
 $AG_USER_DATA = "$env:APPDATA\Antigravity"
 $TIMESTAMP = Get-Date -Format "yyyyMMdd_HHmmss"
 
+# Guard: validar que APPDATA este definido y que la ruta de Antigravity sea valida
+# antes de ejecutar cualquier operacion destructiva con Remove-Item.
+if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
+    Write-Error "APPDATA no esta definido en este entorno. No es seguro continuar."
+    exit 1
+}
+if ($AG_USER_DATA -notlike "*\Antigravity") {
+    Write-Error "La ruta de datos '$AG_USER_DATA' no contiene '\Antigravity'. Abortando para evitar borrados accidentales."
+    exit 1
+}
+
 function Write-Status([string]$Icon, [string]$Msg, [string]$Color = "White") {
     Write-Host "[$Icon] $Msg" -ForegroundColor $Color
 }
@@ -129,7 +140,11 @@ foreach ($dp in $dawnPaths) {
 Write-Host ""
 Write-Status ">" "PASO 7: Reseteando estado de workspace para este proyecto..." "Cyan"
 
-# Buscar el workspace de este proyecto
+# Buscar el workspace de este proyecto usando la ruta real del repo (no hardcodeada)
+$projectRoot = ($PSScriptRoot | Split-Path -Parent)
+$resolvedRoot = (Resolve-Path $projectRoot -ErrorAction SilentlyContinue)?.Path ?? $projectRoot
+$projectName  = Split-Path -Leaf $resolvedRoot
+
 $wsStorage = "$AG_USER_DATA\User\workspaceStorage"
 $targetWorkspace = $null
 if (Test-Path $wsStorage) {
@@ -138,7 +153,12 @@ if (Test-Path $wsStorage) {
         $wsJson = Join-Path $wsd.FullName "workspace.json"
         if (Test-Path $wsJson) {
             $content = Get-Content $wsJson -Raw -ErrorAction SilentlyContinue
-            if ($content -match "Skyclaw_Main_Sync[^/]") {
+            # Comparar contra el nombre de carpeta real del repo para evitar falsos positivos
+            # entre workspaces con rutas parecidas (ej. Skyclaw_Main_Sync vs Skyclaw_Main_Sync_bak).
+            if ($content -match [regex]::Escape($projectName) -and
+                ($content -match [regex]::Escape($resolvedRoot.Replace('\','/')) -or
+                 $content -match [regex]::Escape($resolvedRoot))) {
+                Write-Status "i" "Workspace candidato: $($wsd.FullName)" "Cyan"
                 $targetWorkspace = $wsd
                 break
             }
@@ -212,7 +232,7 @@ Write-Host "============================================================" -Foreg
 Write-Host ""
 Write-Host "  PROXIMOS PASOS:" -ForegroundColor Yellow
 Write-Host "    1. Abrir Antigravity" -ForegroundColor White
-Write-Host "    2. Abrir este workspace (e:\Skyclaw_Main_Sync)" -ForegroundColor White
+Write-Host "    2. Abrir este workspace ($($PSScriptRoot | Split-Path -Parent))" -ForegroundColor White
 Write-Host "    3. El IDE re-generara CachedData limpio" -ForegroundColor White
 Write-Host "    4. El Agent Panel deberia funcionar ahora" -ForegroundColor White
 Write-Host ""
