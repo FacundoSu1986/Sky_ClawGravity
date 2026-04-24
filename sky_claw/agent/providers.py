@@ -326,15 +326,13 @@ def create_provider(*, provider_name=None, api_key=None, model=None):
     if provider_name:
         name = provider_name.lower()
         if name == "anthropic":
-            key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-            if not key:
-                raise ProviderConfigError("ANTHROPIC_API_KEY is required.")
+            if not api_key:
+                raise ProviderConfigError("ANTHROPIC_API_KEY is required. Provide it via setup wizard or config.toml.")
             logger.info("Using Anthropic provider")
             return AnthropicProvider(key)
         if name == "deepseek":
-            key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
-            if not key:
-                raise ProviderConfigError("DEEPSEEK_API_KEY is required.")
+            if not api_key:
+                raise ProviderConfigError("DEEPSEEK_API_KEY is required. Provide it via setup wizard or config.toml.")
             logger.info("Using DeepSeek provider")
             return DeepSeekProvider(key)
         if name == "ollama":
@@ -342,16 +340,13 @@ def create_provider(*, provider_name=None, api_key=None, model=None):
             return OllamaProvider()
         raise ProviderConfigError(f"Unknown provider: {name}")
 
-    # Auto-detect from environment
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if anthropic_key:
-        logger.info("Auto-detected Anthropic provider")
-        return AnthropicProvider(anthropic_key)
+    # Auto-detection: require explicit api_key (injected by caller from Config/keyring).
+    # Fallback to Ollama if no API key is available.
+    if api_key:
+        logger.info("API key provided — using Ollama (delegated auth).")
+        return OllamaProvider(api_key=api_key)
 
-    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
-    if deepseek_key:
-        logger.info("Auto-detected DeepSeek provider")
-        return DeepSeekProvider(deepseek_key)
+    # No explicit provider_name and no api_key — fall back to Ollama.
 
     logger.info("No API keys found — falling back to Ollama")
     return OllamaProvider()
