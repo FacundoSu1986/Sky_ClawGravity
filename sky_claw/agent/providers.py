@@ -329,24 +329,27 @@ def create_provider(*, provider_name=None, api_key=None, model=None):
             if not api_key:
                 raise ProviderConfigError("ANTHROPIC_API_KEY is required. Provide it via setup wizard or config.toml.")
             logger.info("Using Anthropic provider")
-            return AnthropicProvider(key)
+            return AnthropicProvider(api_key)
         if name == "deepseek":
             if not api_key:
                 raise ProviderConfigError("DEEPSEEK_API_KEY is required. Provide it via setup wizard or config.toml.")
             logger.info("Using DeepSeek provider")
-            return DeepSeekProvider(key)
+            return DeepSeekProvider(api_key)
         if name == "ollama":
             logger.info("Using Ollama provider (local)")
             return OllamaProvider()
         raise ProviderConfigError(f"Unknown provider: {name}")
 
-    # Auto-detection: require explicit api_key (injected by caller from Config/keyring).
-    # Fallback to Ollama if no API key is available.
-    if api_key:
-        logger.info("API key provided — using Ollama (delegated auth).")
-        return OllamaProvider(api_key=api_key)
+    # Auto-detect from environment; explicit api_key takes precedence.
+    anthropic_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+    if anthropic_key:
+        logger.info("Auto-detected Anthropic provider")
+        return AnthropicProvider(anthropic_key)
 
-    # No explicit provider_name and no api_key — fall back to Ollama.
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if deepseek_key:
+        logger.info("Auto-detected DeepSeek provider")
+        return DeepSeekProvider(deepseek_key)
 
     logger.info("No API keys found — falling back to Ollama")
     return OllamaProvider()

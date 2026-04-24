@@ -8,6 +8,7 @@ Generates a one-time token at NiceGUI startup.  The Background Daemon
 reads it from a secure temp file to authenticate the WebSocket upgrade.
 """
 
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -105,7 +106,6 @@ class AuthTokenManager:
         logger.info("Token rotation started (interval=%ds)", _TOKEN_TTL / 2)
 
     async def _rotation_loop(self) -> None:
-        import asyncio
         while True:
             await asyncio.sleep(_TOKEN_TTL / 2)
             logger.info("Rotating auth token...")
