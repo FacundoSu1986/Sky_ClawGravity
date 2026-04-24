@@ -13,14 +13,12 @@ from .contracts import (
 from .database import DatabaseAgent
 from .dlq_manager import DLQManager, DLQRow
 from .event_bus import (
-    OPS_LOG_TOPIC_PREFIX,
-    OPS_PROCESS_TOPIC_PREFIX,
+    OPS_PROCESS_CHANGE_TOPIC,
+    OPS_SYSTEM_LOG_TOPIC,
     OPS_TELEMETRY_TOPIC,
     CoreEventBus,
     Event,
     create_bus_with_dlq,
-    ops_log_topic,
-    ops_process_topic,
 )
 from .event_payloads import (
     ModlistChangedPayload,
@@ -61,12 +59,10 @@ __all__ = [
     "CircuitBreakerTrippedError",
     # Event Bus + DLQ
     "CoreEventBus",
-    "OPS_LOG_TOPIC_PREFIX",
-    "OPS_PROCESS_TOPIC_PREFIX",
+    "OPS_PROCESS_CHANGE_TOPIC",
+    "OPS_SYSTEM_LOG_TOPIC",
     "OPS_TELEMETRY_TOPIC",
     "create_bus_with_dlq",
-    "ops_log_topic",
-    "ops_process_topic",
     # Database
     "DatabaseAgent",
     # DLQ
