@@ -1056,7 +1056,13 @@ class SupervisorStateGraph:
             return state
 
     async def _execute_fallback(self, initial_state: StateGraphState | None = None) -> StateGraphState:
-        """Ejecución fallback sin LangGraph."""
+        """Ejecución fallback sin LangGraph.
+
+        M-7 FIX: The final state now reflects the actual outcome:
+        - COMPLETED only when dispatching succeeds (no ``last_error``).
+        - ERROR when ``last_error`` is set (tool failure, bad state, etc.).
+        - IDLE for unrecognized events (no false COMPLETED).
+        """
         state = initial_state or self.get_initial_state()
 
         # Simular transiciones básicas
@@ -1078,8 +1084,23 @@ class SupervisorStateGraph:
                     state["current_state"] = SupervisorState.DISPATCHING.value
                     state["previous_state"] = SupervisorState.ANALYZING.value
 
-            state["current_state"] = SupervisorState.COMPLETED.value
-            state["previous_state"] = SupervisorState.DISPATCHING.value
+                    # M-7 FIX: reflect actual dispatch outcome
+                    if state.get("last_error"):
+                        state["current_state"] = SupervisorState.ERROR.value
+                        state["previous_state"] = SupervisorState.DISPATCHING.value
+                    else:
+                        state["current_state"] = SupervisorState.COMPLETED.value
+                        state["previous_state"] = SupervisorState.DISPATCHING.value
+                else:
+                    # No tool to dispatch — analysis completed successfully
+                    state["current_state"] = SupervisorState.COMPLETED.value
+                    state["previous_state"] = SupervisorState.ANALYZING.value
+            else:
+                # Unrecognized event type — stay IDLE, don't falsely claim COMPLETED
+                logger.warning(
+                    "[StateGraph] Fallback: unrecognized event '%s', staying IDLE",
+                    event,
+                )
 
         return state
 

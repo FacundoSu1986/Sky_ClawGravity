@@ -229,9 +229,16 @@ class TestLoopDetectionRoutesToHITL:
         assert result == SupervisorState.HITL_WAIT.value
 
     def test_route_from_hitl_wait_stays_on_none_response(self) -> None:
-        """route_from_hitl_wait permanece en HITL_WAIT si response es None."""
+        """route_from_hitl_wait permanece en HITL_WAIT si response es None y timeout no expirado.
+
+        TASK-005 FIX: hitl_started_at must be set for a legitimate wait.
+        Without it, the state is inconsistent and routes to ERROR.
+        """
+        import time
+
         state = _base_state(current_state=SupervisorState.HITL_WAIT.value)
         state["hitl_response"] = None
+        state["hitl_started_at"] = time.monotonic()  # TASK-005: required for legitimate wait
 
         result = StateGraphEdges.route_from_hitl_wait(state)
 
