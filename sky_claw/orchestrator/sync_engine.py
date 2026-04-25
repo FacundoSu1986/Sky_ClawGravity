@@ -296,9 +296,13 @@ class SyncEngine:
                 )
                 await self._rollback_manager._journal.fail_operation(entry_id, error=str(exc))
 
-                # Ejecutar rollback
+                # Ejecutar rollback — result already reflects actual outcome
                 rollback_result = await self._rollback_manager.undo_last_operation(self._agent_id)
-                rollback_result.success = False
+                logger.warning(
+                    "Rollback automático completado: success=%s, transaction=%s",
+                    rollback_result.success,
+                    rollback_result.transaction_id,
+                )
 
                 raise
 

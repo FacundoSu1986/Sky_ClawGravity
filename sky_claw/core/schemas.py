@@ -4,7 +4,7 @@ schemas.py - Modelos de validación Pydantic para entrada/salida de agentes del 
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -26,7 +26,7 @@ class ModMetadata(BaseModel):
     author: str = Field(..., max_length=100)
     dependencies: list[int] = Field(default_factory=list)
     description: str | None = Field(None, max_length=2000)
-    downloaded_at: datetime = Field(default_factory=datetime.utcnow)
+    downloaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("name")
     @classmethod
@@ -129,7 +129,7 @@ class SecurityAuditResponse(BaseModel):
     findings: list[dict[str, Any]]
     risk_score: float = Field(..., ge=0.0, le=1.0)
     recommendations: list[str]
-    audited_at: datetime = Field(default_factory=datetime.utcnow)
+    audited_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AgentToolRequest(BaseModel):
@@ -142,7 +142,7 @@ class AgentToolRequest(BaseModel):
     priority: Literal["low", "medium", "high", "critical"] = "medium"
     requires_confirmation: bool = False
     timeout_seconds: int = Field(30, gt=0)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class RouteClassification(BaseModel):
@@ -198,4 +198,4 @@ class AgentToolResponse(BaseModel):
     success: bool
     error: str | None = None
     execution_time_ms: float | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

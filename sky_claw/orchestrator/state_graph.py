@@ -13,10 +13,12 @@ Gracefully degrades when LangGraph is not installed.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from sky_claw.config import HITL_TIMEOUT_SECONDS
 from sky_claw.core.models import CircuitBreakerTrippedError
 from sky_claw.security.loop_guardrail import AgenticLoopGuardrail
 
@@ -205,7 +207,7 @@ if PYDANTIC_AVAILABLE:
         """Estado del workflow de LangGraph para Sky-Claw."""
 
         # Identificación
-        workflow_id: str = Field(default_factory=lambda: f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}")
+        workflow_id: str = Field(default_factory=lambda: f"wf_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}")
 
         # Estado actual
         current_state: SupervisorState = Field(default=SupervisorState.INIT)
@@ -242,8 +244,8 @@ if PYDANTIC_AVAILABLE:
         rollback_transaction_id: int | None = None
 
         # Metadata
-        created_at: datetime = Field(default_factory=datetime.utcnow)
-        updated_at: datetime = Field(default_factory=datetime.utcnow)
+        created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+        updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
         def add_transition(
             self,
@@ -257,10 +259,10 @@ if PYDANTIC_AVAILABLE:
                     "from": from_state.value,
                     "to": to_state.value,
                     "reason": reason,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
 
 else:
     # Fallback sin Pydantic
@@ -268,7 +270,7 @@ else:
         """Estado del workflow sin Pydantic."""
 
         def __init__(self) -> None:
-            self.workflow_id = f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+            self.workflow_id = f"wf_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
             self.current_state = SupervisorState.INIT
             self.previous_state = None
             self.profile_name = "Default"
@@ -288,8 +290,8 @@ else:
             self.rollback_triggered = False
             self.rollback_result = None
             self.rollback_transaction_id = None
-            self.created_at = datetime.utcnow()
-            self.updated_at = datetime.utcnow()
+            self.created_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(timezone.utc)
 
 
 # TypedDict para LangGraph (requerido para anotaciones de estado)
@@ -316,6 +318,8 @@ class StateGraphState(TypedDict):
     rollback_triggered: bool
     rollback_result: dict[str, Any] | None
     rollback_transaction_id: int | None
+    # HITL timeout tracking — monotonic timestamp when HITL_WAIT was first entered
+    hitl_started_at: float | None
     # Cortacircuitos cognitivo: AgenticLoopGuardrail sets these on trip.
     loop_detected: bool
     loop_context: dict[str, Any] | None
@@ -372,13 +376,26 @@ class StateGraphNodes:
 
     @staticmethod
     def hitl_wait_node(state: StateGraphState) -> dict[str, Any]:
-        """Nodo de espera HITL - esperando aprobación humana."""
+        """Nodo de espera HITL - esperando aprobación humana.
+
+        Inyecta ``hitl_started_at`` con ``time.monotonic()`` en la primera
+        entrada al ciclo de espera.  Las iteraciones subsecuentes preservan
+        el timestamp original para que el timeout se mida desde el primer
+        ingreso, no desde la última re-entrada.
+        """
         hitl_request: dict[str, Any] = state.get("hitl_request") or {}
-        logger.info(f"[StateGraph] Esperando aprobación HITL: {hitl_request.get('action_type')}")
-        return {
+        logger.info("[StateGraph] Esperando aprobación HITL: %s", hitl_request.get("action_type"))
+
+        updates: dict[str, Any] = {
             "current_state": SupervisorState.HITL_WAIT.value,
             "previous_state": SupervisorState.DISPATCHING.value,
         }
+
+        # Preservar timestamp original; solo inyectar si es None (primera vez)
+        if state.get("hitl_started_at") is None:
+            updates["hitl_started_at"] = time.monotonic()
+
+        return updates
 
     @staticmethod
     def completed_node(state: StateGraphState) -> dict[str, Any]:
@@ -615,17 +632,67 @@ class StateGraphEdges:
 
     @staticmethod
     def route_from_hitl_wait(state: StateGraphState) -> str:
-        """Determina la transición desde HITL_WAIT basándose en la respuesta."""
+        """Determina la transición desde HITL_WAIT con timeout de seguridad.
+
+        Lógica de decisión evaluada en orden estricto:
+
+        A. Timeout alcanzado → ERROR
+        B. Espera legítima (sin expirar) → HITL_WAIT (continuar polling)
+        C. Estado inconsistente (sin timestamp) → ERROR
+        D. Respuesta recibida → transición según respuesta
+        """
         hitl_response = state.get("hitl_response")
 
-        if hitl_response == "approved":
-            return StateGraphEdges._validate_and_route(SupervisorState.HITL_WAIT, SupervisorState.DISPATCHING)
-        elif hitl_response == "denied":
-            return StateGraphEdges._validate_and_route(SupervisorState.HITL_WAIT, SupervisorState.COMPLETED)
-        elif hitl_response == "timeout":
-            return StateGraphEdges._validate_and_route(SupervisorState.HITL_WAIT, SupervisorState.ERROR)
+        # Condición D — Respuesta recibida del humano
+        if hitl_response is not None:
+            if hitl_response == "approved":
+                return StateGraphEdges._validate_and_route(
+                    SupervisorState.HITL_WAIT, SupervisorState.DISPATCHING
+                )
+            elif hitl_response == "denied":
+                return StateGraphEdges._validate_and_route(
+                    SupervisorState.HITL_WAIT, SupervisorState.COMPLETED
+                )
+            elif hitl_response == "timeout":
+                return StateGraphEdges._validate_and_route(
+                    SupervisorState.HITL_WAIT, SupervisorState.ERROR
+                )
+            # Respuesta desconocida — tratar como denegada
+            logger.warning("[StateGraph] HITL response desconocido: %s", hitl_response)
+            return StateGraphEdges._validate_and_route(
+                SupervisorState.HITL_WAIT, SupervisorState.COMPLETED
+            )
 
-        return SupervisorState.HITL_WAIT.value  # Seguir esperando
+        # hitl_response is None — evaluar timeout
+        hitl_started_at = state.get("hitl_started_at")
+
+        # Condición C — Estado inconsistente: sin timestamp de inicio
+        if hitl_started_at is None:
+            logger.error("[StateGraph] Estado HITL inconsistente: hitl_started_at ausente")
+            state["last_error"] = "Estado HITL inconsistente: hitl_started_at ausente"
+            return StateGraphEdges._validate_and_route(
+                SupervisorState.HITL_WAIT, SupervisorState.ERROR
+            )
+
+        # Evaluar elapsed time contra HITL_TIMEOUT_SECONDS
+        elapsed = time.monotonic() - hitl_started_at
+
+        # Condición A — Timeout alcanzado
+        if elapsed >= HITL_TIMEOUT_SECONDS:
+            logger.warning(
+                "[StateGraph] HITL timeout alcanzado: %.1fs >= %ds",
+                elapsed,
+                HITL_TIMEOUT_SECONDS,
+            )
+            state["last_error"] = (
+                f"Timeout esperando aprobación humana después de {HITL_TIMEOUT_SECONDS}s"
+            )
+            return StateGraphEdges._validate_and_route(
+                SupervisorState.HITL_WAIT, SupervisorState.ERROR
+            )
+
+        # Condición B — Espera legítima, sin expirar
+        return SupervisorState.HITL_WAIT.value
 
     @staticmethod
     def route_from_dispatching(state: StateGraphState) -> str:
@@ -837,7 +904,7 @@ class SupervisorStateGraph:
     def get_initial_state(self) -> StateGraphState:
         """Retorna el estado inicial del workflow."""
         return {
-            "workflow_id": f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+            "workflow_id": f"wf_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
             "current_state": SupervisorState.INIT.value,
             "previous_state": None,
             "profile_name": self.profile_name,
@@ -860,6 +927,7 @@ class SupervisorStateGraph:
             # Cortacircuitos cognitivo
             "loop_detected": False,
             "loop_context": None,
+            "hitl_started_at": None,
         }
 
     async def execute(self, initial_state: StateGraphState | None = None) -> StateGraphState:

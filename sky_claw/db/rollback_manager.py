@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import pathlib
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .journal import OperationJournal, OperationStatus, OperationType
@@ -22,17 +22,22 @@ class RollbackError(Exception):
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class RollbackResult:
-    """Resultado de una operación de rollback."""
+    """Resultado inmutable de una operación de rollback.
+
+    ``frozen=True`` garantiza que el resultado no pueda ser mutado después
+    de la construcción, previniendo bugs por asignación accidental de campos
+    (ej. ``result.success = False`` que enmascararía el resultado real del rollback).
+    """
 
     success: bool
     transaction_id: int | None = None
     entries_restored: int = 0
     files_deleted: int = 0
-    errors: list[str] = field(default_factory=list)
+    errors: tuple[str, ...] = ()
     dry_run: bool = False
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class RollbackManager:
@@ -73,7 +78,7 @@ class RollbackManager:
             return RollbackResult(
                 success=False,
                 transaction_id=None,
-                errors=["No completed or failed operation found for agent"],
+                errors=("No completed or failed operation found for agent",),
             )
 
         # Restaurar archivo desde snapshot
@@ -94,5 +99,5 @@ class RollbackManager:
             transaction_id=entry.id,
             entries_restored=1 if entry.snapshot_path else 0,
             files_deleted=1 if entry.operation_type in [OperationType.FILE_CREATE, OperationType.MOD_INSTALL] else 0,
-            errors=[],
+            errors=(),
         )
