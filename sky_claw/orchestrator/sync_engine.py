@@ -20,10 +20,11 @@ import logging
 import pathlib
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
+from pydantic import BaseModel, ConfigDict, Field
 from tenacity import (
     AsyncRetrying,
     RetryError,
@@ -59,48 +60,54 @@ _POISON = None
 BACKUP_STAGING_DIR = pathlib.Path(".skyclaw_backups/")
 
 
-@dataclass(frozen=True, slots=True)
-class SyncConfig:
-    """Tunables for the sync engine."""
+class SyncConfig(BaseModel):
+    """Tunables for the sync engine.
+
+    Serialize for transport with ``.model_dump(mode="json")``.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True)
 
     worker_count: int = 4
     batch_size: int = 20
     max_retries: int = 5
     api_semaphore_limit: int = 4
-    # PRF-01: Tightened from 200 to 50 — max 50*20=1000 items buffered.
-    # Provides backpressure without excessive RAM usage for large modlists.
     queue_maxsize: int = 50
-    # PRF-01: Timeout (seconds) for producer put — detects dead workers.
     queue_put_timeout: float = 120.0
-    # FASE 1.5: Configuración de rollback
     enable_rollback: bool = True
-    rollback_max_size_mb: int = 1024  # Default 1GB
-    max_pruning_age_days: int = 30  # Días para pruning
+    rollback_max_size_mb: int = 1024
+    max_pruning_age_days: int = 30
 
 
-@dataclass
-class SyncResult:
-    """Aggregated outcome of a sync run."""
+class SyncResult(BaseModel):
+    """Aggregated outcome of a sync run.
+
+    Serialize for transport with ``.model_dump(mode="json")``.
+    """
+
+    model_config = ConfigDict(strict=True)
 
     processed: int = 0
     failed: int = 0
     skipped: int = 0
-    errors: list[str] = field(default_factory=list)
-    # FASE 1.5: Campos de rollback
+    errors: list[str] = Field(default_factory=list)
     rollback_performed: bool = False
     rollback_success: bool = False
     rollback_transaction_id: int | None = None
 
 
-@dataclass
-class UpdatePayload:
-    """Payload generated after a full update cycle for Telegram reporting."""
+class UpdatePayload(BaseModel):
+    """Payload generated after a full update cycle for Telegram reporting.
+
+    Serialize for transport with ``.model_dump(mode="json")``.
+    """
+
+    model_config = ConfigDict(strict=True)
 
     total_checked: int = 0
-    updated_mods: list[dict[str, Any]] = field(default_factory=list)
-    failed_mods: list[dict[str, Any]] = field(default_factory=list)
-    up_to_date_mods: list[str] = field(default_factory=list)
-    # FASE 1.5: Campos de rollback
+    updated_mods: list[dict[str, Any]] = Field(default_factory=list)
+    failed_mods: list[dict[str, Any]] = Field(default_factory=list)
+    up_to_date_mods: list[str] = Field(default_factory=list)
     rollback_performed: bool = False
     rollback_transaction_id: int | None = None
 
@@ -167,7 +174,7 @@ class SyncEngine:
         downloader: NexusDownloader | None = None,
         hitl: HITLGuard | None = None,
         rollback_manager: RollbackManager | None = None,  # FASE 1.5
-        fetch_retry_wait=None,
+        fetch_retry_wait: Any = None,
     ) -> None:
         self._mo2 = mo2
         self._masterlist = masterlist
@@ -521,6 +528,10 @@ class SyncEngine:
         semaphore: asyncio.Semaphore,
     ) -> dict[str, Any]:
         """FASE 1.5: Worker con soporte de rollback transaccional."""
+        # Guaranteed non-None by callers that check self._rollback_manager
+        rm = self._rollback_manager
+        assert rm is not None
+
         nexus_id = mod["nexus_id"]
         local_version = mod["version"]
         mod_name = mod["name"]
@@ -528,9 +539,9 @@ class SyncEngine:
 
         # Usar Unit of Work pattern para operaciones de archivos
         try:
-            async with self._rollback_manager:
+            async with rm:
                 # Iniciar transacción
-                transaction_id = await self._rollback_manager._journal.begin_transaction(
+                transaction_id = await rm._journal.begin_transaction(
                     description=f"update_{mod_name}",
                     mod_id=mod.get("nexus_id"),
                     agent_id=self._agent_id,
@@ -540,7 +551,7 @@ class SyncEngine:
                 result = await self._check_and_update_mod_internal(mod, session, semaphore, transaction_id)
 
                 # Marcar transacción como committed
-                await self._rollback_manager._journal.commit_transaction(transaction_id)
+                await rm._journal.commit_transaction(transaction_id)
 
                 new_version = result.get("new_version", "unknown")
                 return {
@@ -558,7 +569,7 @@ class SyncEngine:
             # Rollback en caso de error
             logger.error("Error during mod update, executing rollback: %s", exc)
             try:
-                await self._rollback_manager.undo_last_operation(self._agent_id)
+                await rm.undo_last_operation(self._agent_id)
             except Exception as rollback_exc:
                 logger.critical("Rollback also failed for mod %s: %s", mod_name, str(rollback_exc))
                 return {
@@ -742,7 +753,7 @@ class SyncEngine:
                             "context": context,
                             "error_type": type(exc).__name__,
                             "error_message": str(exc),
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(tz=UTC).isoformat(),
                         },
                     )
                     detail = f"{context} failed: {exc}"
@@ -806,7 +817,7 @@ class SyncEngine:
                         "batch_size": len(batch),
                         "error_type": type(exc).__name__,
                         "error_message": str(exc),
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(tz=UTC).isoformat(),
                     },
                 )
                 result.failed += len(batch)
@@ -822,7 +833,7 @@ class SyncEngine:
         semaphore: asyncio.Semaphore,
         result: SyncResult,
     ) -> None:
-        mod_rows: list[tuple[int, str, str, str, str, str]] = []
+        mod_rows: list[tuple[int, str, str, str, str, str, bool, bool]] = []
         log_rows: list[tuple[int | None, str, str, str]] = []
 
         for mod_name, enabled in batch:
@@ -857,8 +868,8 @@ class SyncEngine:
                     str(info.get("author", "")),
                     str(info.get("category_id", "")),
                     str(info.get("download_url", "")),
-                    1,
-                    int(enabled),
+                    True,
+                    bool(enabled),
                 )
             )
             log_rows.append((None, "sync", "ok", mod_name))

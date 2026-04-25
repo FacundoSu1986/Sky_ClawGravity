@@ -125,5 +125,14 @@ module = [
 ]
 ignore_errors = true
 
+# Strict mode for refactored modules — overrides the broad ignore above
+[[tool.mypy.overrides]]
+module = [
+    "sky_claw.orchestrator.sync_engine",
+    "sky_claw.core.schemas",
+]
+strict = true
+ignore_errors = false
+
 [tool.hatch.build.targets.wheel]
 packages = ["sky_claw"]
