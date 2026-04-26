@@ -1,4 +1,5 @@
 """Unit tests para DLQManager.
+
 Todos los tests usan tmp_path para aislar la DB — nunca escriben en ~/.sky_claw/.
 El reloj se inyecta para controlar backoff sin asyncio.sleep reales.
 """
@@ -117,6 +118,62 @@ async def test_list_dead_only_returns_dead_rows(tmp_path: Path) -> None:
     pending = await dlq.list_pending()
     assert len(dead) == 1
     assert len(pending) == 0
+
+
+# ---------------------------------------------------------------------------
+# Test #3b — retry worker reinvoca handler fallido (from PR #75)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_retry_worker_reinvokes_only_failed_handler(tmp_path: Path) -> None:
+    """Handler que falla 1 vez y después tiene éxito → fila borrada, llamado 2 veces."""
+    calls: list[Event] = []
+    fail_on_first = [True]
+
+    async def flaky_handler(event: Event) -> None:
+        calls.append(event)
+        if fail_on_first[0]:
+            fail_on_first[0] = False
+            raise RuntimeError("first attempt fails")
+        # segunda llamada → éxito, la fila será borrada por el worker
+
+    handler_name = DLQManager._handler_name(flaky_handler)
+    tick = [0]
+
+    def advancing_clock() -> int:
+        t = tick[0]
+        tick[0] += 10_000  # avanza 10s por llamada → siempre vencido
+        return t
+
+    dlq = DLQManager(
+        db_path=tmp_path / "dlq.db",
+        handler_resolver={handler_name: flaky_handler}.get,
+        poll_interval_s=0,
+        clock=advancing_clock,
+    )
+
+    exc = RuntimeError("first attempt fails")
+    await dlq.enqueue(_make_event(), flaky_handler, exc)
+    await dlq.start()
+
+    # Polling determinístico: espera hasta que el handler haya sido llamado 2 veces
+    # (inicial + retry exitoso). Usar ``pending_is_empty`` era incorrecto porque el
+    # worker pone la fila en status='in_progress' durante el procesamiento, lo que
+    # hace que ``list_pending()`` retorne 0 antes de que la 2da llamada complete —
+    # causando una race condition donde ``stop()`` cancela el worker prematuramente.
+    async def handler_called_twice() -> bool:
+        return len(calls) >= 2
+
+    await poll_until(handler_called_twice, timeout=30.0)
+    await dlq.stop()
+
+    # La fila debe haber sido eliminada (éxito en 2do intento)
+    pending = await dlq.list_pending()
+    dead = await dlq.list_dead()
+    assert len(pending) == 0, "No deben quedar filas pending"
+    assert len(dead) == 0, "No debe haber filas dead"
+    assert len(calls) == 2, "El handler debe haberse llamado 2 veces (inicial + retry)"
+    assert calls[0].topic == _TOPIC
+    assert calls[1].topic == _TOPIC
 
 
 # ---------------------------------------------------------------------------
@@ -259,3 +316,51 @@ async def test_stop_cancels_worker_gracefully(tmp_path: Path) -> None:
     # stop() no debe lanzar ni quedarse colgado
     await asyncio.wait_for(dlq.stop(), timeout=2.0)
     assert dlq._retry_task is None or dlq._retry_task.done()
+
+
+# ---------------------------------------------------------------------------
+# Test #9 — poll_interval_s=0 yield-on-zero correctness (regression guard)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_poll_interval_zero_yields_control_to_other_tasks(tmp_path: Path) -> None:
+    """``poll_interval_s=0`` no causa busy-loop ni inanición de otras tareas.
+
+    Salvaguarda contra regresiones del worker DLQ cuando el intervalo de
+    poll es cero (modo "drain ASAP" usado en tests deterministas):
+
+    * El loop debe ceder control vía ``asyncio.sleep(0)`` aún cuando no hay
+      filas para procesar (la cola vacía no debe acaparar el event loop).
+    * Una tarea concurrente independiente debe poder ejecutar progreso
+      observable mientras el worker DLQ corre con queue vacía.
+
+    Sin esta garantía, una regresión del estilo ``while True: pass`` (sin
+    yield) en ``_retry_loop`` haría que la *task* concurrente nunca avance
+    y el ``asyncio.wait_for`` falle con :class:`asyncio.TimeoutError`.
+    """
+    dlq = DLQManager(
+        db_path=tmp_path / "dlq.db",
+        handler_resolver={}.get,
+        poll_interval_s=0,
+    )
+
+    progress: list[int] = []
+
+    async def concurrent_progress() -> None:
+        """Tarea independiente que debe poder iterar libremente."""
+        for i in range(10):
+            progress.append(i)
+            await asyncio.sleep(0)  # Solo cede control; no duerme.
+
+    await dlq.start()
+    try:
+        # Si el worker DLQ acaparara el event loop, esta tarea no terminaría.
+        await asyncio.wait_for(concurrent_progress(), timeout=2.0)
+    finally:
+        await dlq.stop()
+
+    assert progress == list(range(10)), (
+        "El worker DLQ con poll_interval_s=0 está acaparando el event loop "
+        f"(tarea concurrente solo logró {len(progress)}/10 iteraciones)."
+    )
