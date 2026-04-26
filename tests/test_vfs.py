@@ -5,6 +5,7 @@ from __future__ import annotations
 import pathlib
 from typing import NamedTuple
 
+import psutil
 import pytest
 
 from sky_claw.mo2.vfs import MO2Controller
@@ -184,8 +185,6 @@ class TestGameControl:
     @pytest.mark.asyncio
     async def test_close_game(self, controller: MO2Controller, monkeypatch) -> None:
         from unittest.mock import MagicMock
-
-        import psutil
 
         mock_proc_1 = MagicMock()
         mock_proc_1.info = {"name": "SkyrimSE.exe"}

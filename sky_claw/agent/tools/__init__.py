@@ -134,6 +134,33 @@ class AsyncToolRegistry:
         self._tools: dict[str, ToolDescriptor] = {}
         self._register_builtins()
 
+    def _resolve_gateway(self) -> Any:
+        """Resolve the active NetworkGateway using a best-effort fallback chain.
+
+        Priority:
+        1. ``self._gateway`` — explicitly injected at construction time.
+        2. ``self._downloader._gateway`` — falls back to the downloader's gateway
+           for callers (e.g. older AppContext versions) that wire the gateway to the
+           downloader but forget to pass it here.
+        3. ``self._tools_installer._gateway`` — same pattern for the tools installer.
+        4. ``None`` — no gateway available; Zero-Trust handlers will abort.
+        """
+        if self._gateway is not None:
+            return self._gateway
+        if (
+            self._downloader is not None
+            and hasattr(self._downloader, "_gateway")
+            and self._downloader._gateway is not None
+        ):
+            return self._downloader._gateway
+        if (
+            self._tools_installer is not None
+            and hasattr(self._tools_installer, "_gateway")
+            and self._tools_installer._gateway is not None
+        ):
+            return self._tools_installer._gateway
+        return None
+
     @property
     def tools(self) -> dict[str, ToolDescriptor]:
         return dict(self._tools)
@@ -163,7 +190,8 @@ class AsyncToolRegistry:
     async def _download_mod(self, nexus_id: int, file_id: int | None = None) -> str:
         """Download a mod with HITL approval (P0-2: re-fetches fresh URL on execute)."""
         return await download_mod(
-            self._downloader, self._hitl, self._sync_engine, nexus_id, file_id, gateway=self._gateway
+            self._downloader, self._hitl, self._sync_engine, nexus_id, file_id,
+            gateway=self._resolve_gateway(),
         )
 
     async def _run_loot_sort(self, profile: str) -> str:
@@ -233,7 +261,7 @@ class AsyncToolRegistry:
             input_schema=_clean_schema(DownloadModParams),
             fn=lambda nexus_id, file_id=None: download_mod(
                 self._downloader, self._hitl, self._sync_engine, nexus_id, file_id,
-                gateway=self._gateway,
+                gateway=self._resolve_gateway(),
             ),
             params_model=DownloadModParams,
         )
@@ -386,7 +414,7 @@ class AsyncToolRegistry:
                 self._downloader,
                 [self._loot_exe],
                 tools,
-                gateway=self._gateway,
+                gateway=self._resolve_gateway(),
             ),
             params_model=SetupToolsParams,
         )
