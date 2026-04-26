@@ -443,6 +443,7 @@ class TestSetupToolsTool:
             hitl=guard,
             tools_installer=ti,
             install_dir=install_dir,
+            gateway=gw,  # TASK-013 P1: Zero-Trust requires gateway
         )
 
         result_str = await registry.execute("setup_tools", {"tools": ["loot", "xedit"]})
@@ -519,6 +520,7 @@ class TestSetupToolsTool:
             hitl=guard,
             tools_installer=ti,
             install_dir=tmp_path,
+            gateway=gw,  # TASK-013 P1: Zero-Trust requires gateway
         )
 
         result_str = await registry.execute("setup_tools", {"tools": ["unknown_tool"]})

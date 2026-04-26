@@ -169,8 +169,6 @@ class TestGameControl:
 
         from unittest.mock import AsyncMock
 
-        import psutil
-
         mock_proc = AsyncMock()
         mock_proc.pid = 12345
         mock_create = AsyncMock(return_value=mock_proc)
@@ -179,9 +177,7 @@ class TestGameControl:
             return
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", mock_create)
-        monkeypatch.setattr(
-            "sky_claw.mo2.vfs._verify_pid_alive", _fake_verify
-        )
+        monkeypatch.setattr("sky_claw.mo2.vfs._verify_pid_alive", _fake_verify)
 
         result = await controller.launch_game("Default")
         assert result["status"] == "launched"
@@ -192,8 +188,6 @@ class TestGameControl:
     async def test_close_game(self, controller: MO2Controller, monkeypatch) -> None:
         from unittest.mock import MagicMock
 
-        import psutil
-
         mock_proc_1 = MagicMock()
         mock_proc_1.info = {"name": "SkyrimSE.exe"}
         mock_proc_1.kill = MagicMock()
@@ -201,7 +195,7 @@ class TestGameControl:
         mock_proc_2 = MagicMock()
         mock_proc_2.info = {"name": "chrome.exe"}
 
-        monkeypatch.setattr(psutil, "process_iter", lambda x: [mock_proc_1, mock_proc_2])
+        monkeypatch.setattr("psutil.process_iter", lambda x: [mock_proc_1, mock_proc_2])
 
         result = await controller.close_game()
         assert result["status"] == "closed"

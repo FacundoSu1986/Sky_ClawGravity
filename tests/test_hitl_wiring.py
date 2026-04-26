@@ -671,6 +671,7 @@ class TestEndToEndHITLFlow:
             sync_engine=sync_engine,
             hitl=guard,
             downloader=downloader,
+            gateway=gw,  # TASK-013 P1: Zero-Trust requires gateway
         )
 
         sender = _make_sender()
@@ -779,6 +780,7 @@ class TestEndToEndHITLFlow:
             sync_engine=sync_engine,
             hitl=guard,
             downloader=downloader,
+            gateway=gw,  # TASK-013 P1: Zero-Trust requires gateway
         )
 
         sender = _make_sender()

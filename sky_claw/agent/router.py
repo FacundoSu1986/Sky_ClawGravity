@@ -14,6 +14,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import aiosqlite
+import pydantic
 
 from sky_claw.agent.context_manager import ContextManager
 from sky_claw.agent.hermes_parser import extract_tool_calls, has_tool_calls
@@ -46,6 +47,31 @@ _HERMES_TOOL_INSTRUCTIONS = (
     '<tool_call> block containing a JSON object with "name" and "arguments" keys. '
     "Wait for the tool result before continuing. If no tool is needed, reply normally.\n\n"
 )
+
+
+def _format_validation_feedback(tool_name: str, exc: pydantic.ValidationError) -> dict[str, Any]:
+    """Convert a Pydantic ValidationError into a structured feedback dict for the LLM.
+
+    TASK-012: When the model emits a ``tool_use`` block with arguments that
+    fail strict-mode validation, we surface the per-field errors so the
+    model can self-correct on the next turn instead of giving up.
+    """
+    return {
+        "error": "Invalid arguments for tool — please retry with corrected types/values.",
+        "tool": tool_name,
+        "validation_errors": [
+            {
+                "field": ".".join(str(p) for p in err.get("loc", ())) or "<root>",
+                "issue": err.get("msg", ""),
+                "input": err.get("input"),
+            }
+            for err in exc.errors()
+        ],
+        "instruction": (
+            "Re-emit the tool_use block respecting the input_schema field types, "
+            "constraints (min/max length, regex pattern, gt/lt) and required fields."
+        ),
+    }
 
 
 # BUG-002 FIX: Función de validación de API keys
@@ -270,16 +296,15 @@ class LLMRouter:
             f"🎯 RouteClassification: intent={route_classification.intent}, confidence={route_classification.confidence}"
         )
 
-        # Branch A: Deterministic System Management
-        if route_classification.intent == "COMANDO_SISTEMA":
-            return await self._handle_system_op(routed["original_text"])
-
-        # Branch B: Contextual Modding Query (RAG) usando LCEL
+        # Branch: Contextual Modding Query (RAG) usando LCEL
         injected_context = ""
         if route_classification.intent == "CONSULTA_MODDING":
             if progress_callback:
                 asyncio.create_task(progress_callback("searching_registry", 20))
             injected_context = await self._context_manager.build_prompt_context(user_message)
+            # TASK-013 P0: sanitize RAG context to prevent prompt-injection via
+            # poisoned mod metadata scraped from Nexus Mods.
+            injected_context = sanitize_for_prompt(injected_context)
 
             # Usar LCEL para componer prompt RAG
             if route_classification.requires_context:
@@ -310,7 +335,11 @@ class LLMRouter:
 
         tool_schemas = self._tools.tool_schemas() if self._tools else []
         consecutive_errors = 0
-        hermes_error_count = 0
+        # TASK-012: separate counters so a stream of malformed XML from the
+        # model does not exhaust the budget reserved for legitimate execution
+        # retries (and vice versa).
+        hermes_parse_error_count = 0
+        hermes_exec_error_count = 0
 
         for _round in range(MAX_TOOL_ROUNDS):
             try:
@@ -358,8 +387,8 @@ class LLMRouter:
                         try:
                             calls = extract_tool_calls(full_text)
                         except ValueError as exc:
-                            hermes_error_count += 1
-                            if hermes_error_count >= MAX_HERMES_RETRIES:
+                            hermes_parse_error_count += 1
+                            if hermes_parse_error_count >= MAX_HERMES_RETRIES:
                                 return "Error: max self-healing retries exceeded (parse error)."
                             # role="user" — Hermes mode has no native tool_call_id contract
                             messages.append(
@@ -369,17 +398,31 @@ class LLMRouter:
                                 }
                             )
                             continue
+                        # Successful parse resets the parse-error budget so the
+                        # next malformed block gets a fresh allowance.
+                        hermes_parse_error_count = 0
                         for call in calls:
                             tool_name_h = call["name"]
                             tool_args_h = call["arguments"]
                             try:
                                 result_str_h = await self._tools.execute(tool_name_h, tool_args_h)
-                                hermes_error_count = 0
+                                hermes_exec_error_count = 0
                             except (asyncio.CancelledError, KeyboardInterrupt):
                                 raise
+                            except pydantic.ValidationError as ve:
+                                hermes_exec_error_count += 1
+                                if hermes_exec_error_count >= MAX_HERMES_RETRIES:
+                                    return "Error: max self-healing retries exceeded (execution error)."
+                                feedback = _format_validation_feedback(tool_name_h, ve)
+                                error_content = sanitize_for_prompt(
+                                    f"[Tool Error] {json.dumps(feedback, ensure_ascii=False, default=str)}"
+                                )
+                                await self._save_message(chat_id, "user", error_content)
+                                messages.append({"role": "user", "content": error_content})
+                                continue
                             except (KeyError, ValueError, TypeError, RuntimeError, OSError) as exc:
-                                hermes_error_count += 1
-                                if hermes_error_count >= MAX_HERMES_RETRIES:
+                                hermes_exec_error_count += 1
+                                if hermes_exec_error_count >= MAX_HERMES_RETRIES:
                                     return "Error: max self-healing retries exceeded (execution error)."
                                 error_content = sanitize_for_prompt(
                                     f"[Tool Error] Error executing {tool_name_h}: {exc}"
@@ -395,7 +438,8 @@ class LLMRouter:
                         messages = messages[-self._max_context :]
                         continue
                     else:
-                        hermes_error_count = 0
+                        hermes_parse_error_count = 0
+                        hermes_exec_error_count = 0
                         # Output gate — apply same guardrail as non-Hermes path
                         if self._guardrail:
                             try:
@@ -452,6 +496,23 @@ class LLMRouter:
                         consecutive_errors = 0
                         if progress_callback:
                             asyncio.create_task(progress_callback(f"executed_{tool_name}", 100))
+                    except pydantic.ValidationError as ve:
+                        # TASK-012: hallucinated arguments — return structured
+                        # feedback so the model can self-correct on the next round.
+                        # MUST come before the ValueError branch since
+                        # ``pydantic.ValidationError`` subclasses ``ValueError``.
+                        consecutive_errors += 1
+                        backoff = min(2**consecutive_errors, 16)
+                        logger.warning(
+                            "Tool argument validation failed for %s (%d errors, attempt %d). Backing off %ds...",
+                            tool_name,
+                            len(ve.errors()),
+                            consecutive_errors,
+                            backoff,
+                        )
+                        await asyncio.sleep(backoff)
+                        feedback = _format_validation_feedback(tool_name, ve)
+                        result_str = json.dumps(feedback, ensure_ascii=False, default=str)
                     except (
                         KeyError,
                         ValueError,
@@ -482,11 +543,14 @@ class LLMRouter:
                     if len(result_str) > 4000:
                         result_str = result_str[:4000] + "\n\n[... truncated ...]"
 
+                    # TASK-013 P0: sanitize tool output before injecting back into
+                    # the LLM context — prevents indirect prompt injection via
+                    # adversarial mod metadata, file paths, or HTTP responses.
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_id,
-                            "content": result_str,
+                            "content": sanitize_for_prompt(result_str),
                         }
                     )
 
@@ -503,19 +567,6 @@ class LLMRouter:
                 return "Error Critico: El ciclo de herramientas fallo por una excepcion interna. Consulta los logs del servidor."
         else:
             raise RuntimeError(f"Agent exceeded {MAX_TOOL_ROUNDS} tool rounds")
-
-    # ------------------------------------------------------------------
-    # System Operations
-    # ------------------------------------------------------------------
-
-    async def _handle_system_op(self, command: str) -> str:
-        """Handles COMANDO_SISTEMA branch synchronously."""
-        cmd = command.lower()
-        if "status" in cmd:
-            return "SISTEMA: Núcleo Sky-Claw activo. WS Daemon operativo. Load Order proactivo activo."
-        if "uptime" in cmd:
-            return "SISTEMA: Uptime registrado (WSL2). Conexión Gateway: ESTABLE."
-        return f"COMANDO_SISTEMA: '{command}' recibido pero no implementado en esta versión."
 
     # ------------------------------------------------------------------
     # History persistence

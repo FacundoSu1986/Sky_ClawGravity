@@ -16,6 +16,7 @@ import pytest
 from sky_claw.agent.tools import AsyncToolRegistry
 from sky_claw.scraper.nexus_downloader import FileInfo, NexusDownloader
 from sky_claw.security.hitl import Decision, HITLGuard
+from sky_claw.security.network_gateway import EgressPolicy, NetworkGateway
 
 
 class TestLootAutoInit:
@@ -161,6 +162,7 @@ class TestDownloadModFreshUrl:
             sync_engine=mock_sync_engine,
             hitl=mock_hitl,
             downloader=mock_downloader,
+            gateway=NetworkGateway(EgressPolicy(block_private_ips=False)),  # TASK-013 P1
         )
 
         # Call _download_mod
@@ -195,6 +197,7 @@ class TestDownloadModFreshUrl:
             sync_engine=mock_sync_engine,
             hitl=mock_hitl,
             downloader=mock_downloader,
+            gateway=NetworkGateway(EgressPolicy(block_private_ips=False)),  # TASK-013 P1
         )
 
         result = await registry._download_mod(nexus_id=1234, file_id=5678)

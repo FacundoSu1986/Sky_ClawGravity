@@ -402,6 +402,9 @@ class AppContext:
                 ),
                 local_cfg=local_cfg,
                 config_path=config_path,
+                # TASK-013 P1: thread the NetworkGateway so all egress tools enforce
+                # Zero-Trust allow-list policy (fixes Copilot review comment on PR #78).
+                gateway=self.network.gateway,
             )
 
             history_db = str(self._args.db_path).replace(".db", "_history.db")
