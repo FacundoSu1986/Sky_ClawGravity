@@ -4,6 +4,9 @@ Este modulo contiene las funciones de descarga de mods desde Nexus
  con aprobacion HITL obligatoria.
 
 Extraido de tools.py como parte de la refactorizacion M-13.
+
+TASK-011 Tech Debt Cleanup: Removed redundant Pydantic instantiation.
+Validation is now centralized in AsyncToolRegistry.execute().
 """
 
 from __future__ import annotations
@@ -16,8 +19,6 @@ import aiohttp
 
 from sky_claw.security.hitl import Decision, HITLGuard
 from sky_claw.security.network_gateway import GatewayTCPConnector, NetworkGateway
-
-from .schemas import DownloadModParams
 
 if TYPE_CHECKING:
     from sky_claw.orchestrator.sync_engine import SyncEngine
@@ -38,13 +39,14 @@ async def download_mod(
 ) -> str:
     """Implementacion de _download_mod.
 
+    Args are pre-validated by AsyncToolRegistry.execute() via DownloadModParams.
+
     Flujo:
-    1. Validar parametros con Pydantic.
-    2. Retornar error si downloader o HITL no estan configurados.
-    3. Consultar metadata del archivo (nombre, tamano, MD5) via Nexus API.
-    4. Despachar una solicitud de aprobacion :class:`HITLGuard` con todos los detalles relevantes.
-    5. Si se deniega o expira, abortar sin tocar el filesystem.
-    6. Si se aprueba, encolar la corutina de descarga en :attr:`SyncEngine` y
+    1. Retornar error si downloader o HITL no estan configurados.
+    2. Consultar metadata del archivo (nombre, tamano, MD5) via Nexus API.
+    3. Despachar una solicitud de aprobacion :class:`HITLGuard` con todos los detalles relevantes.
+    4. Si se deniega o expira, abortar sin tocar el filesystem.
+    5. Si se aprueba, encolar la corutina de descarga en :attr:`SyncEngine` y
         retornar un payload de confirmacion.
 
     Args:
@@ -57,8 +59,6 @@ async def download_mod(
     Returns:
         JSON string con status y metadata, or an error description.
     """
-    params = DownloadModParams(nexus_id=nexus_id, file_id=file_id)
-
     if downloader is None:
         return json.dumps({"error": "Nexus downloader is not configured"})
     if hitl is None:
@@ -91,19 +91,19 @@ async def download_mod(
         # Step 1 - Consultar metadata del archivo antes asking the operator.
         # ------------------------------------------------------------------
         try:
-            file_info = await downloader.get_file_info(params.nexus_id, params.file_id, session)
+            file_info = await downloader.get_file_info(nexus_id, file_id, session)
         except Exception as exc:
             logger.error(
                 "Failed to fetch metadata for mod=%d file=%d: %s",
-                params.nexus_id,
-                params.file_id,
+                nexus_id,
+                file_id,
                 exc,
             )
             return json.dumps(
                 {
                     "error": f"Could not retrieve file metadata: {exc}",
-                    "nexus_id": params.nexus_id,
-                    "file_id": params.file_id,
+                    "nexus_id": nexus_id,
+                    "file_id": file_id,
                 }
             )
 
@@ -117,12 +117,12 @@ async def download_mod(
             f"MD5: {file_info.md5 or 'n/a'}  |  "
             f"URL: {file_info.download_url}"
         )
-        request_id = f"download-{params.nexus_id}-{params.file_id}"
+        request_id = f"download-{nexus_id}-{file_id}"
         decision = await hitl.request_approval(
             request_id=request_id,
             reason=(
                 f"Operator approval required to download "
-                f"mod {params.nexus_id} / file {params.file_id} "
+                f"mod {nexus_id} / file {file_id} "
                 f"({file_info.file_name}, {size_mb:.1f} MB)"
             ),
             url=file_info.download_url,
@@ -132,16 +132,16 @@ async def download_mod(
         if decision is not Decision.APPROVED:
             logger.warning(
                 "Download denied by operator: mod=%d file=%d decision=%s",
-                params.nexus_id,
-                params.file_id,
+                nexus_id,
+                file_id,
                 decision.value,
             )
             return json.dumps(
                 {
                     "status": "denied",
                     "decision": decision.value,
-                    "nexus_id": params.nexus_id,
-                    "file_id": params.file_id,
+                    "nexus_id": nexus_id,
+                    "file_id": file_id,
                     "file_name": file_info.file_name,
                 }
             )
@@ -150,8 +150,8 @@ async def download_mod(
         # Step 3 - Enqueue the download in SyncEngine.
         # ------------------------------------------------------------------
         _downloader = downloader
-        _nexus_id = params.nexus_id
-        _file_id = params.file_id
+        _nexus_id = nexus_id
+        _file_id = file_id
         _gateway = gateway
 
         async def _do_download() -> None:
@@ -171,12 +171,12 @@ async def download_mod(
 
         sync_engine.enqueue_download(
             _do_download(),
-            context=f"nexus_id={params.nexus_id} file_id={params.file_id}",
+            context=f"nexus_id={nexus_id} file_id={file_id}",
         )
         logger.info(
             "Download enqueued: mod=%d file=%d name=%s",
-            params.nexus_id,
-            params.file_id,
+            nexus_id,
+            file_id,
             file_info.file_name,
         )
     finally:
@@ -186,8 +186,8 @@ async def download_mod(
     return json.dumps(
         {
             "status": "enqueued",
-            "nexus_id": params.nexus_id,
-            "file_id": params.file_id,
+            "nexus_id": nexus_id,
+            "file_id": file_id,
             "file_name": file_info.file_name,
             "size_bytes": file_info.size_bytes,
             "staging_dir": str(downloader.staging_dir),

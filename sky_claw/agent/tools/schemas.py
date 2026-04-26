@@ -3,25 +3,16 @@
 Este módulo contiene todos los esquemas de validación para las herramientas del agente.
 Extraído de tools.py como parte de la refactorización M-13.
 
-TASK-012 — Contrato de strict mode (single source of truth):
-
-* Todas las clases ``*Params`` declaran ``model_config = ConfigDict(strict=True)``
-  para que Pydantic rechace cualquier coerción implícita (e.g. ``"42"`` -> ``42``).
-* ``AsyncToolRegistry.tool_schemas()`` deriva el JSON Schema enviado al LLM
-  desde ``model_json_schema()`` vía el helper ``_clean_schema``: editar una
-  clase aquí actualiza automáticamente lo que ve el modelo.
-* ``AsyncToolRegistry.execute()`` valida el dict del LLM contra la clase
-  ``params_model`` ANTES de invocar el handler. Si el modelo alucina campos
-  o tipos, ``pydantic.ValidationError`` se propaga al ``LLMRouter``, que la
-  serializa como feedback estructurado (campo, mensaje, valor recibido) y la
-  devuelve al modelo para autocorrección.
-* Para registrar una nueva tool: definir aquí el schema, importarlo en
-  ``tools/__init__.py`` y pasarlo como ``params_model=`` a ``ToolDescriptor``.
+TASK-011 Single Source of Truth:
+- All tool parameter models use ConfigDict(strict=True).
+- ``_clean_schema()`` sanitizes Pydantic JSON schemas for LLM APIs.
+- ``model_json_schema()`` is the single source for ``input_schema``.
 """
 
 from __future__ import annotations
 
 import pathlib
+from typing import Any
 
 import pydantic
 from pydantic import field_validator
@@ -33,6 +24,42 @@ ALLOWED_SANDBOX_DIRS = [
     SystemPaths.modding_root().resolve(),
     pathlib.Path.home() / "Modding",
 ]
+
+# ---------------------------------------------------------------------------
+# Schema sanitization for LLM tool-use APIs
+# ---------------------------------------------------------------------------
+
+# Keys that Anthropic/OpenAI tool-use APIs reject or ignore.
+_REJECTED_KEYS = frozenset({"title", "$defs"})
+
+
+def _clean_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize a Pydantic ``model_json_schema()`` for LLM tool-use APIs.
+
+    Removes metadata fields that Anthropic and OpenAI reject or ignore,
+    such as ``title`` and ``$defs``.  Recursively cleans nested dicts
+    and lists so the final schema is clean at every depth.
+
+    Args:
+        schema: Raw output of ``SomeModel.model_json_schema()``.
+
+    Returns:
+        A cleaned schema safe for ``tools[].input_schema``.
+    """
+
+    def _clean(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items() if k not in _REJECTED_KEYS}
+        if isinstance(obj, list):
+            return [_clean(item) for item in obj]
+        return obj
+
+    return _clean(schema)
+
+
+# ---------------------------------------------------------------------------
+# Path validation helper
+# ---------------------------------------------------------------------------
 
 
 def _validate_sandbox_path(v: str) -> str:
@@ -56,6 +83,11 @@ def _validate_sandbox_path(v: str) -> str:
     raise ValueError(f"Path traversal blocked: '{v}' is outside allowed sandbox directories")
 
 
+# ---------------------------------------------------------------------------
+# Pydantic parameter models (all strict=True)
+# ---------------------------------------------------------------------------
+
+
 class SearchModParams(pydantic.BaseModel):
     """Parameters for the ``search_mod`` tool."""
 
@@ -73,6 +105,17 @@ class ProfileParams(pydantic.BaseModel):
     # into LOOT CLI (loot.exe --game-path ...).  Spaces and dots are still valid
     # because MO2 profile names frequently contain them.
     profile: str = pydantic.Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.\- ]+$")
+
+
+class LaunchGameParams(pydantic.BaseModel):
+    """Parameters for the ``launch_game`` tool.
+
+    Separate from ProfileParams because ``profile`` has a default value.
+    """
+
+    model_config = pydantic.ConfigDict(strict=True)
+
+    profile: str = pydantic.Field(default="Default", min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.\- ]+$")
 
 
 class InstallModParams(pydantic.BaseModel):
@@ -183,6 +226,7 @@ class ModNameParams(pydantic.BaseModel):
     """Parameters for tools specifying a mod name."""
 
     model_config = pydantic.ConfigDict(strict=True)
+
     mod_name: str = pydantic.Field(min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
     profile: str = pydantic.Field(default="Default", pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
 
@@ -191,16 +235,50 @@ class ToggleModParams(pydantic.BaseModel):
     """Parameters for toggling a mod."""
 
     model_config = pydantic.ConfigDict(strict=True)
+
     mod_name: str = pydantic.Field(min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
     enable: bool
     profile: str = pydantic.Field(default="Default", pattern=r"^[a-zA-Z0-9_. \-]+$")
 
 
+class BodySlideBatchParams(pydantic.BaseModel):
+    """Parameters for the ``run_bodyslide_batch`` tool (direct runner)."""
+
+    model_config = pydantic.ConfigDict(strict=True)
+
+    group: str = pydantic.Field(
+        default="CBBE",
+        min_length=1,
+        max_length=128,
+        description="BodySlide preset group name.",
+    )
+    output_path: str = pydantic.Field(
+        default="meshes",
+        min_length=1,
+        max_length=256,
+        description="Output directory for generated meshes.",
+    )
+
+
+class UninstallModParams(pydantic.BaseModel):
+    """Parameters for the ``uninstall_mod`` tool.
+
+    Separate from ModNameParams to decouple tool-specific evolution.
+    """
+
+    model_config = pydantic.ConfigDict(strict=True)
+
+    mod_name: str = pydantic.Field(min_length=1, max_length=256, pattern=r"^[a-zA-Z0-9_. \-'%()\[\]]+$")
+    profile: str = pydantic.Field(default="Default", pattern=r"^[a-zA-Z0-9_.\- ]+$")
+
+
 __all__ = [
     "AnalyzeConflictsParams",
+    "BodySlideBatchParams",
     "DownloadModParams",
     "InstallFromArchiveParams",
     "InstallModParams",
+    "LaunchGameParams",
     "ModNameParams",
     "PreviewInstallerParams",
     "ProfileParams",
@@ -208,5 +286,7 @@ __all__ = [
     "SearchModParams",
     "SetupToolsParams",
     "ToggleModParams",
+    "UninstallModParams",
     "XEditAnalysisParams",
+    "_clean_schema",
 ]

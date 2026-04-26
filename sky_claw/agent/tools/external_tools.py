@@ -2,6 +2,9 @@
 
 Handler for downloading and installing modding tools (LOOT, xEdit, Pandora, BodySlide).
 Extracted from tools.py as part of M-13 refactoring.
+
+TASK-011 Tech Debt Cleanup: Removed redundant Pydantic instantiation.
+Validation is now centralized in AsyncToolRegistry.execute().
 """
 
 from __future__ import annotations
@@ -13,8 +16,6 @@ from typing import TYPE_CHECKING, Any
 import aiohttp
 
 from sky_claw.security.network_gateway import GatewayTCPConnector, NetworkGateway
-
-from .schemas import SetupToolsParams
 
 if TYPE_CHECKING:
     import pathlib
@@ -37,6 +38,8 @@ async def setup_tools(
 ) -> str:
     """Download and install tools (loot, xedit, pandora, bodyslide).
 
+    Args are pre-validated by AsyncToolRegistry.execute() via SetupToolsParams.
+
     Args:
         tools_installer: ToolsInstaller instance.
         install_dir: Installation directory for tools.
@@ -53,8 +56,6 @@ async def setup_tools(
     from sky_claw.local_config import save as save_local_config
     from sky_claw.tools_installer import ToolInstallError
 
-    params = SetupToolsParams(tools=tools or ["loot", "xedit", "pandora", "bodyslide"])
-
     if tools_installer is None:
         return json.dumps({"error": "Tools installer is not configured"})
 
@@ -69,7 +70,12 @@ async def setup_tools(
     if gateway is None:
         logger.error("setup_tools called without NetworkGateway — aborting (Zero-Trust policy)")
         return json.dumps(
-            {"error": ("NetworkGateway is required for all egress. Configure the gateway before calling this tool.")}
+            {
+                "error": (
+                    "NetworkGateway is required for all egress. "
+                    "Configure the gateway before calling this tool."
+                )
+            }
         )
 
     own_session = False
@@ -80,7 +86,7 @@ async def setup_tools(
         own_session = True
 
     try:
-        for tool_name in params.tools:
+        for tool_name in tools or ["loot", "xedit", "pandora", "bodyslide"]:
             tool_name_lower = tool_name.lower()
             try:
                 if tool_name_lower == "loot":

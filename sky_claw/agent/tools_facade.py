@@ -8,6 +8,7 @@ la base de datos o filesystem y retorna un JSON-encoded ``str`` para
 compatibilidad con el API ``tool_use`` de Anthropic.
 
 Refactorización M-13: Separation of Concerns.
+TASK-011: Added new model re-exports (LaunchGameParams, BodySlideBatchParams, UninstallModParams).
 """
 
 from __future__ import annotations
@@ -17,9 +18,11 @@ from sky_claw.agent.tools import (
     AnalyzeConflictsParams,
     # Clase principal
     AsyncToolRegistry,
+    BodySlideBatchParams,
     DownloadModParams,
     InstallFromArchiveParams,
     InstallModParams,
+    LaunchGameParams,
     ModNameParams,
     PreviewInstallerParams,
     ProfileParams,
@@ -30,6 +33,7 @@ from sky_claw.agent.tools import (
     ToggleModParams,
     # Descriptor
     ToolDescriptor,
+    UninstallModParams,
     XEditAnalysisParams,
     analyze_esp_conflicts,
     # Handlers - System
@@ -57,11 +61,13 @@ from sky_claw.agent.tools import (
 
 __all__ = [
     "AnalyzeConflictsParams",
+    "BodySlideBatchParams",
     # Clase principal
     "AsyncToolRegistry",
     "DownloadModParams",
     "InstallFromArchiveParams",
     "InstallModParams",
+    "LaunchGameParams",
     "ModNameParams",
     "PreviewInstallerParams",
     "ProfileParams",
@@ -72,6 +78,7 @@ __all__ = [
     "ToggleModParams",
     # Descriptor
     "ToolDescriptor",
+    "UninstallModParams",
     "XEditAnalysisParams",
     "analyze_esp_conflicts",
     # Handlers - System

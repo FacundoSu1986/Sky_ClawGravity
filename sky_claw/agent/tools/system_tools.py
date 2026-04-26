@@ -3,11 +3,9 @@
 Handlers for MO2 VFS, load order, conflict detection, and game control.
 Extracted from tools.py as part of M-13 refactoring.
 
-TASK-012: handlers receive arguments that have already been validated
-by ``AsyncToolRegistry.execute`` against the corresponding Pydantic
-``Params`` schema (strict mode). They no longer instantiate the schema
-defensively — calling ``Params(...)`` here would re-run validation that
-already succeeded upstream.
+TASK-011 Tech Debt Cleanup: Removed redundant Pydantic instantiation from
+all handlers.  Validation is now centralized in AsyncToolRegistry.execute()
+via the tool's ``params_model``.  Handlers receive pre-validated arguments.
 """
 
 from __future__ import annotations
@@ -23,7 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 async def check_load_order(mo2: Any, profile: str) -> str:
-    """Read the MO2 modlist for a profile."""
+    """Read the MO2 modlist for a profile.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via ProfileParams.
+    """
     entries: list[dict[str, Any]] = []
     idx = 0
     async for mod_name, enabled in mo2.read_modlist(profile):
@@ -33,7 +34,10 @@ async def check_load_order(mo2: Any, profile: str) -> str:
 
 
 async def detect_conflicts(registry: Any, mo2: Any, profile: str) -> str:
-    """Detect missing-master conflicts among active ESPs."""
+    """Detect missing-master conflicts among active ESPs.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via ProfileParams.
+    """
     enabled_mods: list[str] = []
     async for mod_name, enabled in mo2.read_modlist(profile):
         if enabled:
@@ -43,7 +47,10 @@ async def detect_conflicts(registry: Any, mo2: Any, profile: str) -> str:
 
 
 async def run_loot_sort(mo2: Any, loot_runner: Any, loot_exe: pathlib.Path | None, profile: str) -> str:
-    """Invoke the LOOT CLI to sort the load order."""
+    """Invoke the LOOT CLI to sort the load order.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via ProfileParams.
+    """
     if loot_runner is None and loot_exe is not None:
         try:
             from sky_claw.loot.cli import LOOTConfig, LOOTRunner
@@ -73,6 +80,8 @@ async def run_loot_sort(mo2: Any, loot_runner: Any, loot_exe: pathlib.Path | Non
 async def run_xedit_script(xedit_runner: Any, script_name: str, plugins: list[str]) -> str:
     """Run an xEdit script in headless mode.
 
+    Args are pre-validated by AsyncToolRegistry.execute() via XEditAnalysisParams.
+
     SECURITY: XEditRunner uses asyncio.create_subprocess_exec() with
     argument list (shell=False equivalent). Input validation is delegated to
     XEditRunner._validate_inputs() which enforces strict regex patterns.
@@ -96,7 +105,10 @@ async def run_xedit_script(xedit_runner: Any, script_name: str, plugins: list[st
 
 
 async def preview_mod_installer(fomod_installer: Any, archive_path: str) -> str:
-    """Preview FOMOD options for a mod archive."""
+    """Preview FOMOD options for a mod archive.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via PreviewInstallerParams.
+    """
     if fomod_installer is None:
         return json.dumps({"error": "FOMOD installer is not configured"})
     try:
@@ -119,8 +131,10 @@ async def install_mod_from_archive(
     archive_path: str,
     selections: dict[str, list[str]] | None = None,
 ) -> str:
-    """Install a mod from archive into MO2 with mandatory HITL approval."""
-    selections = selections or {}
+    """Install a mod from archive into MO2 with mandatory HITL approval.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via InstallFromArchiveParams.
+    """
     if hitl is None:
         return json.dumps({"error": "HITL guard is not configured. Installation blocked."})
     request_id = f"install-{pathlib.Path(archive_path).name}"
@@ -128,7 +142,7 @@ async def install_mod_from_archive(
     decision = await hitl.request_approval(
         request_id=request_id,
         reason=f"Confirmar instalación de mod: {pathlib.Path(archive_path).name}",
-        detail=f"Selecciones FOMOD detectadas: {json.dumps(selections)}",
+        detail=f"Selecciones FOMOD detectadas: {json.dumps(selections or {})}",
     )
     if decision is not Decision.APPROVED:
         return json.dumps({"status": "denied", "reason": "User rejected the installation."})
@@ -139,7 +153,7 @@ async def install_mod_from_archive(
         result = await fomod_installer.install(
             archive_path=pathlib.Path(archive_path),
             mo2_mods_dir=mo2_mods_dir,
-            selections=selections,
+            selections=selections or {},
         )
     except Exception as exc:
         return json.dumps({"error": str(exc)})
@@ -164,8 +178,10 @@ async def resolve_fomod(
     archive_path: str,
     selections: dict[str, list[str]] | None = None,
 ) -> str:
-    """Resolve FOMOD options for a mod archive and return would-be installed files."""
-    selections = selections or {}
+    """Resolve FOMOD options for a mod archive and return would-be installed files.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via ResolveFomodParams.
+    """
     if fomod_installer is None:
         return json.dumps({"error": "FOMOD installer is not configured"})
     from sky_claw.fomod.parser import FomodParseError, parse_fomod_string
@@ -182,7 +198,7 @@ async def resolve_fomod(
     except FomodParseError as exc:
         return json.dumps({"error": f"FOMOD Parse Error: {exc}"})
     resolver = FomodResolver(config)
-    result = resolver.resolve(selections)
+    result = resolver.resolve(selections or {})
     files = [str(f.source) for f in result.files]
     return json.dumps(
         {
@@ -198,7 +214,10 @@ async def analyze_esp_conflicts(
     profile: str,
     plugins: list[str] | None = None,
 ) -> str:
-    """Analyze record-level conflicts between ESP plugins."""
+    """Analyze record-level conflicts between ESP plugins.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via AnalyzeConflictsParams.
+    """
     if xedit_runner is None:
         return json.dumps(
             {
@@ -253,7 +272,10 @@ async def run_bodyslide_batch(animation_hub: Any) -> str:
 
 
 async def uninstall_mod(mo2: Any, mod_name: str, profile: str = "Default") -> str:
-    """Uninstall a mod completely by deleting its files from MO2."""
+    """Uninstall a mod completely by deleting its files from MO2.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via UninstallModParams.
+    """
     try:
         await mo2.remove_mod_from_modlist(mod_name, profile)
         await mo2.delete_mod_files(mod_name)
@@ -269,7 +291,10 @@ async def uninstall_mod(mo2: Any, mod_name: str, profile: str = "Default") -> st
 
 
 async def toggle_mod(mo2: Any, mod_name: str, enable: bool, profile: str = "Default") -> str:
-    """Enable or disable an installed mod in a specific MO2 profile load order."""
+    """Enable or disable an installed mod in a specific MO2 profile load order.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via ToggleModParams.
+    """
     try:
         await mo2.toggle_mod_in_modlist(mod_name, profile, enable)
         state_str = "enabled" if enable else "disabled"
@@ -285,7 +310,10 @@ async def toggle_mod(mo2: Any, mod_name: str, enable: bool, profile: str = "Defa
 
 
 async def launch_game(mo2: Any, profile: str = "Default") -> str:
-    """Launch Skyrim Special Edition via MO2 using SKSE."""
+    """Launch Skyrim Special Edition via MO2 using SKSE.
+
+    Args are pre-validated by AsyncToolRegistry.execute() via LaunchGameParams.
+    """
     try:
         result = await mo2.launch_game(profile)
         return json.dumps(result)
@@ -357,10 +385,7 @@ async def run_bodyslide_batch_direct(
 ) -> str:
     """Execute BodySlide in batch mode via BodySlideRunner.
 
-    Args:
-        bodyslide_runner: Configured BodySlideRunner instance.
-        group: BodySlide preset group name (e.g. \"CBBE\", \"BHUNP\").
-        output_path: Relative output directory for generated meshes.
+    Args are pre-validated by AsyncToolRegistry.execute() via BodySlideBatchParams.
     """
     if bodyslide_runner is None:
         return json.dumps({"error": "BodySlideRunner is not configured. Set BODYSLIDE_EXE."})

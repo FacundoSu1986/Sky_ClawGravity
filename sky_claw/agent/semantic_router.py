@@ -3,8 +3,11 @@ semantic_router.py - Router semántico para clasificación O(1) de intents de us
 Utiliza FastEmbed para embeddings locales y clasificación semántica.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
+from typing import Any
 
 from sky_claw.core.schemas import RouteClassification
 
@@ -210,6 +213,63 @@ class SemanticRouter:
             Diccionario con rutas y sus utterances
         """
         return self.ROUTES.copy()
+
+    def route(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Synchronous routing wrapper for LLMRouter.chat() compatibility.
+
+        Extracts text from ``data['payload']['text']``, classifies it using
+        Jaccard similarity (no encoder needed for the sync path), and returns
+        a dict compatible with the LLMRouter's routing logic.
+
+        TASK-011: Added to fix the AttributeError where router.py calls
+        ``self._semantic_router.route(routing_data)`` but only ``classify()``
+        existed (which is async).
+
+        Args:
+            data: Dict with ``payload.text`` containing the user message.
+
+        Returns:
+            Dict with ``intent``, ``confidence``, ``original_text``,
+            ``target_agent``, ``tool_name``, ``parameters``.
+        """
+        text = data.get("payload", {}).get("text", "")
+
+        best_route: str | None = None
+        best_score = 0.0
+
+        for route_name, utterances in self.ROUTES.items():
+            for utterance in utterances:
+                similarity = self._calculate_similarity(text, utterance)
+                if similarity > best_score:
+                    best_score = similarity
+                    best_route = route_name
+
+        if best_route and best_score >= self.confidence_threshold:
+            intent = _ROUTE_TO_INTENT.get(best_route, _FALLBACK_INTENT)
+            logger.info(
+                "route(): classified as '%s' (intent=%s) confidence=%.2f",
+                best_route,
+                intent,
+                best_score,
+            )
+            return {
+                "intent": intent,
+                "confidence": best_score,
+                "original_text": text,
+                "target_agent": None,
+                "tool_name": None,
+                "parameters": {"semantic_route": best_route},
+            }
+
+        logger.info("route(): confidence %.2f < threshold %.2f, fallback", best_score, self.confidence_threshold)
+        return {
+            "intent": _FALLBACK_INTENT,
+            "confidence": best_score,
+            "original_text": text,
+            "target_agent": None,
+            "tool_name": None,
+            "parameters": {},
+        }
 
     def set_confidence_threshold(self, threshold: float) -> None:
         """
