@@ -784,36 +784,6 @@ class TestSyncMetricsConcurrency:
 # ------------------------------------------------------------------
 
 
-class TestBoundedGather:
-    """Cubre _bounded_gather, incluyendo la rama de lista vacía (line 341)."""
-
-    @pytest.mark.asyncio
-    async def test_empty_coroutines_returns_empty_list(self) -> None:
-        """_bounded_gather([]) retorna [] sin crear ninguna tarea (line 341)."""
-        engine = SyncEngine(
-            mo2=AsyncMock(),
-            masterlist=AsyncMock(),
-            registry=AsyncMock(),
-        )
-        result = await engine._bounded_gather([], max_concurrency=4)
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_single_coroutine_runs_and_returns(self) -> None:
-        """_bounded_gather con una corutina la ejecuta y retorna su resultado."""
-        engine = SyncEngine(
-            mo2=AsyncMock(),
-            masterlist=AsyncMock(),
-            registry=AsyncMock(),
-        )
-
-        async def simple() -> int:
-            return 42
-
-        result = await engine._bounded_gather([simple()], max_concurrency=2)
-        assert result == [42]
-
-
 class TestEnqueueDownloadRegistry:
     """Cubre el handler de fallo del registry en enqueue_download (lines 752-753)."""
 
@@ -844,11 +814,12 @@ class TestPassivePruningWithRollback:
 
     @pytest.mark.asyncio
     async def test_passive_pruning_stats_under_limit_noop(self) -> None:
-        """Si total_size_bytes <= max, no hay pruning (lines 311-314 sin rama if)."""
+        """Si total_size_bytes <= max, no hay pruning."""
         mock_rm = MagicMock()
         stats = MagicMock()
         stats.total_size_bytes = 0
-        mock_rm._snapshots.get_stats = AsyncMock(return_value=stats)
+        # Use proxy method (get_snapshot_stats), not the private _snapshots attribute
+        mock_rm.get_snapshot_stats = AsyncMock(return_value=stats)
         engine = SyncEngine(
             mo2=AsyncMock(),
             masterlist=AsyncMock(),
@@ -856,13 +827,13 @@ class TestPassivePruningWithRollback:
             rollback_manager=mock_rm,
         )
         await engine._passive_pruning()
-        mock_rm._snapshots.get_stats.assert_called_once()
+        mock_rm.get_snapshot_stats.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_passive_pruning_exception_is_logged_not_raised(self) -> None:
-        """OSError en get_stats es capturada y logueada (lines 330-331)."""
+        """OSError en get_snapshot_stats es capturada y logueada."""
         mock_rm = MagicMock()
-        mock_rm._snapshots.get_stats = AsyncMock(side_effect=OSError("disk error"))
+        mock_rm.get_snapshot_stats = AsyncMock(side_effect=OSError("disk error"))
         engine = SyncEngine(
             mo2=AsyncMock(),
             masterlist=AsyncMock(),

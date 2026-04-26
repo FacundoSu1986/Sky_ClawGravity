@@ -251,64 +251,58 @@ class SyncEngine:
             # Sin rollback manager, ejecutar sin transaccional
             return await operation
 
+        rm = self._rollback_manager
         transaction_id: int | None = None
         entry_id: int | None = None
 
+        # 1. Iniciar transacción
+        transaction_id = await rm.begin_transaction(
+            description=description or f"file_operation: {operation_type.value}",
+            agent_id=self._agent_id,
+        )
+
+        # 2. Capturar snapshot si el archivo existe
+        snapshot_info = None
+        if target_path.exists() and target_path.is_file():
+            snapshot_info = await rm.create_snapshot(target_path)
+
+        # 3. Registrar inicio de operación
+        entry_id = await rm.begin_operation(
+            agent_id=self._agent_id,
+            operation_type=operation_type,
+            target_path=str(target_path),
+            transaction_id=transaction_id,
+            snapshot_path=snapshot_info.snapshot_path if snapshot_info else None,
+        )
+
+        # 4. Ejecutar la operación
         try:
-            # 1. Iniciar transacción
-            transaction_id = await self._rollback_manager._journal.begin_transaction(
-                description=description or f"file_operation: {operation_type.value}",
-                agent_id=self._agent_id,
+            result = await operation
+
+            # 5. Marcar como completada
+            await rm.complete_operation(entry_id)
+            await rm.commit_transaction(transaction_id)
+
+            return result
+
+        except Exception as exc:
+            # 6. Error: marcar como fallida y ejecutar rollback
+            logger.error(
+                "Operación falló, ejecutando rollback automático: %s",
+                str(exc),
+                exc_info=True,
+            )
+            await rm.fail_operation(entry_id, error=str(exc))
+
+            # Ejecutar rollback — result already reflects actual outcome
+            rollback_result = await rm.undo_last_operation(self._agent_id)
+            logger.warning(
+                "Rollback automático completado: success=%s, transaction=%s",
+                rollback_result.success,
+                rollback_result.transaction_id,
             )
 
-            # 2. Capturar snapshot si el archivo existe
-            snapshot_info = None
-            if target_path.exists() and target_path.is_file():
-                snapshot_info = await self._rollback_manager._snapshots.create_snapshot(
-                    target_path,
-                )
-
-            # 3. Registrar inicio de operación
-            entry_id = await self._rollback_manager._journal.begin_operation(
-                agent_id=self._agent_id,
-                operation_type=operation_type,
-                target_path=str(target_path),
-                transaction_id=transaction_id,
-                snapshot_path=str(snapshot_info.snapshot_path) if snapshot_info else None,
-            )
-
-            # 4. Ejecutar la operación
-            try:
-                result = await operation
-
-                # 5. Marcar como completada
-                await self._rollback_manager._journal.complete_operation(entry_id)
-                await self._rollback_manager._journal.commit_transaction(transaction_id)
-
-                return result
-
-            except Exception as exc:
-                # 6. Error: marcar como fallida y ejecutar rollback
-                logger.error(
-                    "Operación falló, ejecutando rollback automático: %s",
-                    str(exc),
-                    exc_info=True,
-                )
-                await self._rollback_manager._journal.fail_operation(entry_id, error=str(exc))
-
-                # Ejecutar rollback — result already reflects actual outcome
-                rollback_result = await self._rollback_manager.undo_last_operation(self._agent_id)
-                logger.warning(
-                    "Rollback automático completado: success=%s, transaction=%s",
-                    rollback_result.success,
-                    rollback_result.transaction_id,
-                )
-
-                raise
-
-        finally:
-            # FASE 1.5: Pruning pasivo post-ejecución
-            await self._passive_pruning()
+            raise
 
     async def _passive_pruning(self) -> None:
         """FASE 1.5: Ejecuta pruning pasivo del directorio de backups.
@@ -318,8 +312,9 @@ class SyncEngine:
         if self._rollback_manager is None:
             return
 
+        rm = self._rollback_manager
         try:
-            stats = await self._rollback_manager._snapshots.get_stats()
+            stats = await rm.get_snapshot_stats()
             max_size = self._get_max_backup_size_bytes()
 
             if stats.total_size_bytes > max_size:
@@ -328,10 +323,7 @@ class SyncEngine:
                     stats.total_size_bytes // (1024 * 1024),
                     max_size // (1024 * 1024),
                 )
-                # Limpiar snapshots antiguos
-                result = await self._rollback_manager._snapshots.cleanup_old_snapshots(
-                    days_old=self._cfg.max_pruning_age_days
-                )
+                result = await rm.cleanup_old_snapshots(days_old=self._cfg.max_pruning_age_days)
 
                 logger.info(
                     "Pruning completado: %d snapshots eliminados, %d MB liberados",
@@ -340,27 +332,6 @@ class SyncEngine:
                 )
         except (OSError, PermissionError) as e:
             logger.error("Error durante passive pruning: %s", e)
-
-    async def _bounded_gather(
-        self,
-        coroutines: list[Coroutine[Any, Any, Any]],
-        *,
-        max_concurrency: int,
-    ) -> list[Any]:
-        """Ejecuta corutinas en lotes limitando solo la cantidad de tasks vivas."""
-        if not coroutines:
-            return []
-
-        results: list[Any] = []
-        batch_size = max(max_concurrency * 2, 1)
-
-        for start in range(0, len(coroutines), batch_size):
-            batch = coroutines[start : start + batch_size]
-            tasks = [asyncio.create_task(coro) for coro in batch]
-            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-            results.extend(batch_results)
-
-        return results
 
     def _get_max_backup_size_bytes(self) -> int:
         """Obtiene el tamaño máximo de backups desde configuración."""
@@ -375,8 +346,9 @@ class SyncEngine:
     async def check_for_updates(self, session: aiohttp.ClientSession) -> UpdatePayload:
         """Automated update cycle for all tracked mods.
 
-        Uses controlled concurrency via Semaphore to query Nexus API.
-        Downloads updates using the robust NexusDownloader.
+        Uses ``asyncio.TaskGroup`` with a concurrency limiter Semaphore(15) to
+        bound simultaneous check-and-update lifecycles.  Exceptions are captured
+        per-task so a single mod failure never aborts the entire cycle.
         Returns a structured payload safe for Telegram notifications.
         """
         all_mods = await self._registry.search_mods("")
@@ -386,21 +358,35 @@ class SyncEngine:
             logger.info("No tracked mods found for updates.")
             return payload
 
-        semaphore = asyncio.Semaphore(self._cfg.api_semaphore_limit)
-
-        # Generar las tareas asincrónicas
-        tasks = [self._check_and_update_mod(mod, session, semaphore) for mod in tracked_mods]
+        # Outer concurrency limiter — never more than 15 simultaneous lifecycles
+        concurrency_limit = asyncio.Semaphore(15)
+        api_semaphore = asyncio.Semaphore(self._cfg.api_semaphore_limit)
 
         logger.info(
             "Iniciando verificación de actualizaciones para %d mods...",
             payload.total_checked,
         )
 
-        # Ejecución paralela con contención de fallas y materialización acotada
-        results = await self._bounded_gather(
-            tasks,
-            max_concurrency=self._cfg.api_semaphore_limit,
-        )
+        # Pre-allocate results list to preserve order with indexed assignment
+        results: list[Any] = [None] * len(tracked_mods)
+
+        async def _wrapped_worker(idx: int, mod: dict[str, Any]) -> None:
+            """Acquires the concurrency semaphore then runs the full lifecycle.
+
+            Exceptions are captured (not re-raised) so TaskGroup never aborts
+            the other workers.  The post-loop classification handles Exception
+            results as failed_mods.
+            """
+            async with concurrency_limit:
+                try:
+                    results[idx] = await self._check_and_update_mod(mod, session, api_semaphore)
+                except Exception as exc:
+                    results[idx] = exc
+
+        async with asyncio.TaskGroup() as tg:
+            for idx, mod in enumerate(tracked_mods):
+                tg.create_task(_wrapped_worker(idx, mod))
+
         for mod, result in zip(tracked_mods, results, strict=False):
             if isinstance(result, Exception):
                 logger.error(
@@ -415,7 +401,7 @@ class SyncEngine:
                         "error": str(result),
                     }
                 )
-            else:
+            elif isinstance(result, dict):
                 status = result.get("status")
                 if status == "updated":
                     payload.updated_mods.append(result)
@@ -438,256 +424,134 @@ class SyncEngine:
         session: aiohttp.ClientSession,
         semaphore: asyncio.Semaphore,
     ) -> dict[str, Any]:
-        """Worker aislado para consultar y actualizar un mod individual."""
+        """Worker for checking and optionally updating a single mod.
+
+        If a ``rollback_manager`` is configured, the update is wrapped in a
+        journal transaction.  Expected network failures return an error dict
+        (graceful degradation); unexpected exceptions re-raise after rollback
+        so the TaskGroup can perform cooperative cancellation.
+        """
         nexus_id = mod["nexus_id"]
         local_version = mod["version"]
         mod_name = mod["name"]
-
-        # 1. Fetch metadata con Semáforo y Backoff
-        info = await self._safe_fetch_info(nexus_id, session, semaphore)
-        if not info:
-            return {
-                "status": "error",
-                "name": mod_name,
-                "nexus_id": nexus_id,
-                "error": "No metadata returned",
-            }
-
-        nexus_version = str(info.get("version", ""))
-        # 2. Comparación de versiones
-        if not nexus_version or nexus_version == local_version:
-            return {"status": "up_to_date", "name": mod_name}
-
-        if self._downloader is None:
-            return {
-                "status": "error",
-                "name": mod_name,
-                "nexus_id": nexus_id,
-                "error": "Downloader not configured",
-            }
-
-        logger.info(
-            "Actualización disponible para %s: %s -> %s",
-            mod_name,
-            local_version,
-            nexus_version,
-        )
-
-        # 3. Descarga Robusta (Aplica backoff interno y validación MD5 en NexusDownloader)
-        file_info = await self._downloader.get_file_info(nexus_id, None, session)
-
-        if self._hitl:
-            desc = f"Update for {mod_name} ({local_version} -> {nexus_version})"
-            decision = await self._hitl.request_approval(
-                request_id=f"update_{nexus_id}",
-                reason="Automatic Mod Update",
-                url=file_info.download_url,
-                detail=desc,
-            )
-            if decision != Decision.APPROVED:
-                logger.warning("Descarga abortada por HITL para %s", mod_name)
-                return {
-                    "status": "error",
-                    "name": mod_name,
-                    "nexus_id": nexus_id,
-                    "error": "Descarga abortada por HITL",
-                }
-
-        download_path = await self._downloader.download(file_info, session)
-
-        # 4. Actualización Atómica en Base de Datos
-        await self._registry.upsert_mod(
-            nexus_id=nexus_id,
-            name=info.get("name", mod_name),
-            version=nexus_version,
-            author=str(info.get("author", "")),
-            category=str(info.get("category_id", "")),
-            download_url=file_info.download_url,
-        )
-
-        await self._registry.log_tasks_batch(
-            [
-                (
-                    None,
-                    "update_mod",
-                    "success",
-                    f"{mod_name}: {local_version} -> {nexus_version}",
-                )
-            ]
-        )
-
-        return {
-            "status": "updated",
-            "name": mod_name,
-            "nexus_id": nexus_id,
-            "old_version": local_version,
-            "new_version": nexus_version,
-            "file_path": str(download_path),
-        }
-
-    async def _check_and_update_mod_with_rollback(
-        self,
-        mod: dict[str, Any],
-        session: aiohttp.ClientSession,
-        semaphore: asyncio.Semaphore,
-    ) -> dict[str, Any]:
-        """FASE 1.5: Worker con soporte de rollback transaccional."""
-        # Guaranteed non-None by callers that check self._rollback_manager
         rm = self._rollback_manager
-        assert rm is not None
-
-        nexus_id = mod["nexus_id"]
-        local_version = mod["version"]
-        mod_name = mod["name"]
         transaction_id: int | None = None
 
-        # Usar Unit of Work pattern para operaciones de archivos
         try:
-            async with rm:
-                # Iniciar transacción
-                transaction_id = await rm._journal.begin_transaction(
+            if rm is not None:
+                transaction_id = await rm.begin_transaction(
                     description=f"update_{mod_name}",
                     mod_id=mod.get("nexus_id"),
                     agent_id=self._agent_id,
                 )
 
-                # Ejecutar actualización con soporte de rollback
-                result = await self._check_and_update_mod_internal(mod, session, semaphore, transaction_id)
-
-                # Marcar transacción como committed
-                await rm._journal.commit_transaction(transaction_id)
-
-                new_version = result.get("new_version", "unknown")
-                return {
-                    "status": "updated",
-                    "name": mod_name,
-                    "nexus_id": nexus_id,
-                    "old_version": local_version,
-                    "new_version": new_version,
-                    "file_path": str(result.get("file_path")),
-                    "rollback_performed": True,
-                    "rollback_transaction_id": transaction_id,
-                }
-
-        except Exception as exc:
-            # Rollback en caso de error
-            logger.error("Error during mod update, executing rollback: %s", exc)
-            try:
-                await rm.undo_last_operation(self._agent_id)
-            except Exception as rollback_exc:
-                logger.critical("Rollback also failed for mod %s: %s", mod_name, str(rollback_exc))
+            # 1. Fetch metadata with Semaphore + exponential backoff
+            info = await self._safe_fetch_info(nexus_id, session, semaphore)
+            if not info:
                 return {
                     "status": "error",
                     "name": mod_name,
                     "nexus_id": nexus_id,
-                    "error": f"Update failed, rollback error: {rollback_exc!s}",
-                    "rollback_performed": True,
-                    "rollback_success": False,
+                    "error": "No metadata returned",
                 }
+
+            nexus_version = str(info.get("version", ""))
+            # 2. Version comparison
+            if not nexus_version or nexus_version == local_version:
+                if rm is not None and transaction_id is not None:
+                    await rm.commit_transaction(transaction_id)
+                return {"status": "up_to_date", "name": mod_name}
+
+            if self._downloader is None:
+                return {
+                    "status": "error",
+                    "name": mod_name,
+                    "nexus_id": nexus_id,
+                    "error": "Downloader not configured",
+                }
+
+            logger.info(
+                "Actualización disponible para %s: %s -> %s",
+                mod_name,
+                local_version,
+                nexus_version,
+            )
+
+            # 3. Robust download (backoff + MD5 validation inside NexusDownloader)
+            file_info = await self._downloader.get_file_info(nexus_id, None, session)
+
+            if self._hitl:
+                desc = f"Update for {mod_name} ({local_version} -> {nexus_version})"
+                decision = await self._hitl.request_approval(
+                    request_id=f"update_{nexus_id}",
+                    reason="Automatic Mod Update",
+                    url=file_info.download_url,
+                    detail=desc,
+                )
+                if decision != Decision.APPROVED:
+                    logger.warning("Descarga abortada por HITL para %s", mod_name)
+                    return {
+                        "status": "error",
+                        "name": mod_name,
+                        "nexus_id": nexus_id,
+                        "error": "Descarga abortada por HITL",
+                    }
+
+            download_path = await self._downloader.download(file_info, session)
+
+            # 4. Atomic DB update
+            await self._registry.upsert_mod(
+                nexus_id=nexus_id,
+                name=info.get("name", mod_name),
+                version=nexus_version,
+                author=str(info.get("author", "")),
+                category=str(info.get("category_id", "")),
+                download_url=file_info.download_url,
+            )
+            await self._registry.log_tasks_batch(
+                [(None, "update_mod", "success", f"{mod_name}: {local_version} -> {nexus_version}")]
+            )
+
+            if rm is not None and transaction_id is not None:
+                await rm.commit_transaction(transaction_id)
+
+            result: dict[str, Any] = {
+                "status": "updated",
+                "name": mod_name,
+                "nexus_id": nexus_id,
+                "old_version": local_version,
+                "new_version": nexus_version,
+                "file_path": str(download_path),
+            }
+            if rm is not None:
+                result["rollback_performed"] = True
+                result["rollback_transaction_id"] = transaction_id
+            return result
+
+        except (MasterlistFetchError, CircuitOpenError, RetryError, aiohttp.ClientError) as exc:
+            # Expected network failure — graceful degradation, no re-raise
+            if rm is not None:
+                logger.warning("Network error updating %s, rolling back: %s", mod_name, exc)
+                try:
+                    await rm.undo_last_operation(self._agent_id)
+                except Exception as rb_exc:
+                    logger.critical("Rollback failed for %s: %s", mod_name, rb_exc)
             return {
                 "status": "error",
                 "name": mod_name,
                 "nexus_id": nexus_id,
                 "error": str(exc),
-                "rollback_performed": True,
-                "rollback_success": True,
             }
 
-    async def _check_and_update_mod_internal(
-        self,
-        mod: dict[str, Any],
-        session: aiohttp.ClientSession,
-        semaphore: asyncio.Semaphore,
-        transaction_id: int,
-    ) -> dict[str, Any]:
-        """Implementación interna con soporte de rollback."""
-        nexus_id = mod["nexus_id"]
-        local_version = mod["version"]
-        mod_name = mod["name"]
-
-        # 1. Fetch metadata con Semáforo y Backoff
-        info = await self._safe_fetch_info(nexus_id, session, semaphore)
-        if not info:
-            return {
-                "status": "error",
-                "name": mod_name,
-                "nexus_id": nexus_id,
-                "error": "No metadata returned",
-            }
-
-        nexus_version = str(info.get("version", ""))
-        # 2. Comparación de versiones
-        if not nexus_version or nexus_version == local_version:
-            return {"status": "up_to_date", "name": mod_name}
-
-        if self._downloader is None:
-            return {
-                "status": "error",
-                "name": mod_name,
-                "nexus_id": nexus_id,
-                "error": "Downloader not configured",
-            }
-
-        logger.info(
-            "Actualización disponible para %s: %s -> %s",
-            mod_name,
-            local_version,
-            nexus_version,
-        )
-        # 3. Descarga Robusta (Aplica backoff interno y validación MD5 en NexusDownloader)
-        file_info = await self._downloader.get_file_info(nexus_id, None, session)
-        if self._hitl:
-            desc = f"Update for {mod_name} ({local_version} -> {nexus_version})"
-            decision = await self._hitl.request_approval(
-                request_id=f"update_{nexus_id}",
-                reason="Automatic Mod Update",
-                url=file_info.download_url,
-                detail=desc,
-            )
-            if decision != Decision.APPROVED:
-                logger.warning("Descarga abortada por HITL para %s", mod_name)
-                return {
-                    "status": "error",
-                    "name": mod_name,
-                    "nexus_id": nexus_id,
-                    "error": "Descarga abortada por HITL",
-                }
-
-        download_path = await self._downloader.download(file_info, session)
-
-        # 4. Actualización Atómica en Base de Datos
-        await self._registry.upsert_mod(
-            nexus_id=nexus_id,
-            name=info.get("name", mod_name),
-            version=nexus_version,
-            author=str(info.get("author", "")),
-            category=str(info.get("category_id", "")),
-            download_url=file_info.download_url,
-        )
-
-        await self._registry.log_tasks_batch(
-            [
-                (
-                    None,
-                    "update_mod",
-                    "success",
-                    f"{mod_name}: {local_version} -> {nexus_version}",
-                )
-            ]
-        )
-
-        return {
-            "status": "updated",
-            "name": mod_name,
-            "nexus_id": nexus_id,
-            "old_version": local_version,
-            "new_version": nexus_version,
-            "file_path": str(download_path),
-        }
-
-    # ------------------------------------------------------------------
-    # Legacy Update Cycle (without rollback)
-    # ------------------------------------------------------------------
+        except Exception as exc:
+            # Unexpected bug — rollback if possible, then re-raise (fail-fast)
+            if rm is not None:
+                logger.error("Unexpected error updating %s, rolling back: %s", mod_name, exc)
+                try:
+                    await rm.undo_last_operation(self._agent_id)
+                except Exception as rb_exc:
+                    logger.critical("Rollback also failed for %s: %s", mod_name, rb_exc)
+            raise
 
     async def _safe_fetch_info(
         self,
@@ -713,26 +577,33 @@ class SyncEngine:
     # ------------------------------------------------------------------
 
     async def run(self, session: aiohttp.ClientSession, profile: str = "Default") -> SyncResult:
+        """Sync local load order via producer-consumer pipeline.
+
+        Uses ``asyncio.TaskGroup`` so an unexpected worker crash cancels the
+        producer and all peers cooperatively (fail-fast), while the narrowed
+        ``except`` clause in ``_consume`` still absorbs expected network errors.
+        POISON pills are guaranteed via ``_produce_then_poison``'s ``finally``
+        block even if the producer itself fails mid-stream.
+        """
         queue: asyncio.Queue[list[tuple[str, bool]] | None] = asyncio.Queue(maxsize=self._cfg.queue_maxsize)
         semaphore = asyncio.Semaphore(self._cfg.api_semaphore_limit)
         result = SyncResult()
 
-        producer = asyncio.create_task(self._produce(queue, profile), name="sync-producer")
-        workers = [
-            asyncio.create_task(
-                self._consume(queue, session, semaphore, result),
-                name=f"sync-worker-{i}",
-            )
-            for i in range(self._cfg.worker_count)
-        ]
+        async def _produce_then_poison() -> None:
+            """Produce batches then send POISON pills — even on producer failure."""
+            try:
+                await self._produce(queue, profile)
+            finally:
+                for _ in range(self._cfg.worker_count):
+                    await queue.put(_POISON)
 
-        try:
-            await producer
-        finally:
-            for _ in workers:
-                await queue.put(_POISON)
-        # H-01: return_exceptions=True para prevenir crashes del orquestador
-        await asyncio.gather(*workers, return_exceptions=True)
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(_produce_then_poison(), name="sync-producer")
+            for i in range(self._cfg.worker_count):
+                tg.create_task(
+                    self._consume(queue, session, semaphore, result),
+                    name=f"sync-worker-{i}",
+                )
 
         logger.info(
             "Sync complete: processed=%d failed=%d skipped=%d",

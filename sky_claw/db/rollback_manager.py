@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 import pathlib
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from .journal import OperationJournal, OperationStatus, OperationType
 
 if TYPE_CHECKING:
-    from .snapshot_manager import FileSnapshotManager
+    from .snapshot_manager import CleanupResult, FileSnapshotManager, SnapshotInfo, SnapshotStats
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class RollbackResult:
     files_deleted: int = 0
     errors: tuple[str, ...] = ()
     dry_run: bool = False
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class RollbackManager:
@@ -101,3 +101,63 @@ class RollbackManager:
             files_deleted=1 if entry.operation_type in [OperationType.FILE_CREATE, OperationType.MOD_INSTALL] else 0,
             errors=(),
         )
+
+    # ------------------------------------------------------------------
+    # Public proxy API — avoid direct access to private _journal/_snapshots
+    # ------------------------------------------------------------------
+
+    async def begin_transaction(
+        self,
+        description: str,
+        mod_id: int | None = None,
+        agent_id: str = "system",
+    ) -> int:
+        """Begin a new journal transaction; return the transaction ID."""
+        return await self._journal.begin_transaction(
+            description=description, mod_id=mod_id, agent_id=agent_id
+        )
+
+    async def commit_transaction(self, transaction_id: int) -> None:
+        """Mark a journal transaction as committed."""
+        await self._journal.commit_transaction(transaction_id)
+
+    async def begin_operation(
+        self,
+        agent_id: str,
+        operation_type: OperationType,
+        target_path: str,
+        transaction_id: int | None = None,
+        snapshot_path: str | None = None,
+        checksum: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        """Record the start of a file operation; return the entry ID."""
+        return await self._journal.begin_operation(
+            agent_id=agent_id,
+            operation_type=operation_type,
+            target_path=target_path,
+            transaction_id=transaction_id,
+            snapshot_path=snapshot_path,
+            checksum=checksum,
+            metadata=metadata,
+        )
+
+    async def complete_operation(self, entry_id: int) -> None:
+        """Mark a journal entry as completed."""
+        await self._journal.complete_operation(entry_id)
+
+    async def fail_operation(self, entry_id: int, error: str = "") -> None:
+        """Mark a journal entry as failed."""
+        await self._journal.fail_operation(entry_id, error=error)
+
+    async def create_snapshot(self, file_path: pathlib.Path) -> SnapshotInfo:
+        """Capture a point-in-time snapshot of *file_path*."""
+        return await self._snapshots.create_snapshot(file_path)
+
+    async def get_snapshot_stats(self) -> SnapshotStats:
+        """Return current size/count statistics for the snapshot store."""
+        return await self._snapshots.get_stats()
+
+    async def cleanup_old_snapshots(self, days_old: int = 30, dry_run: bool = False) -> CleanupResult:
+        """Remove snapshots older than *days_old* days."""
+        return await self._snapshots.cleanup_old_snapshots(days_old=days_old, dry_run=dry_run)
