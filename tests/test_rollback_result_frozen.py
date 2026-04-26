@@ -133,6 +133,8 @@ class TestExecuteFileOperationRollbackNoMutation:
         mock_rm.complete_operation = AsyncMock()
         mock_rm.commit_transaction = AsyncMock()
         mock_rm.create_snapshot = AsyncMock(return_value=MagicMock(snapshot_path="/fake/snap"))
+        # _passive_pruning runs in finally; stub stats under the size limit so it no-ops
+        mock_rm.get_snapshot_stats = AsyncMock(return_value=MagicMock(total_size_bytes=0))
 
         # undo_last_operation returns a SUCCESSFUL rollback
         expected_result = RollbackResult(
@@ -182,6 +184,7 @@ class TestExecuteFileOperationRollbackNoMutation:
         mock_rm.complete_operation = AsyncMock()
         mock_rm.commit_transaction = AsyncMock()
         mock_rm.create_snapshot = AsyncMock(return_value=MagicMock(snapshot_path="/snap"))
+        mock_rm.get_snapshot_stats = AsyncMock(return_value=MagicMock(total_size_bytes=0))
 
         rollback_result = RollbackResult(success=True, transaction_id=200)
         mock_rm.undo_last_operation = AsyncMock(return_value=rollback_result)
@@ -227,6 +230,7 @@ class TestExecuteFileOperationRollbackNoMutation:
         mock_rm.complete_operation = AsyncMock()
         mock_rm.commit_transaction = AsyncMock()
         mock_rm.create_snapshot = AsyncMock(return_value=MagicMock(snapshot_path="/snap"))
+        mock_rm.get_snapshot_stats = AsyncMock(return_value=MagicMock(total_size_bytes=0))
 
         rollback_result = RollbackResult(
             success=False,
