@@ -186,6 +186,7 @@ def tool_registry(
         sync_engine=sync_engine,
         hitl=hitl_guard,
         downloader=downloader,
+        gateway=_make_gateway(),  # TASK-013 P1: Zero-Trust requires gateway
     )
 
 
@@ -889,6 +890,7 @@ class TestDownloadModHITLDenied:
             sync_engine=sync_engine,
             hitl=guard,
             downloader=downloader,
+            gateway=_make_gateway(),  # TASK-013 P1
         )
 
         fi = _make_file_info(nexus_id=10, file_id=20, file_name="denied.zip")
@@ -929,6 +931,7 @@ class TestDownloadModHITLDenied:
             sync_engine=sync_engine,
             hitl=guard,
             downloader=downloader,
+            gateway=_make_gateway(),  # TASK-013 P1
         )
         fi = _make_file_info(nexus_id=11, file_id=21, file_name="timeout.zip")
 
@@ -973,6 +976,7 @@ class TestDownloadModApproved:
             sync_engine=sync_engine,
             hitl=guard,
             downloader=downloader,
+            gateway=_make_gateway(),  # TASK-013 P1
         )
         fi = _make_file_info(
             nexus_id=55,
@@ -1023,6 +1027,7 @@ class TestDownloadModApproved:
             sync_engine=sync_engine,
             hitl=guard,
             downloader=downloader,
+            gateway=_make_gateway(),  # TASK-013 P1
         )
         fi = _make_file_info(nexus_id=1, file_id=1, file_name="f.zip")
 

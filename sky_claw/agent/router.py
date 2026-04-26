@@ -296,16 +296,15 @@ class LLMRouter:
             f"🎯 RouteClassification: intent={route_classification.intent}, confidence={route_classification.confidence}"
         )
 
-        # Branch A: Deterministic System Management
-        if route_classification.intent == "COMANDO_SISTEMA":
-            return await self._handle_system_op(routed["original_text"])
-
-        # Branch B: Contextual Modding Query (RAG) usando LCEL
+        # Branch: Contextual Modding Query (RAG) usando LCEL
         injected_context = ""
         if route_classification.intent == "CONSULTA_MODDING":
             if progress_callback:
                 asyncio.create_task(progress_callback("searching_registry", 20))
             injected_context = await self._context_manager.build_prompt_context(user_message)
+            # TASK-013 P0: sanitize RAG context to prevent prompt-injection via
+            # poisoned mod metadata scraped from Nexus Mods.
+            injected_context = sanitize_for_prompt(injected_context)
 
             # Usar LCEL para componer prompt RAG
             if route_classification.requires_context:
@@ -544,11 +543,14 @@ class LLMRouter:
                     if len(result_str) > 4000:
                         result_str = result_str[:4000] + "\n\n[... truncated ...]"
 
+                    # TASK-013 P0: sanitize tool output before injecting back into
+                    # the LLM context — prevents indirect prompt injection via
+                    # adversarial mod metadata, file paths, or HTTP responses.
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_id,
-                            "content": result_str,
+                            "content": sanitize_for_prompt(result_str),
                         }
                     )
 
@@ -565,19 +567,6 @@ class LLMRouter:
                 return "Error Critico: El ciclo de herramientas fallo por una excepcion interna. Consulta los logs del servidor."
         else:
             raise RuntimeError(f"Agent exceeded {MAX_TOOL_ROUNDS} tool rounds")
-
-    # ------------------------------------------------------------------
-    # System Operations
-    # ------------------------------------------------------------------
-
-    async def _handle_system_op(self, command: str) -> str:
-        """Handles COMANDO_SISTEMA branch synchronously."""
-        cmd = command.lower()
-        if "status" in cmd:
-            return "SISTEMA: Núcleo Sky-Claw activo. WS Daemon operativo. Load Order proactivo activo."
-        if "uptime" in cmd:
-            return "SISTEMA: Uptime registrado (WSL2). Conexión Gateway: ESTABLE."
-        return f"COMANDO_SISTEMA: '{command}' recibido pero no implementado en esta versión."
 
     # ------------------------------------------------------------------
     # History persistence

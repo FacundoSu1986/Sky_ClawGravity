@@ -67,17 +67,26 @@ async def download_mod(
     if sync_engine is None:
         return json.dumps({"error": "SyncEngine is not configured"})
 
-    # S1-FIX: Use injected gateway session; fall back to creating a
-    # GatewayTCPConnector-backed session when a gateway is provided.
+    # TASK-013 P1: Zero-Trust egress policy — a missing NetworkGateway means
+    # the integration layer is misconfigured. Abort immediately rather than
+    # degrade to an unprotected session that bypasses SSRF/allow-list defences.
     own_session = False
     if session is None:
-        if gateway is not None:
-            session = aiohttp.ClientSession(
-                connector=GatewayTCPConnector(gateway, limit=10),
+        if gateway is None:
+            logger.error(
+                "download_mod called without NetworkGateway — aborting (Zero-Trust policy)"
             )
-        else:
-            logger.warning("download_mod called without gateway — creating unprotected session")
-            session = aiohttp.ClientSession()
+            return json.dumps(
+                {
+                    "error": (
+                        "NetworkGateway is required for all egress. "
+                        "Configure the gateway before calling this tool."
+                    )
+                }
+            )
+        session = aiohttp.ClientSession(
+            connector=GatewayTCPConnector(gateway, limit=10),
+        )
         own_session = True
 
     try:
@@ -149,12 +158,16 @@ async def download_mod(
         _gateway = gateway
 
         async def _do_download() -> None:
-            if _gateway is not None:
-                dl_session = aiohttp.ClientSession(
-                    connector=GatewayTCPConnector(_gateway, limit=10),
-                )
-            else:
-                dl_session = aiohttp.ClientSession()
+            # TASK-013 P1: Defense-in-depth — _gateway must be set; the early
+            # return above guarantees this when session=None, but an explicit
+            # check guards against future callers that supply a pre-built session
+            # while omitting the gateway.
+            if _gateway is None:
+                logger.error("_do_download: no gateway available — aborting enqueued download")
+                return
+            dl_session = aiohttp.ClientSession(
+                connector=GatewayTCPConnector(_gateway, limit=10),
+            )
             async with dl_session:
                 fresh_info = await _downloader.get_file_info(_nexus_id, _file_id, dl_session)
                 await _downloader.download(fresh_info, dl_session)

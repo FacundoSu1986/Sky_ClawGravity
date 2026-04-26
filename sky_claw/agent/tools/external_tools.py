@@ -60,17 +60,26 @@ async def setup_tools(
 
     results: dict[str, Any] = {}
 
-    # S1-FIX: Use injected gateway session; fall back to GatewayTCPConnector-backed
-    # session when a gateway is provided — never create a raw session.
+    # TASK-013 P1: Zero-Trust egress policy — a missing NetworkGateway means
+    # the integration layer is misconfigured. Abort immediately rather than
+    # degrade to an unprotected session that bypasses SSRF/allow-list defences.
     own_session = False
     if session is None:
-        if gateway is not None:
-            session = aiohttp.ClientSession(
-                connector=GatewayTCPConnector(gateway, limit=10),
+        if gateway is None:
+            logger.error(
+                "setup_tools called without NetworkGateway — aborting (Zero-Trust policy)"
             )
-        else:
-            logger.warning("setup_tools called without gateway — creating unprotected session")
-            session = aiohttp.ClientSession()
+            return json.dumps(
+                {
+                    "error": (
+                        "NetworkGateway is required for all egress. "
+                        "Configure the gateway before calling this tool."
+                    )
+                }
+            )
+        session = aiohttp.ClientSession(
+            connector=GatewayTCPConnector(gateway, limit=10),
+        )
         own_session = True
 
     try:

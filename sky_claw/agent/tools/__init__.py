@@ -109,6 +109,9 @@ class AsyncToolRegistry:
         wrye_bash_runner: Any | None = None,
         pandora_runner: Any | None = None,
         bodyslide_runner: Any | None = None,
+        # TASK-013 P1: Zero-Trust egress — gateway is threaded to every tool
+        # that performs outbound HTTP so NetworkGateway.authorize() is always enforced.
+        gateway: Any | None = None,
     ) -> None:
         self._registry = registry
         self._mo2 = mo2
@@ -127,6 +130,7 @@ class AsyncToolRegistry:
         self._wrye_bash_runner = wrye_bash_runner
         self._pandora_runner = pandora_runner
         self._bodyslide_runner = bodyslide_runner
+        self._gateway = gateway
         self._tools: dict[str, ToolDescriptor] = {}
         self._register_builtins()
 
@@ -158,7 +162,9 @@ class AsyncToolRegistry:
 
     async def _download_mod(self, nexus_id: int, file_id: int | None = None) -> str:
         """Download a mod with HITL approval (P0-2: re-fetches fresh URL on execute)."""
-        return await download_mod(self._downloader, self._hitl, self._sync_engine, nexus_id, file_id)
+        return await download_mod(
+            self._downloader, self._hitl, self._sync_engine, nexus_id, file_id, gateway=self._gateway
+        )
 
     async def _run_loot_sort(self, profile: str) -> str:
         """Run LOOT sort, auto-initializing LOOTRunner from loot_exe if needed."""
@@ -226,7 +232,8 @@ class AsyncToolRegistry:
             description="Download a file from Nexus Mods with HITL approval.",
             input_schema=_clean_schema(DownloadModParams),
             fn=lambda nexus_id, file_id=None: download_mod(
-                self._downloader, self._hitl, self._sync_engine, nexus_id, file_id
+                self._downloader, self._hitl, self._sync_engine, nexus_id, file_id,
+                gateway=self._gateway,
             ),
             params_model=DownloadModParams,
         )
@@ -379,6 +386,7 @@ class AsyncToolRegistry:
                 self._downloader,
                 [self._loot_exe],
                 tools,
+                gateway=self._gateway,
             ),
             params_model=SetupToolsParams,
         )
