@@ -1,0 +1,91 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(echo *)",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "mcp__github__get_file_contents",
+      "mcp__github__list_commits",
+      "mcp__github__list_pull_requests",
+      "mcp__github__list_issues",
+      "mcp__github__pull_request_read",
+      "mcp__github__search_code",
+      "mcp__github__search_repositories",
+      "mcp__github__get_commit"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)",
+      "Bash(git reset --hard *)"
+    ],
+    "ask": [
+      "mcp__github__create_pull_request",
+      "mcp__github__merge_pull_request",
+      "mcp__github__subscribe_pr_activity",
+      "mcp__github__run_secret_scanning",
+      "Bash(pip *)"
+    ]
+  },
+
+  "skillOverrides": {
+    "security-review": "on",
+    "review": "on",
+    "simplify": "on",
+    "init": "on",
+    "claude-api": "on",
+    "loop": "off",
+    "keybindings-help": "off",
+    "session-start-hook": "off",
+    "statusline-setup": "off",
+    "fewer-permission-prompts": "name-only"
+  },
+
+  "env": {
+    "PYTHONPATH": "./sky_claw:./tests",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_TIMEOUT": "30"
+  },
+
+  "language": "python",
+
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' 2>/dev/null | { read -r f; [[ $f == *.py ]] && ruff format \"$f\" 2>/dev/null || true; }",
+            "statusMessage": "Auto-formatting Python...",
+            "async": true
+          }
+        ]
+      }
+    ]
+  },
+
+  "respectGitignore": true,
+
+  "cleanupPeriodDays": 30,
+
+  "additionalDirectories": [
+    "./.github",
+    "./.claude"
+  ]
+}
