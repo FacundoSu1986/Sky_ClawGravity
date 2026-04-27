@@ -62,12 +62,18 @@ class CoreEventBus:
         dlq: Dead Letter Queue opcional. Si es None, comportamiento fire-and-forget original.
     """
 
+    # Maximum number of subscriber coroutines that may run concurrently.
+    # Exceeding this limit causes the offending dispatch to be dropped with a
+    # WARNING instead of spawning an unbounded number of tasks (backpressure).
+    _MAX_PENDING_TASKS: int = 50
+
     def __init__(self, *, max_queue_size: int = 1024, dlq: DLQManager | None = None) -> None:
         self._subscriptions: list[tuple[str, Subscriber]] = []
         self._queue: asyncio.Queue[Event | None] = asyncio.Queue(
             maxsize=max_queue_size,
         )
         self._dispatch_task: asyncio.Task[None] | None = None
+        self._pending_tasks: set[asyncio.Task] = set()
         self._running: bool = False
         self._dlq = dlq
         self._handler_index: dict[str, Subscriber] = {}
@@ -92,6 +98,10 @@ class CoreEventBus:
         with contextlib.suppress(asyncio.CancelledError):
             await self._dispatch_task
         self._dispatch_task = None
+        # Cancel any in-flight subscriber tasks so they don't outlive the bus.
+        for task in list(self._pending_tasks):
+            task.cancel()
+        self._pending_tasks.clear()
         if self._dlq is not None:
             await self._dlq.stop()
         logger.info("CoreEventBus detenido")
@@ -129,7 +139,17 @@ class CoreEventBus:
 
             for pattern, callback in self._subscriptions:
                 if fnmatch.fnmatch(event.topic, pattern):
-                    asyncio.create_task(self._safe_execute(callback, event))
+                    if len(self._pending_tasks) >= self._MAX_PENDING_TASKS:
+                        logger.warning(
+                            "Event bus backpressure: %d pending tasks — dropping dispatch for '%s' handler '%s'",
+                            len(self._pending_tasks),
+                            event.topic,
+                            getattr(callback, "__name__", repr(callback)),
+                        )
+                        continue
+                    task = asyncio.create_task(self._safe_execute(callback, event))
+                    self._pending_tasks.add(task)
+                    task.add_done_callback(self._pending_tasks.discard)
 
             self._queue.task_done()
 
