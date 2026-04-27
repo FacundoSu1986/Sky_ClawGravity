@@ -94,13 +94,23 @@ class CoreEventBus:
         if self._dispatch_task is None:
             return
         self._running = False
-        await self._queue.put(None)  # Sentinel de apagado
+        # Use put_nowait to avoid blocking when the queue is full.
+        # If the queue is full the sentinel can never be consumed (dispatch_loop
+        # won't drain because _running is False), so we cancel the task directly.
+        try:
+            self._queue.put_nowait(None)
+        except asyncio.QueueFull:
+            self._dispatch_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await self._dispatch_task
         self._dispatch_task = None
-        # Cancel any in-flight subscriber tasks so they don't outlive the bus.
+        # Cancel in-flight subscriber tasks and await their cancellation so that
+        # no coroutine outlives the bus and unhandled exceptions are not silently
+        # swallowed by the garbage collector.
         for task in list(self._pending_tasks):
             task.cancel()
+        if self._pending_tasks:
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
         self._pending_tasks.clear()
         if self._dlq is not None:
             await self._dlq.stop()
