@@ -1,0 +1,39 @@
+# Sky-Claw Pre-Commit Hooks
+# Anti-hallucination barrier: ruff + mypy + no-print guard
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Ruff: lint + format (replaces flake8, isort, black)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.2
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        name: "ruff lint"
+        exclude: ^\.agents/
+      - id: ruff-format
+        name: "ruff format"
+        exclude: ^\.agents/
+
+  # Mypy: static type checking (runs on sky_claw/ only)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        name: "mypy type-check"
+        additional_dependencies:
+          - pydantic>=2.0
+        args: [--config-file=pyproject.toml]
+        files: ^sky_claw/
+        pass_filenames: true
+
+  # Guard: no print() in production code
+  - repo: local
+    hooks:
+      - id: no-print
+        name: "guard: no print() in production"
+        entry: 'print\('
+        language: pygrep
+        types: [python]
+        exclude: ^(tests/|scripts/|\.agents/|test_frontend_bridge\.py|script\.py)
