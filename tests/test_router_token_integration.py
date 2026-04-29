@@ -132,9 +132,7 @@ class TestBudgetRejection:
     """When context exceeds 100% of token budget, router rejects."""
 
     @pytest.mark.asyncio
-    async def test_reject_on_budget_exceeded(
-        self, tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path
-    ) -> None:
+    async def test_reject_on_budget_exceeded(self, tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path) -> None:
         # Tiny budget: 100 tokens → even a small message will exceed after loading
         budget_config = TokenBudgetConfig(max_context_tokens=10)
         r = _make_router(tmp_path, tool_registry, budget_config=budget_config)
@@ -258,9 +256,7 @@ class TestCircuitBreakerRejection:
     """When circuit breaker is OPEN, router rejects immediately."""
 
     @pytest.mark.asyncio
-    async def test_reject_when_circuit_open(
-        self, tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path
-    ) -> None:
+    async def test_reject_when_circuit_open(self, tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path) -> None:
         r = _make_router(tmp_path, tool_registry)
         await r.open()
         r._semantic_router.route = MagicMock(
@@ -295,9 +291,7 @@ class TestUsageRecording:
     """After a successful LLM call, token usage is recorded."""
 
     @pytest.mark.asyncio
-    async def test_usage_recorded_after_response(
-        self, router: LLMRouter
-    ) -> None:
+    async def test_usage_recorded_after_response(self, router: LLMRouter) -> None:
         # Mock the provider
         router._provider = MagicMock()
         router._provider.chat = AsyncMock(return_value=_end_turn_response("Hello!"))
@@ -311,9 +305,7 @@ class TestUsageRecording:
         assert router._token_budget._total_tokens_consumed > initial_total
 
     @pytest.mark.asyncio
-    async def test_session_report_available(
-        self, router: LLMRouter
-    ) -> None:
+    async def test_session_report_available(self, router: LLMRouter) -> None:
         router._provider = MagicMock()
         router._provider.chat = AsyncMock(return_value=_end_turn_response("Hi!"))
 
@@ -335,9 +327,7 @@ class TestToolRoundTimeout:
     """Tool execution is wrapped with asyncio.wait_for timeout."""
 
     @pytest.mark.asyncio
-    async def test_tool_timeout_returns_error(
-        self, tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path
-    ) -> None:
+    async def test_tool_timeout_returns_error(self, tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path) -> None:
         r = _make_router(tmp_path, tool_registry)
         await r.open()
         r._semantic_router.route = MagicMock(
@@ -436,9 +426,7 @@ class TestBudgetCircuitBreakerInteraction:
         await r.close()
 
     @pytest.mark.asyncio
-    async def test_circuit_breaker_does_not_record_usage_on_reject(
-        self, router: LLMRouter
-    ) -> None:
+    async def test_circuit_breaker_does_not_record_usage_on_reject(self, router: LLMRouter) -> None:
         """When circuit breaker rejects, no usage should be recorded."""
         # Force circuit breaker OPEN
         router._circuit_breaker._state = "open"
@@ -462,9 +450,7 @@ class TestHermesToolTimeout:
     """Hermes mode tool execution also respects timeout."""
 
     @pytest.mark.asyncio
-    async def test_hermes_tool_timeout_handled(
-        self, tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path
-    ) -> None:
+    async def test_hermes_tool_timeout_handled(self, tool_registry: AsyncToolRegistry, tmp_path: pathlib.Path) -> None:
         r = _make_router(tmp_path, tool_registry)
         # Enable hermes mode
         r._hermes_mode = True

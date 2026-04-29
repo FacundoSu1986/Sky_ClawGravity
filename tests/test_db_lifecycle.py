@@ -30,6 +30,7 @@ from sky_claw.core.db_lifecycle import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def tmp_db_dir(tmp_path: Path) -> Path:
     """Temporary directory for test databases."""
@@ -54,6 +55,7 @@ def lifecycle(db_path: Path) -> DatabaseLifecycleManager:
 # ---------------------------------------------------------------------------
 # Initialization + Pragmas
 # ---------------------------------------------------------------------------
+
 
 class TestInit:
     @pytest.mark.asyncio
@@ -101,6 +103,7 @@ class TestInit:
 # Recovery from Orphaned WAL
 # ---------------------------------------------------------------------------
 
+
 class TestRecovery:
     @pytest.mark.asyncio
     async def test_recovery_from_orphan_wal(self, db_path: Path) -> None:
@@ -147,6 +150,7 @@ class TestRecovery:
 # Checkpointing
 # ---------------------------------------------------------------------------
 
+
 class TestCheckpoint:
     @pytest.mark.asyncio
     async def test_passive_checkpoint(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
@@ -185,6 +189,7 @@ class TestCheckpoint:
 # ---------------------------------------------------------------------------
 # Shutdown
 # ---------------------------------------------------------------------------
+
 
 class TestShutdown:
     @pytest.mark.asyncio
@@ -229,6 +234,7 @@ class TestShutdown:
 # Health Check
 # ---------------------------------------------------------------------------
 
+
 class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_healthy(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
@@ -271,6 +277,7 @@ class TestHealthCheck:
 # ---------------------------------------------------------------------------
 # Concurrent Writers
 # ---------------------------------------------------------------------------
+
 
 class TestConcurrency:
     @pytest.mark.asyncio
@@ -329,6 +336,7 @@ class TestConcurrency:
 # ---------------------------------------------------------------------------
 # Config Immutability
 # ---------------------------------------------------------------------------
+
 
 class TestConfig:
     def test_config_is_frozen(self) -> None:

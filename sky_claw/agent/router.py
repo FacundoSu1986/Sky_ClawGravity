@@ -386,8 +386,7 @@ class LLMRouter:
                         pre_call_tokens,
                     )
                     return (
-                        "\u26a0\ufe0f Circuit breaker activado \u2014 consumo de tokens excesivo. "
-                        "Espera y reintenta."
+                        "\u26a0\ufe0f Circuit breaker activado \u2014 consumo de tokens excesivo. Espera y reintenta."
                     )
 
                 effective_system = f"{self._system_prompt}\n\n{injected_context}"
@@ -427,9 +426,7 @@ class LLMRouter:
                 content_blocks: list[dict[str, Any]] = response_data.get("content", [])
 
                 # ── FASE 1.5.3: Record token usage after LLM response ──────
-                response_tokens = self._token_budget.estimate_tokens(
-                    json.dumps(content_blocks, default=str)
-                )
+                response_tokens = self._token_budget.estimate_tokens(json.dumps(content_blocks, default=str))
                 self._token_budget.record_usage(pre_call_tokens + response_tokens)
                 self._circuit_breaker.record_response(pre_call_tokens + response_tokens)
 

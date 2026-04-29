@@ -37,8 +37,7 @@ logger = logging.getLogger("sky_claw")
 
 
 SYSTEM_PROMPT = (
-    build_system_header()
-    + "Sos Sky-Claw, un agente de modding para Skyrim SE/AE.\n"
+    build_system_header() + "Sos Sky-Claw, un agente de modding para Skyrim SE/AE.\n"
     "REGLA CRÍTICA DE LENGUAJE: SIEMPRE responder en español argentino, "
     "sin importar en qué idioma hable el usuario. Prohibido usar otro idioma en tu respuesta final.\n"
     "REGLA DE PENSAMIENTO: Antes de responder o usar herramientas, "

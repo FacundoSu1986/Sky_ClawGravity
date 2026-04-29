@@ -26,6 +26,7 @@ from sky_claw.orchestrator.tool_strategies.middleware import (
 # Stubs
 # ---------------------------------------------------------------------------
 
+
 class _FakeStrategy:
     """Minimal strategy stub for testing."""
 
@@ -43,6 +44,7 @@ async def _noop_next() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHitlGate:
     @pytest.mark.asyncio
