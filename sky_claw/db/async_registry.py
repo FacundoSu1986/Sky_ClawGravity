@@ -74,13 +74,15 @@ CREATE TABLE IF NOT EXISTS task_log (
 # DB-002: Unified upsert — single and batch now update the same columns
 _UPSERT_MOD_SQL = """\
 INSERT INTO mods (nexus_id, name, version, author, category, download_url, installed, enabled_in_vfs)
-VALUES (?, ?, ?, ?, ?, ?, 0, 0)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(nexus_id) DO UPDATE SET
     name           = excluded.name,
     version        = excluded.version,
     author         = excluded.author,
     category       = excluded.category,
     download_url   = excluded.download_url,
+    installed      = excluded.installed,
+    enabled_in_vfs = excluded.enabled_in_vfs,
     updated_at     = datetime('now')
 RETURNING mod_id
 """
@@ -110,7 +112,7 @@ VALUES (?, ?, ?, ?)
 """
 
 
-class _DatabaseCorruptionError(RuntimeError):
+class DatabaseCorruptionError(RuntimeError):
     """DB-004: Specific exception for database integrity failures.
 
     Prevents unrelated ``RuntimeError`` instances from triggering the
@@ -162,8 +164,8 @@ class AsyncModRegistry:
                 row = await cur.fetchone()
                 if row is None or str(row[0]).lower() != "ok":
                     # DB-004: Use specific exception to avoid catching unrelated RuntimeErrors
-                    raise _DatabaseCorruptionError(f"SQLite integrity check failed for {self._db_path}")
-        except _DatabaseCorruptionError:
+                    raise DatabaseCorruptionError(f"SQLite integrity check failed for {self._db_path}")
+        except DatabaseCorruptionError:
             await self._conn.close()
             self._conn = None
 
@@ -220,13 +222,15 @@ class AsyncModRegistry:
         author: str = "",
         category: str = "",
         download_url: str = "",
+        installed: bool = False,
+        enabled: bool = False,
     ) -> int:
         """Insert or update a mod record.  Returns the ``mod_id``."""
         if self._conn is None:
             raise RuntimeError("Database is not open")
         async with self._conn.execute(
             _UPSERT_MOD_SQL,
-            (nexus_id, name, version, author, category, download_url),
+            (nexus_id, name, version, author, category, download_url, int(installed), int(enabled)),
         ) as cur:
             row = await cur.fetchone()
             if row is None:

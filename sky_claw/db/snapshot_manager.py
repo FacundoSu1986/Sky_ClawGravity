@@ -162,7 +162,8 @@ class FileSnapshotManager:
 
                 # Calcular checksum antes de copiar
                 checksum = await self._calculate_checksum(file_path)
-                file_size = file_path.stat().st_size
+                # SSP-002: Delegar .stat() a thread pool para no bloquear el event loop
+                file_size = (await asyncio.to_thread(file_path.stat)).st_size
 
                 # Copiar archivo (copy-on-write cuando es posible)
                 await asyncio.to_thread(shutil.copy2, file_path, snapshot_path)
@@ -368,13 +369,18 @@ class FileSnapshotManager:
 
                     # Verificar si el directorio es antiguo
                     try:
-                        dir_time = time.strptime(date_dir.name, "%Y-%m-%d")
-                        dir_timestamp = time.mktime(dir_time)
+                        # SSP-003: Usar UTC para evitar ambigüedades de timezone local
+                        dir_timestamp = (
+                            datetime.strptime(date_dir.name, "%Y-%m-%d").replace(tzinfo=UTC).timestamp()
+                        )
 
                         if dir_timestamp < cutoff_time:
-                            # Eliminar todo el directorio
-                            dir_size = sum(f.stat().st_size for f in date_dir.rglob("*") if f.is_file())
-                            file_count = sum(1 for f in date_dir.rglob("*") if f.is_file())
+                            # SSP-002: Delegar stat() bloqueante a thread pool
+                            def _scan_dir(d: pathlib.Path) -> tuple[int, int]:
+                                files = [f for f in d.rglob("*") if f.is_file()]
+                                return sum(f.stat().st_size for f in files), len(files)
+
+                            dir_size, file_count = await asyncio.to_thread(_scan_dir, date_dir)
 
                             if not dry_run:
                                 await asyncio.to_thread(shutil.rmtree, date_dir)
