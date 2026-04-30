@@ -61,6 +61,8 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     "FAILED": set(),      # terminal
 }
 
+_VALID_INITIAL_STATES: set[str] = {"PENDING", "AWAITING_APPROVAL"}
+
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
@@ -196,7 +198,6 @@ class ToolStateMachine:
         Raises:
             InvalidTransitionError: If initial_state is not a valid state.
         """
-        _VALID_INITIAL_STATES = {"PENDING", "AWAITING_APPROVAL"}
         if initial_state not in _VALID_INITIAL_STATES:
             raise InvalidTransitionError(
                 f"Invalid initial state: {initial_state}. "

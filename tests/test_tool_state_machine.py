@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from sky_claw.orchestrator.tool_state_machine import (
     IdempotencyGuard,
@@ -20,7 +21,6 @@ from sky_claw.orchestrator.tool_state_machine import (
     TaskRecord,
     ToolStateMachine,
 )
-
 
 # ------------------------------------------------------------------
 # TaskRecord schema
@@ -37,12 +37,12 @@ class TestTaskRecord:
             state="PENDING",
             idempotency_key="abc123",
         )
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             rec.task_id = "t2"  # type: ignore[misc]
 
     def test_strict_type_validation(self) -> None:
         """Strict mode rejects type coercion (e.g., int where str expected)."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TaskRecord(
                 task_id=123,  # type: ignore[arg-type]  # str expected, int provided
                 tool_name="list_mods",
@@ -323,7 +323,7 @@ class TestTaskManagement:
         t1 = sm.create_task("tool_a", {})
         sm.transition(t1.task_id, "RUNNING")
         assert sm.active_task_count == 1
-        t2 = sm.create_task("tool_b", {})
+        sm.create_task("tool_b", {})
         assert sm.active_task_count == 2
         sm.transition(t1.task_id, "COMPLETED")
         assert sm.active_task_count == 1

@@ -23,7 +23,6 @@ from sky_claw.orchestrator.tool_strategies.middleware import (
     ProgressMiddleware,
 )
 
-
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------

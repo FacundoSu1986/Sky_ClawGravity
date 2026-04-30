@@ -32,7 +32,6 @@ from sky_claw.orchestrator.tool_strategies.generate_bashed_patch import (
 )
 from sky_claw.orchestrator.tool_strategies.generate_lods import GenerateLodsStrategy
 from sky_claw.orchestrator.tool_strategies.middleware import (
-    DESTRUCTIVE_TOOL_PATTERNS,
     DictResultGuardMiddleware,
     ErrorWrappingMiddleware,
     HitlGateMiddleware,
