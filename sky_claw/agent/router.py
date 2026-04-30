@@ -25,8 +25,8 @@ from sky_claw.agent.lcel_chains import (
 )
 from sky_claw.agent.providers import LLMProvider, create_provider
 from sky_claw.agent.semantic_router import SemanticRouter
-from sky_claw.agent.token_budget import TokenBudgetManager, TokenBudgetConfig
-from sky_claw.agent.token_circuit_breaker import TokenCircuitBreaker, TokenCircuitBreakerConfig
+from sky_claw.agent.token_budget import TokenBudgetManager
+from sky_claw.agent.token_circuit_breaker import TokenCircuitBreaker
 from sky_claw.core.errors import AgentOrchestrationError, SecurityViolationError
 from sky_claw.core.schemas import RouteClassification
 from sky_claw.security.sanitize import sanitize_for_prompt
@@ -376,21 +376,23 @@ class LLMRouter:
                     logger.info("TokenBudget: summarized older context")
 
                 # Re-estimate after potential summarization/truncation
-                pre_call_tokens = self._token_budget._estimate_messages_tokens(messages)
+                # Construir effective_system ANTES del circuit-breaker para incluir su
+                # costo en pre_call_tokens. Evita bypass del límite cuando system_prompt
+                # o injected_context (RAG) son grandes y messages solos no exceden el umbral.
+                effective_system = f"{self._system_prompt}\n\n{injected_context}"
+                system_tokens = self._token_budget.estimate_tokens(effective_system)
+                pre_call_tokens = self._token_budget._estimate_messages_tokens(messages) + system_tokens
 
                 # ── FASE 1.5.3: Circuit breaker pre-check ──────────────────
                 if not self._circuit_breaker.check_request(pre_call_tokens):
                     logger.warning(
-                        "TokenCircuitBreaker: request rejected (state=%s, est=%d tokens)",
+                        "TokenCircuitBreaker: request rejected (state=%s, est=%d tokens incl. system)",
                         self._circuit_breaker.state,
                         pre_call_tokens,
                     )
                     return (
-                        "\u26a0\ufe0f Circuit breaker activado \u2014 consumo de tokens excesivo. "
-                        "Espera y reintenta."
+                        "\u26a0\ufe0f Circuit breaker activado \u2014 consumo de tokens excesivo. Espera y reintenta."
                     )
-
-                effective_system = f"{self._system_prompt}\n\n{injected_context}"
                 effective_tools = tool_schemas
                 if self._hermes_mode and self._tools:
                     effective_system = (
@@ -427,9 +429,7 @@ class LLMRouter:
                 content_blocks: list[dict[str, Any]] = response_data.get("content", [])
 
                 # ── FASE 1.5.3: Record token usage after LLM response ──────
-                response_tokens = self._token_budget.estimate_tokens(
-                    json.dumps(content_blocks, default=str)
-                )
+                response_tokens = self._token_budget.estimate_tokens(json.dumps(content_blocks, default=str))
                 self._token_budget.record_usage(pre_call_tokens + response_tokens)
                 self._circuit_breaker.record_response(pre_call_tokens + response_tokens)
 

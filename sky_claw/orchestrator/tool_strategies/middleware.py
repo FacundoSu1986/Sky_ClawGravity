@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any
 
 from sky_claw.orchestrator.tool_strategies.base import NextCall, ToolStrategy
@@ -162,12 +163,16 @@ class HitlGateMiddleware:
             )
             return await next_call()
 
-        # Send approval request
+        # Send approval request — usar request_id único para evitar colisiones cuando
+        # dos invocaciones concurrentes de la MISMA tool destructiva con payloads
+        # distintos llegan al gate (FASE 1.5.4 hardening: HITL key collision fix).
+        request_id = uuid.uuid4().hex
         request_event = asyncio.Event()
-        self._pending[strategy.name] = request_event
+        self._pending[request_id] = request_event
 
         await self._notify_fn(
             {
+                "request_id": request_id,
                 "tool_name": strategy.name,
                 "reason": f"Tool '{strategy.name}' requires human approval before execution.",
                 "timeout": self._timeout,
@@ -177,10 +182,11 @@ class HitlGateMiddleware:
         # Wait for decision or timeout
         try:
             await asyncio.wait_for(request_event.wait(), timeout=self._timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
-                "HitlGateMiddleware: approval timed out for '%s' — auto-denying.",
+                "HitlGateMiddleware: approval timed out for '%s' (request_id=%s) — auto-denying.",
                 strategy.name,
+                request_id,
             )
             return {
                 "status": "error",
@@ -188,10 +194,10 @@ class HitlGateMiddleware:
                 "details": f"Human approval timed out for '{strategy.name}' after {self._timeout}s.",
             }
         finally:
-            self._pending.pop(strategy.name, None)
+            self._pending.pop(request_id, None)
 
         # Check decision
-        approved = self._decisions.pop(strategy.name, False)
+        approved = self._decisions.pop(request_id, False)
         if not approved:
             logger.info(
                 "HitlGateMiddleware: tool '%s' DENIED by human operator.",
@@ -209,15 +215,17 @@ class HitlGateMiddleware:
         )
         return await next_call()
 
-    def resolve(self, tool_name: str, approved: bool) -> None:
+    def resolve(self, request_id: str, approved: bool) -> None:
         """Called by the HITL handler when the human makes a decision.
 
         Args:
-            tool_name: Name of the tool that was pending approval.
+            request_id: Unique ID of the pending request (received in
+                ``notify_fn`` payload as ``"request_id"``). Distinguishes
+                concurrent invocations of the same destructive tool.
             approved: True if the human approved, False if denied.
         """
-        self._decisions[tool_name] = approved
-        event = self._pending.get(tool_name)
+        self._decisions[request_id] = approved
+        event = self._pending.get(request_id)
         if event:
             event.set()
 
@@ -269,7 +277,8 @@ class IdempotencyMiddleware:
             result = await next_call()
         except Exception as exc:
             self._sm.transition(
-                task.task_id, "FAILED",
+                task.task_id,
+                "FAILED",
                 error_message=str(exc),
             )
             raise
@@ -305,28 +314,37 @@ class ProgressMiddleware:
             return await next_call()
 
         # Emit started event
-        await self._publish("ops.tool.started", {
-            "tool": strategy.name,
-            "payload_keys": list(payload_dict.keys()),
-        })
+        await self._publish(
+            "ops.tool.started",
+            {
+                "tool": strategy.name,
+                "payload_keys": list(payload_dict.keys()),
+            },
+        )
 
         try:
             result = await next_call()
         except Exception as exc:
             # Emit failed event
-            await self._publish("ops.tool.failed", {
-                "tool": strategy.name,
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-            })
+            await self._publish(
+                "ops.tool.failed",
+                {
+                    "tool": strategy.name,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
             raise
 
         # Emit completed event
         status = result.get("status", "unknown") if isinstance(result, dict) else "unknown"
-        await self._publish("ops.tool.completed", {
-            "tool": strategy.name,
-            "status": status,
-        })
+        await self._publish(
+            "ops.tool.completed",
+            {
+                "tool": strategy.name,
+                "status": status,
+            },
+        )
 
         return result
 
@@ -334,6 +352,7 @@ class ProgressMiddleware:
         """Safely publish an event, swallowing errors to avoid disrupting tool execution."""
         try:
             from sky_claw.core.event_bus import Event
+
             await self._bus.publish(Event(topic=topic, payload=payload, source="ProgressMiddleware"))
         except Exception:
             logger.debug(

@@ -22,10 +22,10 @@ from sky_claw.orchestrator.tool_strategies.middleware import (
     HitlGateMiddleware,
 )
 
-
 # ---------------------------------------------------------------------------
 # Stubs
 # ---------------------------------------------------------------------------
+
 
 class _FakeStrategy:
     """Minimal strategy stub for testing."""
@@ -44,6 +44,7 @@ async def _noop_next() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHitlGate:
     @pytest.mark.asyncio
@@ -68,10 +69,12 @@ class TestHitlGate:
         gate = HitlGateMiddleware(notify_fn=notify_fn, timeout=5.0)
         strategy = _FakeStrategy("generate_lods")
 
-        # Simulate human approval in background
+        # Simulate human approval in background — capturar el request_id del
+        # payload de notify_fn (FASE 1.5.4: clave única por request, no por tool).
         async def _approve():
             await asyncio.sleep(0.05)
-            gate.resolve("generate_lods", approved=True)
+            request_id = notify_fn.call_args.args[0]["request_id"]
+            gate.resolve(request_id, approved=True)
 
         asyncio.create_task(_approve())
         result = await gate(strategy, {}, _noop_next)
@@ -88,7 +91,8 @@ class TestHitlGate:
         # Simulate human denial in background
         async def _deny():
             await asyncio.sleep(0.05)
-            gate.resolve("generate_bashed_patch", approved=False)
+            request_id = notify_fn.call_args.args[0]["request_id"]
+            gate.resolve(request_id, approved=False)
 
         asyncio.create_task(_deny())
         result = await gate(strategy, {}, _noop_next)
@@ -123,6 +127,50 @@ class TestHitlGate:
         assert result2["status"] == "ok"  # fail-open without notify_fn
 
 
+class TestHitlConcurrentRequests:
+    """FASE 1.5.4 hardening: previene colisión cuando dos invocaciones
+    concurrentes de la MISMA tool destructiva con payloads distintos llegan
+    al gate simultáneamente."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_same_tool_different_payloads_independent_decisions(self) -> None:
+        """Dos invocaciones concurrentes de la misma tool con payloads distintos
+        deben tener entries pendientes independientes; resolver una NO debe
+        afectar a la otra."""
+        captured_ids: list[str] = []
+
+        async def capturing_notify(payload: dict[str, Any]) -> None:
+            captured_ids.append(payload["request_id"])
+
+        gate = HitlGateMiddleware(notify_fn=capturing_notify, timeout=5.0)
+        strategy = _FakeStrategy("generate_lods")
+
+        # Lanzar dos invocaciones concurrentes de la misma tool
+        task_a = asyncio.create_task(gate(strategy, {"target": "A"}, _noop_next))
+        task_b = asyncio.create_task(gate(strategy, {"target": "B"}, _noop_next))
+
+        # Esperar a que ambas notifiquen
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if len(captured_ids) >= 2:
+                break
+
+        assert len(captured_ids) == 2, "Ambas invocaciones deben haber notificado"
+        assert captured_ids[0] != captured_ids[1], "Cada invocación debe tener un request_id único"
+
+        # Aprobar SOLO la primera; la segunda debe seguir pending
+        gate.resolve(captured_ids[0], approved=True)
+        result_a = await asyncio.wait_for(task_a, timeout=1.0)
+        assert result_a["status"] == "ok"
+        assert not task_b.done(), "task_b NO debe completarse al resolver task_a"
+
+        # Denegar la segunda
+        gate.resolve(captured_ids[1], approved=False)
+        result_b = await asyncio.wait_for(task_b, timeout=1.0)
+        assert result_b["status"] == "error"
+        assert result_b["reason"] == "HITLApprovalDenied"
+
+
 class TestDestructiveToolPatterns:
     def test_known_destructive_tools(self) -> None:
         expected = {
@@ -131,7 +179,7 @@ class TestDestructiveToolPatterns:
             "generate_lods",
             "resolve_conflict_patch",
         }
-        assert DESTRUCTIVE_TOOL_PATTERNS == expected
+        assert expected == DESTRUCTIVE_TOOL_PATTERNS
 
     def test_query_mod_metadata_not_destructive(self) -> None:
         assert "query_mod_metadata" not in DESTRUCTIVE_TOOL_PATTERNS
