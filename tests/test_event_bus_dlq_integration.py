@@ -48,24 +48,26 @@ async def test_failing_handler_goes_to_dlq(tmp_path: Path) -> None:
     await dlq._ensure_schema()  # pre-create schema to avoid SQLite locking race
     await bus.start()
 
-    async def telegram_handler(event: Event) -> None:
-        raise RuntimeError("telegram api 500")
+    try:
 
-    bus.subscribe("notif.*", telegram_handler)
+        async def telegram_handler(event: Event) -> None:
+            raise RuntimeError("telegram api 500")
 
-    await bus.publish(Event(topic="notif.critical", payload={"msg": "hi"}))
-    pending = await _poll_pending(dlq, min_count=1)
-    assert len(pending) == 1
-    row = pending[0]
-    assert row.topic == "notif.critical"
-    assert row.payload == {"msg": "hi"}
-    assert row.handler_name.endswith("telegram_handler")
-    assert row.error_type == "RuntimeError"
-    assert "telegram api 500" in row.error_message
-    assert row.attempts == 0
-    assert row.status == "pending"
+        bus.subscribe("notif.*", telegram_handler)
 
-    await bus.stop()
+        await bus.publish(Event(topic="notif.critical", payload={"msg": "hi"}))
+        pending = await _poll_pending(dlq, min_count=1)
+        assert len(pending) == 1
+        row = pending[0]
+        assert row.topic == "notif.critical"
+        assert row.payload == {"msg": "hi"}
+        assert row.handler_name.endswith("telegram_handler")
+        assert row.error_type == "RuntimeError"
+        assert "telegram api 500" in row.error_message
+        assert row.attempts == 0
+        assert row.status == "pending"
+    finally:
+        await bus.stop()
 
 
 @pytest.mark.asyncio
@@ -79,17 +81,19 @@ async def test_successful_handler_not_enqueued(tmp_path: Path) -> None:
     bus._dlq = dlq
     await bus.start()
 
-    async def ok_handler(event: Event) -> None:
-        pass
+    try:
 
-    bus.subscribe("ok.*", ok_handler)
-    await bus.publish(Event(topic="ok.done", payload={}))
-    await asyncio.sleep(0.1)
+        async def ok_handler(event: Event) -> None:
+            pass
 
-    pending = await dlq.list_pending()
-    assert len(pending) == 0
+        bus.subscribe("ok.*", ok_handler)
+        await bus.publish(Event(topic="ok.done", payload={}))
+        await asyncio.sleep(0.1)
 
-    await bus.stop()
+        pending = await dlq.list_pending()
+        assert len(pending) == 0
+    finally:
+        await bus.stop()
 
 
 @pytest.mark.asyncio
@@ -104,28 +108,29 @@ async def test_only_failed_handler_enqueued_not_successful_one(tmp_path: Path) -
     await dlq._ensure_schema()  # pre-create schema to avoid SQLite locking race
     await bus.start()
 
-    good_calls: list[Event] = []
+    try:
+        good_calls: list[Event] = []
 
-    async def good_handler(event: Event) -> None:
-        good_calls.append(event)
+        async def good_handler(event: Event) -> None:
+            good_calls.append(event)
 
-    async def bad_handler(event: Event) -> None:
-        raise ValueError("bad")
+        async def bad_handler(event: Event) -> None:
+            raise ValueError("bad")
 
-    bus.subscribe("multi.*", good_handler)
-    bus.subscribe("multi.*", bad_handler)
+        bus.subscribe("multi.*", good_handler)
+        bus.subscribe("multi.*", bad_handler)
 
-    await bus.publish(Event(topic="multi.test", payload={"x": 1}))
-    pending = await _poll_pending(dlq, min_count=1)
+        await bus.publish(Event(topic="multi.test", payload={"x": 1}))
+        pending = await _poll_pending(dlq, min_count=1)
 
-    # Good handler fue llamado exactamente una vez
-    assert len(good_calls) == 1
+        # Good handler fue llamado exactamente una vez
+        assert len(good_calls) == 1
 
-    # DLQ tiene sólo la fila del bad_handler
-    assert len(pending) == 1
-    assert pending[0].handler_name.endswith("bad_handler")
-
-    await bus.stop()
+        # DLQ tiene sólo la fila del bad_handler
+        assert len(pending) == 1
+        assert pending[0].handler_name.endswith("bad_handler")
+    finally:
+        await bus.stop()
 
 
 @pytest.mark.asyncio
@@ -159,14 +164,16 @@ async def test_dlq_retry_delivers_to_handler(tmp_path: Path) -> None:
     bus._dlq = dlq
     await bus.start()
 
-    bus.subscribe("retry.*", flaky_handler)
-    await bus.publish(Event(topic="retry.test", payload={"attempt": True}))
-    await poll_until(
-        lambda: len(retried) >= 2,
-        timeout=5.0,
-        msg="Handler no fue llamado 2 veces (initial dispatch + DLQ retry)",
-    )
-    await bus.stop()
+    try:
+        bus.subscribe("retry.*", flaky_handler)
+        await bus.publish(Event(topic="retry.test", payload={"attempt": True}))
+        await poll_until(
+            lambda: len(retried) >= 2,
+            timeout=5.0,
+            msg="Handler no fue llamado 2 veces (initial dispatch + DLQ retry)",
+        )
+    finally:
+        await bus.stop()
 
     # Handler llamado 2 veces: dispatch inicial (falla) + retry (éxito)
     assert len(retried) == 2
@@ -188,18 +195,19 @@ async def test_create_bus_with_dlq_factory(tmp_path: Path) -> None:
 
     await bus.start()
 
-    received: list[Event] = []
+    try:
+        received: list[Event] = []
 
-    async def handler(event: Event) -> None:
-        received.append(event)
+        async def handler(event: Event) -> None:
+            received.append(event)
 
-    bus.subscribe("fac.*", handler)
-    await bus.publish(Event(topic="fac.test", payload={"ok": True}))
-    await asyncio.sleep(0.1)
+        bus.subscribe("fac.*", handler)
+        await bus.publish(Event(topic="fac.test", payload={"ok": True}))
+        await asyncio.sleep(0.1)
 
-    assert len(received) == 1
-
-    await bus.stop()
+        assert len(received) == 1
+    finally:
+        await bus.stop()
 
 
 @pytest.mark.asyncio
@@ -219,10 +227,12 @@ async def test_bus_without_dlq_still_works(tmp_path: Path) -> None:
     bus.subscribe("t", ok_handler)
     bus.subscribe("t", bad_handler)
     await bus.start()
-    await bus.publish(Event(topic="t", payload={}))
-    await asyncio.sleep(0.1)
 
-    # ok_handler recibió el evento, bad_handler falló silenciosamente (no crasha el bus)
-    assert len(received) == 1
+    try:
+        await bus.publish(Event(topic="t", payload={}))
+        await asyncio.sleep(0.1)
 
-    await bus.stop()
+        # ok_handler recibió el evento, bad_handler falló silenciosamente (no crasha el bus)
+        assert len(received) == 1
+    finally:
+        await bus.stop()
