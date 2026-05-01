@@ -42,6 +42,7 @@ from sky_claw.antigravity.gui.views import render_dashboard
 # Resolve paths relative to this module
 _CSS_PATH = Path(__file__).resolve().parent / "styles.css"
 _ASSETS_PATH = Path(__file__).resolve().parent / "assets"
+_WEB_STATIC_PATH = Path(__file__).resolve().parent.parent / "web" / "static"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -371,6 +372,7 @@ def setup_app() -> None:
     # Serve CSS and Assets
     app.add_static_files("/static", str(_CSS_PATH.parent))
     app.add_static_files("/assets", str(_ASSETS_PATH))
+    app.add_static_files("/web", str(_WEB_STATIC_PATH))
 
     # Initialize DB and seed sample data
     async def _init():
