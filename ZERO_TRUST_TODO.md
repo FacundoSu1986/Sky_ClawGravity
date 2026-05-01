@@ -1,20 +1,22 @@
 # Zero-Trust Post-Purge TODO
 
-Los siguientes archivos mantenidos aún usan `os.environ` y deben refactorizarse
-a inyección explícita en el siguiente sprint:
+## Completado ✅
 
-- `sky_claw/__main__.py` — todos los defaults de paths/puertos vía `SKY_CLAW_*`.
-- `sky_claw/config.py` — `_load_from_env()` con gate `SKY_CLAW_ALLOW_ENV_OVERRIDES`.
-- `sky_claw/local/auto_detect.py` — `LOCALAPPDATA`.
-- `sky_claw/local/tools_installer.py` — posibles paths de entorno.
-- `sky_claw/antigravity/orchestrator/supervisor.py` — `SKYRIM_PATH`, `MO2_PATH`, `WRYE_BASH_PATH`.
-- `sky_claw/antigravity/tools/dyndolod_service.py` — `SKYRIM_PATH`, `MO2_PATH`, `DYNDLOD_EXE`, etc.
-- `sky_claw/antigravity/tools/synthesis_service.py` — `SKYRIM_PATH`, `MO2_PATH`, `SYNTHESIS_EXE`.
-- `sky_claw/antigravity/tools/xedit_service.py` — `XEDIT_PATH`, `SKYRIM_PATH`.
-- `sky_claw/antigravity/core/path_resolver.py` — `LOCALAPPDATA`, `MO2_PATH`, `MO2_PROFILE`.
-- `sky_claw/antigravity/security/file_permissions.py` — `USERNAME`.
+- `sky_claw/__main__.py` — defaults purificados a argparse puro (Fase 2).
+- `sky_claw/config.py` — `_load_from_env()` y gate `SKY_CLAW_ALLOW_ENV_OVERRIDES` eliminados (Fase 2).
+- `sky_claw/antigravity/orchestrator/supervisor.py` — paths delegados a `PathResolutionService` (Fase 1).
+- `sky_claw/local/tools/dyndolod_service.py` — paths delegados a `PathResolutionService` (Fase 1).
+- `sky_claw/local/tools/synthesis_service.py` — paths delegados a `PathResolutionService` (Fase 1).
+- `sky_claw/local/tools/xedit_service.py` — paths delegados a `PathResolutionService` (Fase 1).
+- `sky_claw/local/auto_detect.py` — `LOCALAPPDATA` reemplazado por `Path.home()` helper (Fase 3).
+- `sky_claw/antigravity/security/file_permissions.py` — `USERNAME` reemplazado por `getpass.getuser()` (Fase 3).
+- `sky_claw/local/tools_installer.py` — verificado: sin `os.environ` (falso positivo, Fase 3).
 
-Acción recomendada:
-1. Consolidar todos los paths en un `LocalPathResolver` inyectado.
-2. Consolidar secretos en `CredentialVault.get_key(name)` con backend keyring.
-3. Eliminar cualquier `os.environ.get` restante en producción.
+## Excepción documentada (single point of contact)
+
+- `sky_claw/antigravity/core/path_resolver.py` — sigue leyendo `os.environ` para paths de herramientas (`SKYRIM_PATH`, `MO2_PATH`, etc.). **Este es el único punto centralizado permitido** hasta que se migren a `config.toml` exclusivo. Ningún otro módulo debe leer estas variables directamente.
+
+## Acción recomendada futura
+
+1. Migrar `PathResolutionService` de `os.environ` a `config.toml` puro.
+2. Consolidar secretos restantes en `CredentialVault.get_key(name)` con backend keyring.

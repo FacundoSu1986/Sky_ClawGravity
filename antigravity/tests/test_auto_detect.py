@@ -33,10 +33,7 @@ class TestFindMo2:
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(self) -> None:
-        with (
-            patch("sky_claw.local.auto_detect._MO2_COMMON", ()),
-            patch("sky_claw.local.auto_detect.os.environ", {}),
-        ):
+        with patch("sky_claw.local.auto_detect._MO2_COMMON", ()):
             result = await AutoDetector.find_mo2()
 
         assert result is None
@@ -47,7 +44,10 @@ class TestFindMo2:
         mo2_dir.mkdir(parents=True)
         (mo2_dir / "ModOrganizer.exe").touch()
 
-        with patch("sky_claw.local.auto_detect._MO2_COMMON", ()), patch.dict("os.environ", {"LOCALAPPDATA": str(tmp_path)}):
+        with (
+            patch("sky_claw.local.auto_detect._MO2_COMMON", ()),
+            patch("sky_claw.local.auto_detect._local_appdata", return_value=tmp_path),
+        ):
             result = await AutoDetector.find_mo2()
 
         assert result == mo2_dir

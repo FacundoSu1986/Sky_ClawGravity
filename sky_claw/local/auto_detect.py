@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import pathlib
 from typing import Any
 
@@ -32,6 +31,23 @@ _SKYRIM_COMMON: tuple[str, ...] = SKYRIM_COMMON_PATHS
 _LOOT_COMMON: tuple[str, ...] = LOOT_SEARCH_PATHS
 _XEDIT_COMMON: tuple[str, ...] = XEDIT_SEARCH_PATHS
 _SEARCH_TIMEOUT: float = SEARCH_TIMEOUT_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# Local AppData helper (patchable by tests)
+# ---------------------------------------------------------------------------
+
+def _local_appdata() -> pathlib.Path | None:
+    r"""Return the user's local application data directory.
+
+    On Windows this is typically ``C:\Users\<user>\AppData\Local``.
+    Returns *None* when the home directory cannot be determined.
+    """
+    try:
+        return pathlib.Path.home() / "AppData" / "Local"
+    except RuntimeError:
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Windows registry helper (stdlib winreg, Windows-only)
@@ -120,9 +136,9 @@ class AutoDetector:
                 return p
 
         # 2. AppData: %LOCALAPPDATA%\ModOrganizer\*
-        local_appdata = os.environ.get("LOCALAPPDATA")
-        if local_appdata:
-            mo_dir = pathlib.Path(local_appdata) / "ModOrganizer"
+        local_appdata = _local_appdata()
+        if local_appdata is not None:
+            mo_dir = local_appdata / "ModOrganizer"
             if mo_dir.is_dir():
                 for child in mo_dir.iterdir():
                     if child.is_dir() and (child / "ModOrganizer.exe").exists():

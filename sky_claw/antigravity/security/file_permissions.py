@@ -7,6 +7,7 @@ On POSIX, uses os.chmod with restrictive permissions.
 from __future__ import annotations
 
 import asyncio
+import getpass
 import logging
 import os
 import subprocess
@@ -43,9 +44,10 @@ def restrict_to_owner(path: Path) -> None:
 def _restrict_windows(path: Path) -> None:
     """Use icacls to set owner-only ACL on Windows."""
     try:
-        username = os.environ.get("USERNAME", "")
-        if not username:
-            logger.warning("Cannot determine USERNAME for ACL on %s", path)
+        try:
+            username = getpass.getuser()
+        except Exception:
+            logger.warning("Cannot determine username for ACL on %s", path)
             return
         # Reset inheritance, grant only current user full control
         subprocess.run(
