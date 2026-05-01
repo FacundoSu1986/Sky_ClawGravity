@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import os
 import pathlib
 import time
 from typing import TYPE_CHECKING, Any
@@ -95,11 +94,8 @@ class XEditPipelineService:
         if self._patch_orchestrator is not None:
             return self._patch_orchestrator
 
-        xedit_path_str = os.environ.get("XEDIT_PATH", "")
-        game_path_str = os.environ.get("SKYRIM_PATH", "")
-
-        xedit_path = self._path_resolver.validate_env_path(xedit_path_str, "XEDIT_PATH")
-        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
+        xedit_path = self._path_resolver.get_xedit_path()
+        game_path = self._path_resolver.get_skyrim_path()
 
         if not xedit_path or not game_path:
             raise PatchingError(

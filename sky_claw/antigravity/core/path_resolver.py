@@ -413,3 +413,35 @@ class PathResolutionService:
             return self._profile_name
 
         return "Default"
+
+    # ------------------------------------------------------------------
+    # Zero-Trust: resolved tool paths (centralised os.environ access)
+    # ------------------------------------------------------------------
+
+    def get_skyrim_path(self) -> pathlib.Path | None:
+        """Resuelve SKYRIM_PATH desde entorno validado."""
+        return self.validate_env_path(os.environ.get("SKYRIM_PATH", ""), "SKYRIM_PATH")
+
+    def get_mo2_path(self) -> pathlib.Path | None:
+        """Resuelve MO2_PATH desde entorno validado."""
+        return self.validate_env_path(os.environ.get("MO2_PATH", ""), "MO2_PATH")
+
+    def get_dyndolod_exe(self) -> pathlib.Path | None:
+        """Resuelve DYNDLOD_EXE desde entorno validado."""
+        return self.validate_env_path(os.environ.get("DYNDLOD_EXE", ""), "DYNDLOD_EXE")
+
+    def get_texgen_exe(self) -> pathlib.Path | None:
+        """Resuelve TEXGEN_EXE desde entorno validado."""
+        return self.validate_env_path(os.environ.get("TEXGEN_EXE", ""), "TEXGEN_EXE")
+
+    def get_synthesis_exe(self) -> pathlib.Path | None:
+        """Resuelve SYNTHESIS_EXE desde entorno validado."""
+        return self.validate_env_path(os.environ.get("SYNTHESIS_EXE", ""), "SYNTHESIS_EXE")
+
+    def get_xedit_path(self) -> pathlib.Path | None:
+        """Resuelve XEDIT_PATH desde entorno validado."""
+        return self.validate_env_path(os.environ.get("XEDIT_PATH", ""), "XEDIT_PATH")
+
+    def get_wrye_bash_path(self) -> pathlib.Path | None:
+        """Resuelve WRYE_BASH_PATH desde entorno validado."""
+        return self.validate_env_path(os.environ.get("WRYE_BASH_PATH", ""), "WRYE_BASH_PATH")

@@ -74,15 +74,14 @@ def mock_journal() -> AsyncMock:
     return journal
 
 
-def _resolve_env_path(path: str, name: str) -> pathlib.Path | None:
-    """Test double for :meth:`PathResolutionService.validate_env_path`."""
-    return pathlib.Path(path) if path else None
-
-
 @pytest.fixture
 def mock_path_resolver() -> MagicMock:
     resolver = MagicMock()
-    resolver.validate_env_path = MagicMock(side_effect=_resolve_env_path)
+    resolver.get_skyrim_path = MagicMock(return_value=None)
+    resolver.get_mo2_path = MagicMock(return_value=None)
+    resolver.get_mo2_mods_path = MagicMock(return_value=None)
+    resolver.get_dyndolod_exe = MagicMock(return_value=None)
+    resolver.get_texgen_exe = MagicMock(return_value=None)
     return resolver
 
 

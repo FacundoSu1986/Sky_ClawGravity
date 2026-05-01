@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-import os
 import pathlib
 import time
 from typing import Any
@@ -99,17 +98,11 @@ class DynDOLODPipelineService:
         if self._runner is not None:
             return self._runner
 
-        game_path_str = os.environ.get("SKYRIM_PATH", "")
-        mo2_path_str = os.environ.get("MO2_PATH", "")
-        mo2_mods_path_str = os.environ.get("MO2_MODS_PATH", "")
-        dyndolod_exe_str = os.environ.get("DYNDLOD_EXE", "")
-        texgen_exe_str = os.environ.get("TEXGEN_EXE", "")
-
-        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
-        mo2_path = self._path_resolver.validate_env_path(mo2_path_str, "MO2_PATH")
-        mo2_mods_path = self._path_resolver.validate_env_path(mo2_mods_path_str, "MO2_MODS_PATH")
-        dyndolod_exe = self._path_resolver.validate_env_path(dyndolod_exe_str, "DYNDLOD_EXE")
-        texgen_exe = self._path_resolver.validate_env_path(texgen_exe_str, "TEXGEN_EXE") if texgen_exe_str else None
+        game_path = self._path_resolver.get_skyrim_path()
+        mo2_path = self._path_resolver.get_mo2_path()
+        mo2_mods_path = self._path_resolver.get_mo2_mods_path()
+        dyndolod_exe = self._path_resolver.get_dyndolod_exe()
+        texgen_exe = self._path_resolver.get_texgen_exe()
 
         if not game_path or not mo2_path or not mo2_mods_path or not dyndolod_exe:
             raise DynDOLODExecutionError(

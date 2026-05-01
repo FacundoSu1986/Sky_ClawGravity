@@ -86,15 +86,9 @@ def mock_path_resolver(tmp_path: pathlib.Path) -> MagicMock:
     synthesis_exe = tmp_path / "Synthesis.exe"
     synthesis_exe.touch()
 
-    def fake_validate(path_str: str, var_name: str) -> pathlib.Path | None:
-        mapping = {
-            "SKYRIM_PATH": game_path,
-            "MO2_PATH": mo2_path,
-            "SYNTHESIS_EXE": synthesis_exe,
-        }
-        return mapping.get(var_name)
-
-    resolver.validate_env_path = MagicMock(side_effect=fake_validate)
+    resolver.get_skyrim_path = MagicMock(return_value=game_path)
+    resolver.get_mo2_path = MagicMock(return_value=mo2_path)
+    resolver.get_synthesis_exe = MagicMock(return_value=synthesis_exe)
     return resolver
 
 
@@ -332,10 +326,11 @@ async def test_runner_init_failure(
     mock_journal: AsyncMock,
 ) -> None:
     """Invalid env paths return error dict without lock or journal."""
-    mock_path_resolver.validate_env_path = MagicMock(return_value=None)
+    mock_path_resolver.get_skyrim_path = MagicMock(return_value=None)
+    mock_path_resolver.get_mo2_path = MagicMock(return_value=None)
+    mock_path_resolver.get_synthesis_exe = MagicMock(return_value=None)
 
-    with patch.dict("os.environ", {"SKYRIM_PATH": "", "MO2_PATH": "", "SYNTHESIS_EXE": ""}):
-        out = await synthesis_service.execute_pipeline(patcher_ids=["patcher_a"])
+    out = await synthesis_service.execute_pipeline(patcher_ids=["patcher_a"])
 
     assert out["success"] is False
     assert "Cannot initialize" in out["stderr"]

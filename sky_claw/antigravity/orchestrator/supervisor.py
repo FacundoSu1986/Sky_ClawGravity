@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import pathlib
 from typing import Any
 
@@ -291,13 +290,9 @@ class SupervisorAgent:
         if self._wrye_bash_runner is not None:
             return self._wrye_bash_runner
 
-        game_path_str = os.environ.get("SKYRIM_PATH", "")
-        mo2_path_str = os.environ.get("MO2_PATH", "")
-        wrye_bash_path_str = os.environ.get("WRYE_BASH_PATH", "")
-
-        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
-        mo2_path = self._path_resolver.validate_env_path(mo2_path_str, "MO2_PATH")
-        wrye_bash_path = self._path_resolver.validate_env_path(wrye_bash_path_str, "WRYE_BASH_PATH")
+        game_path = self._path_resolver.get_skyrim_path()
+        mo2_path = self._path_resolver.get_mo2_path()
+        wrye_bash_path = self._path_resolver.get_wrye_bash_path()
 
         if not game_path or not mo2_path or not wrye_bash_path:
             raise WryeBashExecutionError(

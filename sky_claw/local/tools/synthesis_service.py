@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import os
 import pathlib
 import time
 from typing import TYPE_CHECKING, Any
@@ -111,13 +110,9 @@ class SynthesisPipelineService:
         if self._synthesis_runner is not None:
             return self._synthesis_runner
 
-        game_path_str = os.environ.get("SKYRIM_PATH", "")
-        mo2_path_str = os.environ.get("MO2_PATH", "")
-        synthesis_exe_str = os.environ.get("SYNTHESIS_EXE", "")
-
-        game_path = self._path_resolver.validate_env_path(game_path_str, "SKYRIM_PATH")
-        mo2_path = self._path_resolver.validate_env_path(mo2_path_str, "MO2_PATH")
-        synthesis_exe = self._path_resolver.validate_env_path(synthesis_exe_str, "SYNTHESIS_EXE")
+        game_path = self._path_resolver.get_skyrim_path()
+        mo2_path = self._path_resolver.get_mo2_path()
+        synthesis_exe = self._path_resolver.get_synthesis_exe()
 
         if not game_path or not mo2_path or not synthesis_exe:
             raise SynthesisExecutionError(

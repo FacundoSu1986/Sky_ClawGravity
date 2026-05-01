@@ -83,14 +83,8 @@ def mock_path_resolver(tmp_path: pathlib.Path) -> MagicMock:
     game_path = tmp_path / "Skyrim"
     game_path.mkdir()
 
-    def fake_validate(path_str: str, var_name: str) -> pathlib.Path | None:
-        mapping = {
-            "XEDIT_PATH": xedit_exe,
-            "SKYRIM_PATH": game_path,
-        }
-        return mapping.get(var_name)
-
-    resolver.validate_env_path = MagicMock(side_effect=fake_validate)
+    resolver.get_xedit_path = MagicMock(return_value=xedit_exe)
+    resolver.get_skyrim_path = MagicMock(return_value=game_path)
     return resolver
 
 
@@ -193,7 +187,8 @@ async def test_execute_patch_returns_error_when_xedit_path_missing(
 ) -> None:
     """Si XEDIT_PATH no está configurado, retorna error dict sin crash ni journal TX."""
     resolver = MagicMock()
-    resolver.validate_env_path = MagicMock(return_value=None)
+    resolver.get_xedit_path = MagicMock(return_value=None)
+    resolver.get_skyrim_path = MagicMock(return_value=None)
 
     service = XEditPipelineService(
         lock_manager=lock_manager,
