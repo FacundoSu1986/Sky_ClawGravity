@@ -308,7 +308,7 @@ class ToolStateMachine:
         to_remove = [
             tid
             for tid, task in self._tasks.items()
-            if task.state in ("COMPLETED", "FAILED") and (now - task.updated_at) > max_age_seconds
+            if task.state in ("COMPLETED", "FAILED") and (now - task.updated_at) >= max_age_seconds
         ]
         for tid in to_remove:
             del self._tasks[tid]
