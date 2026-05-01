@@ -176,7 +176,7 @@ class TestLOOTRunner:
             patch("sky_claw.local.loot.cli.asyncio.wait_for", side_effect=asyncio.TimeoutError),
             patch("sky_claw.local.loot.cli.translate_path_if_wsl", return_value=str(config.game_path)),
             patch("sky_claw.local.loot.cli.subprocess.run", mock_taskkill),
-            patch.dict(os.environ, {"WSL_DISTRO_NAME": "Ubuntu"}),
+            patch("sky_claw.local.loot.cli.pathlib.Path.exists", return_value=True),
             pytest.raises(LOOTTimeoutError, match="timed out"),
         ):
             await runner.sort()

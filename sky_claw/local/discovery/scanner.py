@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import pathlib
 import shutil
 
@@ -350,9 +349,12 @@ class EnvironmentScanner:
                 return p
 
         # AppData
-        local_appdata = os.environ.get("LOCALAPPDATA")
-        if local_appdata:
-            mo_dir = pathlib.Path(local_appdata) / "ModOrganizer"
+        try:
+            local_appdata = pathlib.Path.home() / "AppData" / "Local"
+        except RuntimeError:
+            local_appdata = None
+        if local_appdata is not None:
+            mo_dir = local_appdata / "ModOrganizer"
             if mo_dir.is_dir():
                 for child in mo_dir.iterdir():
                     if child.is_dir() and (child / "ModOrganizer.exe").exists():

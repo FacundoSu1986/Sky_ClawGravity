@@ -26,11 +26,11 @@ import pytest
 from sky_claw.antigravity.core.event_bus import CoreEventBus, Event
 from sky_claw.antigravity.db.locks import DistributedLockManager
 from sky_claw.antigravity.security.path_validator import PathValidator
+from sky_claw.local.tools import vramr_service as vramr_mod
 from sky_claw.local.tools.vramr_service import (
     VRAMrExecutionError,
     VRAMrPipelineService,
 )
-from sky_claw.local.tools import vramr_service as vramr_mod
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

@@ -584,8 +584,8 @@ class TestArgparse:
     def test_operator_chat_id_defaults_to_none(self) -> None:
         from sky_claw.__main__ import _parse_args
 
-        with patch("sky_claw.__main__.Config") as MockConfig:
-            MockConfig.return_value.telegram_chat_id = ""
+        with patch("sky_claw.__main__.Config") as mock_config:
+            mock_config.return_value.telegram_chat_id = ""
             args = _parse_args([])
         assert args.operator_chat_id is None
 

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -269,7 +268,8 @@ def _handle_daemon_message(data: dict[str, Any]) -> None:
         )
 
 
-DAEMON_WS_URL = os.environ.get("SKY_CLAW_DAEMON_WS_URL", "ws://localhost:8765/ws/ui")
+_DEFAULT_DAEMON_WS_URL = "ws://localhost:8765/ws/ui"
+DAEMON_WS_URL = _DEFAULT_DAEMON_WS_URL
 
 agent_client: AgentCommunicationClient | None = None
 
@@ -419,7 +419,7 @@ if __name__ in {"__main__", "__mp_main__"}:
         ui.run(
             title="Sky-Claw — Mod Manager v2.1",
             port=8080,
-            host=os.environ.get("SKY_CLAW_BIND_HOST", "127.0.0.1"),
+            host="127.0.0.1",
             reload=True,
             show=True,
             dark=True,

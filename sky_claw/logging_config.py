@@ -1,3 +1,4 @@
+import getpass
 import logging
 import logging.handlers
 import os
@@ -14,7 +15,10 @@ correlation_id_var: ContextVar[str] = ContextVar("correlation_id", default="")
 
 # Get current configuration and user for redaction
 _GLOBAL_CFG = Config()
-_CURRENT_USER = os.environ.get("USERNAME", os.environ.get("USER", "User"))
+try:
+    _CURRENT_USER = getpass.getuser()
+except Exception:
+    _CURRENT_USER = "User"
 
 _REDACTION_PATTERNS = [
     re.compile(r"[0-9]{8,10}:[a-zA-Z0-9_\-]{35}"),  # Telegram bot token

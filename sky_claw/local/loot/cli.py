@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
+import pathlib
 import subprocess
 from asyncio.exceptions import TimeoutError as AsyncTimeoutError
 from dataclasses import dataclass
@@ -128,7 +128,7 @@ class LOOTRunner:
                 proc.kill()
 
             # Golden Master: WSL2/Windows native process annihilator (non-blocking).
-            if "WSL_DISTRO_NAME" in os.environ:
+            if pathlib.Path("/mnt/c").exists():
                 await asyncio.to_thread(
                     subprocess.run,
                     ["taskkill.exe", "/F", "/IM", "loot.exe", "/T"],

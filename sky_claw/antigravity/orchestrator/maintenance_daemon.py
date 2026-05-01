@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,15 +24,17 @@ logger = logging.getLogger("SkyClaw.MaintenanceDaemon")
 DEFAULT_CHECKPOINT_INTERVAL_SECONDS = 300  # 5 minutes
 
 
+# Default maximum backup size (1 GB).
+# Historically read from ROLLBACK_MAX_SIZE env var; now a constant per Zero-Trust.
+DEFAULT_ROLLBACK_MAX_SIZE_MB: int = 1024
+
+
 def get_max_backup_size_mb() -> int:
-    """Obtiene el tamaño máximo de backups desde variable de entorno o default.
+    """Return the maximum backup size in megabytes.
 
     Compartida entre MaintenanceDaemon (pruning) y SupervisorAgent (init de rollback).
     """
-    try:
-        return int(os.environ.get("ROLLBACK_MAX_SIZE", "1024"))  # Default 1GB
-    except ValueError:
-        return 1024
+    return DEFAULT_ROLLBACK_MAX_SIZE_MB
 
 
 class MaintenanceDaemon:

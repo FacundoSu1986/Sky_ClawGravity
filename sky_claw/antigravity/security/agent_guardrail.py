@@ -20,7 +20,7 @@ Design invariants (Titan v7.0):
 
 Usage::
 
-    from sky_claw.security import AgentGuardrail, AgentGuardrailConfig, secure_llm_call
+    from sky_claw.antigravity.security import AgentGuardrail, AgentGuardrailConfig, secure_llm_call
 
     guardrail = AgentGuardrail()                         # default: all checks on
     response  = await secure_llm_call(provider, msgs, guardrail)
