@@ -235,16 +235,18 @@ class SupervisorAgent:
         y el contrato Pydantic que espera :meth:`InterfaceAgent.request_hitl`.
 
         Args:
-            hitl_request: Dict con ``action_type`` y ``reason`` inyectados
-                por los callbacks del grafo (``_on_dispatching``, etc.).
+            hitl_request: Dict con ``action_type``, ``reason`` y metadatos
+                opcionales como ``context_data`` inyectados por los callbacks
+                del grafo (``_on_dispatching``, etc.).
 
         Returns:
             Instancia validada de :class:`HitlApprovalRequest`.
         """
-        return HitlApprovalRequest(
-            action_type=hitl_request.get("action_type", "circuit_breaker_halt"),
-            reason=hitl_request.get("reason", ""),
-        )
+        payload = dict(hitl_request)
+        payload.setdefault("action_type", "circuit_breaker_halt")
+        payload.setdefault("reason", "")
+        payload.setdefault("context_data", {})
+        return HitlApprovalRequest.model_validate(payload)
 
     # FASE 1.5: Método para ejecutar rollback
     async def execute_rollback(self, agent_id: str) -> dict[str, Any]:

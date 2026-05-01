@@ -383,3 +383,25 @@ def test_create_hitl_request_empty_reason(supervisor):
     assert isinstance(result, HitlApprovalRequest)
     assert result.action_type == "download_external"
     assert result.reason == ""
+
+
+def test_create_hitl_request_preserves_context_data(supervisor):
+    """context_data from the graph callback is forwarded to HitlApprovalRequest."""
+    hitl_dict = {
+        "action_type": "circuit_breaker_halt",
+        "reason": "guardrail tripped",
+        "context_data": {"loop_count": 3, "tool_name": "patch_plugin"},
+    }
+    result = supervisor._create_hitl_request(hitl_dict)
+
+    assert isinstance(result, HitlApprovalRequest)
+    assert result.context_data == {"loop_count": 3, "tool_name": "patch_plugin"}
+
+
+def test_create_hitl_request_defaults_context_data(supervisor):
+    """When context_data is missing, defaults to empty dict."""
+    hitl_dict = {"action_type": "circuit_breaker_halt", "reason": "test"}
+    result = supervisor._create_hitl_request(hitl_dict)
+
+    assert isinstance(result, HitlApprovalRequest)
+    assert result.context_data == {}
