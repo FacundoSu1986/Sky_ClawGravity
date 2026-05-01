@@ -35,6 +35,7 @@ from sky_claw.local.tools.wrye_bash_runner import (
 )
 from sky_claw.local.tools.xedit_service import XEditPipelineService
 from sky_claw.local.xedit.conflict_analyzer import ConflictAnalyzer
+from sky_claw.antigravity.core.models import HitlApprovalRequest
 
 logger = logging.getLogger(__name__)
 security_logger = logging.getLogger(f"{__name__}.security")
@@ -226,6 +227,24 @@ class SupervisorAgent:
         legacy preservado verbatim: ``{"status": "error", "reason": "ToolNotFound"}``.
         """
         return await self._tool_dispatcher.dispatch(tool_name, payload_dict)
+
+    def _create_hitl_request(self, hitl_request: dict[str, Any]) -> HitlApprovalRequest:
+        """Convierte un dict de HITL del grafo de estados a un HitlApprovalRequest.
+
+        Bridge entre el ``StateGraphState.hitl_request`` (dict plano del grafo)
+        y el contrato Pydantic que espera :meth:`InterfaceAgent.request_hitl`.
+
+        Args:
+            hitl_request: Dict con ``action_type`` y ``reason`` inyectados
+                por los callbacks del grafo (``_on_dispatching``, etc.).
+
+        Returns:
+            Instancia validada de :class:`HitlApprovalRequest`.
+        """
+        return HitlApprovalRequest(
+            action_type=hitl_request.get("action_type", "circuit_breaker_halt"),
+            reason=hitl_request.get("reason", ""),
+        )
 
     # FASE 1.5: Método para ejecutar rollback
     async def execute_rollback(self, agent_id: str) -> dict[str, Any]:
