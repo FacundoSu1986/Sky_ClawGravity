@@ -49,12 +49,12 @@ local_logs/
 
 # Node.js
 node_modules/
-gateway/node_modules/
+sky_claw/antigravity/comms/telegram_gateway_node/node_modules/
 package-lock.json
-gateway/package-lock.json
+sky_claw/antigravity/comms/telegram_gateway_node/package-lock.json
 
 # Gateway secrets (nunca commitear)
-gateway/.env
+sky_claw/antigravity/comms/telegram_gateway_node/.env
 *.token
 .env
 .skyclaw_backups/
