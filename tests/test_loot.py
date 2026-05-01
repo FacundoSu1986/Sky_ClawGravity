@@ -78,10 +78,7 @@ class TestLOOTOutputParser:
 
     def test_parse_ansi_escapes(self) -> None:
         """Golden Master: ANSI escape sequences are stripped before parsing."""
-        stdout = (
-            "\x1b[32m  1. Skyrim.esm\x1b[0m\n"
-            "\x1b[33m  2. Requiem.esp\x1b[0m\n"
-        )
+        stdout = "\x1b[32m  1. Skyrim.esm\x1b[0m\n\x1b[33m  2. Requiem.esp\x1b[0m\n"
         result = LOOTOutputParser.parse(stdout=stdout, stderr="", return_code=0)
         assert result.sorted_plugins == ["Skyrim.esm", "Requiem.esp"]
         assert result.success is True

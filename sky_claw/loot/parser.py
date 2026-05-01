@@ -28,11 +28,7 @@ class LOOTResult:
     @property
     def success(self) -> bool:
         """Golden Master: strict success requires code 0, no errors, AND plugins."""
-        return (
-            self.return_code == 0
-            and not self.errors
-            and len(self.sorted_plugins) > 0
-        )
+        return self.return_code == 0 and not self.errors and len(self.sorted_plugins) > 0
 
 
 # Golden Master: Module-level compiled regexes.

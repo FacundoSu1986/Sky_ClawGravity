@@ -58,7 +58,7 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     "AWAITING_APPROVAL": {"RUNNING", "FAILED"},
     "RUNNING": {"COMPLETED", "FAILED"},
     "COMPLETED": set(),  # terminal
-    "FAILED": set(),      # terminal
+    "FAILED": set(),  # terminal
 }
 
 # ---------------------------------------------------------------------------
@@ -131,8 +131,7 @@ class IdempotencyGuard:
         if key in self._active:
             existing = self._active[key]
             logger.warning(
-                "IdempotencyGuard: rejected duplicate execution "
-                "(key=%s..., existing_task=%s, new_task=%s)",
+                "IdempotencyGuard: rejected duplicate execution (key=%s..., existing_task=%s, new_task=%s)",
                 key[:12],
                 existing,
                 task_id,
@@ -198,10 +197,7 @@ class ToolStateMachine:
         """
         _valid_initial_states = {"PENDING", "AWAITING_APPROVAL"}
         if initial_state not in _valid_initial_states:
-            raise InvalidTransitionError(
-                f"Invalid initial state: {initial_state}. "
-                f"Allowed: {_valid_initial_states}"
-            )
+            raise InvalidTransitionError(f"Invalid initial state: {initial_state}. Allowed: {_valid_initial_states}")
 
         self._task_counter += 1
         task_id = f"task_{self._task_counter}"
@@ -249,8 +245,7 @@ class ToolStateMachine:
         allowed = _VALID_TRANSITIONS.get(current.state, set())
         if new_state not in allowed:
             raise InvalidTransitionError(
-                f"Invalid transition: {current.state} → {new_state} "
-                f"(task={task_id}, tool={current.tool_name})"
+                f"Invalid transition: {current.state} → {new_state} (task={task_id}, tool={current.tool_name})"
             )
 
         # Release idempotency lock on terminal states
@@ -290,10 +285,7 @@ class ToolStateMachine:
     @property
     def active_task_count(self) -> int:
         """Number of non-terminal tasks."""
-        return sum(
-            1 for t in self._tasks.values()
-            if t.state not in ("COMPLETED", "FAILED")
-        )
+        return sum(1 for t in self._tasks.values() if t.state not in ("COMPLETED", "FAILED"))
 
     def acquire_idempotency(self, task_id: str) -> bool:
         """Acquire the idempotency lock for a task.
@@ -316,8 +308,7 @@ class ToolStateMachine:
         to_remove = [
             tid
             for tid, task in self._tasks.items()
-            if task.state in ("COMPLETED", "FAILED")
-            and (now - task.updated_at) > max_age_seconds
+            if task.state in ("COMPLETED", "FAILED") and (now - task.updated_at) > max_age_seconds
         ]
         for tid in to_remove:
             del self._tasks[tid]
