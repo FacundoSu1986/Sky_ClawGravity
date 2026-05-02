@@ -15,9 +15,15 @@ logger = logging.getLogger(__name__)
 
 
 async def _run_telegram(ctx: AppContext, host: str, port: int) -> None:
-    if not (ctx.router and ctx.session and ctx.network.gateway):
-        logger.error("TELEGRAM_BOT_TOKEN or network/router initialization failed.")
-        sys.exit(1)
+    missing_components = []
+    if ctx.router is None:
+        missing_components.append("router")
+    if ctx.session is None:
+        missing_components.append("session")
+    if ctx.network.gateway is None:
+        missing_components.append("network.gateway")
+    if missing_components:
+        raise RuntimeError("Missing required Telegram runtime components: " + ", ".join(missing_components))
     if ctx.sender is None:
         logger.error("TELEGRAM_BOT_TOKEN required.")
         sys.exit(1)
