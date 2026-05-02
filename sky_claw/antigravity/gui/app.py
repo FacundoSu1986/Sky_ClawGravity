@@ -525,18 +525,10 @@ class DashboardGUI:
                 self._build_header()
 
                 with ui.column().classes("p-6 gap-6 flex-1"):
-                    # Row 1: Line chart + Server status
-                    with ui.row().classes("w-full gap-6"):
-                        self._build_line_chart_widget()
-                        self._build_server_status_widget()
-
                     # Row 2: Stats cards (PROCESADOR + CARGA TAREAS)
                     with ui.row().classes("w-full gap-6"):
                         self._build_stat_summary("PROCESADOR", "116", _ICON_ANVIL)
                         self._build_stat_summary("CARGA TAREAS", "3,130 ops/s", _ICON_CART)
-
-                    # Row 3: Bar chart with metrics
-                    self._build_bar_chart_widget()
 
                     # ── Row 3.5: HERRAMIENTAS — Semantic Actions (v4.0) ──
                     self._build_tools_section()
@@ -677,79 +669,6 @@ class DashboardGUI:
                 ):
                     ui.label("SC")
 
-    # ── Line Chart Widget ─────────────────────────────────────────────
-    def _build_line_chart_widget(self) -> None:
-        with ui.element("div").classes("sky-widget-panel flex-1"):
-            with ui.element("div").classes("sky-widget-header"):
-                ui.label("RENDIMIENTO").classes("sky-widget-title")
-                ui.button("Real time").classes("px-2 py-1 rounded text-xs").props("ripple flat no-caps").style(
-                    "color: var(--sky-text-muted); border: 1px solid var(--sky-surface-border);"
-                )
-
-            with ui.element("div").classes("p-4").style("height:200px; position:relative;"):
-                # Simulated line chart via SVG
-                ui.html("""
-                    <svg width="100%" height="100%" viewBox="0 0 400 160" preserveAspectRatio="none"
-                         style="overflow:visible;">
-                        <!-- Grid lines -->
-                        <line x1="0" y1="0" x2="400" y2="0" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-                        <line x1="0" y1="40" x2="400" y2="40" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-                        <line x1="0" y1="80" x2="400" y2="80" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-                        <line x1="0" y1="120" x2="400" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-                        <line x1="0" y1="160" x2="400" y2="160" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-
-                        <!-- Data line -->
-                        <polyline fill="none" stroke="#C8A84E" stroke-width="2.5"
-                                  points="0,120 30,100 60,80 90,60 120,90 150,50 180,70 210,40 240,60 270,30 300,50 330,45 360,35 400,25"
-                                  stroke-linejoin="round" stroke-linecap="round"/>
-
-                        <!-- Glow under line -->
-                        <defs>
-                            <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stop-color="#C8A84E" stop-opacity="0.3"/>
-                                <stop offset="100%" stop-color="#C8A84E" stop-opacity="0"/>
-                            </linearGradient>
-                        </defs>
-                        <polygon fill="url(#lineGrad)"
-                                 points="0,120 30,100 60,80 90,60 120,90 150,50 180,70 210,40 240,60 270,30 300,50 330,45 360,35 400,25 400,160 0,160"/>
-
-                        <!-- Y-axis labels -->
-                        <text x="-5" y="8" fill="#94A3B8" font-size="10" text-anchor="end">100</text>
-                        <text x="-5" y="48" fill="#94A3B8" font-size="10" text-anchor="end">75</text>
-                        <text x="-5" y="88" fill="#94A3B8" font-size="10" text-anchor="end">50</text>
-                        <text x="-5" y="128" fill="#94A3B8" font-size="10" text-anchor="end">25</text>
-                        <text x="-5" y="165" fill="#94A3B8" font-size="10" text-anchor="end">0</text>
-                    </svg>
-                """)
-
-    # ── Server Status Widget ──────────────────────────────────────────
-    def _build_server_status_widget(self) -> None:
-        with ui.element("div").classes("sky-widget-panel").style("width: 280px; flex-shrink:0;"):
-            with ui.element("div").classes("sky-widget-header"):
-                ui.label("ESTADO SERVIDORES").classes("sky-widget-title")
-
-            with ui.column().classes("p-3 gap-2"):
-                servers = [
-                    ("SERVER 1", "Online", "#22c55e"),
-                    ("SERVER 2", "Alerta", "#eab308"),
-                    ("SERVER 3", "Alerta", "#ef4444"),
-                    ("SERVER 4", "Online", "#22c55e"),
-                ]
-                for name, status, color in servers:
-                    with (
-                        ui.row()
-                        .classes("items-center justify-between w-full px-3 py-2 rounded-lg")
-                        .style("background: var(--sky-bg-elevated);")
-                    ):
-                        with ui.row().classes("items-center gap-2"):
-                            ui.html(f"""
-                                <div style="width:10px;height:10px;border-radius:50%;
-                                            background:{color};
-                                            box-shadow: 0 0 6px {color};"></div>
-                            """)
-                            ui.label(name).style("color: var(--sky-text-primary); font-size:0.8rem; font-weight:600;")
-                        ui.label(status).style(f"color:{color}; font-size:0.7rem; font-weight:500;")
-
     # ── Stat Summary Cards ────────────────────────────────────────────
     def _build_stat_summary(self, title: str, value: str, icon_svg: str) -> None:
         with (
@@ -770,41 +689,6 @@ class DashboardGUI:
                         {icon_svg}
                     </div>
                 """)
-
-    # ── Bar Chart Widget ──────────────────────────────────────────────
-    def _build_bar_chart_widget(self) -> None:
-        with ui.element("div").classes("sky-widget-panel w-full"):
-            with ui.element("div").classes("p-4"):
-                # Bar chart
-                bar_data = [72, 45, 88, 55, 92, 38, 78, 60, 85, 50, 95, 42]
-                with ui.row().classes("items-end justify-center gap-3").style("height:180px;"):
-                    for height_pct in bar_data:
-                        h = int(height_pct * 1.6)
-                        ui.element("div").classes("sky-bar").style(f"height:{h}px; width:24px;")
-
-            # Metrics footer
-            with (
-                ui.row().classes("w-full justify-around p-4").style("border-top: 1px solid var(--sky-surface-border);")
-            ):
-                metrics = [
-                    ("MEDIA", "64.2%"),
-                    ("PICO MÁX", "98.1%"),
-                    ("PICO MÍN", "12.4%"),
-                    ("ANOMALÍAS", "0"),
-                ]
-                for label_text, val in metrics:
-                    with ui.column().classes("items-center gap-1"):
-                        ui.label(val).style("color: var(--sky-text-primary); font-size:1.1rem; font-weight:700;")
-                        ui.label(label_text).classes("sky-metric-label")
-
-            # Bottom buttons
-            with ui.row().classes("w-full justify-end gap-2 px-4 pb-3"):
-                ui.button("Menú").classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
-                    "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
-                )
-                ui.button("Salir").classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
-                    "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
-                )
 
     # ── Tools Section — Semantic Actions v4.0 ─────────────────────────
     def _build_tools_section(self) -> None:
@@ -879,7 +763,10 @@ class DashboardGUI:
             "dyndolod": "Optimizar gráficos",
         }
         name = names.get(tool_key, tool_key)
-        ui.notify(f"▶ Ejecutando: {name}...", type="info", position="top")
+        try:
+            ui.notify(f"▶ Ejecutando: {name}...", type="info", position="top")
+        except RuntimeError:
+            pass
         if hasattr(self, "ctx") and hasattr(self.ctx, "logic_queue"):
             self.ctx.logic_queue.put_nowait(
                 {
@@ -892,7 +779,10 @@ class DashboardGUI:
 
     async def _on_prepare_game(self) -> None:
         """Handle the master 'Preparar Juego' button."""
-        ui.notify("🚀 Preparando juego...", type="positive", position="top")
+        try:
+            ui.notify("🚀 Preparando juego...", type="positive", position="top")
+        except RuntimeError:
+            pass
         self.append_chat_message(
             "🚀 **Preparar Juego** — Secuencia completa:\n"
             "1. Backup automático\n2. Ordenar mods (LOOT)\n"
@@ -907,10 +797,16 @@ class DashboardGUI:
         if self._env_snapshot:
             for m in self._env_snapshot.missing:
                 if m.name.lower().replace(" ", "_") == tool_key:
-                    ui.notify(f"Abriendo descarga de {m.name}...", type="info")
+                    try:
+                        ui.notify(f"Abriendo descarga de {m.name}...", type="info")
+                    except RuntimeError:
+                        pass
                     ui.navigate.to(m.download_url, new_tab=True)
                     return
-        ui.notify(f"Instalación de {tool_key} pendiente", type="warning")
+        try:
+            ui.notify(f"Instalación de {tool_key} pendiente", type="warning")
+        except RuntimeError:
+            pass
 
     # ── Mod Panel ─────────────────────────────────────────────────────
     def _build_mod_panel(self) -> None:
@@ -1164,8 +1060,9 @@ class DashboardGUI:
         with (
             ui.dialog() as dialog,
             ui.card().style(
-                "background: var(--sky-bg-card); border: 1px solid var(--sky-border); "
-                "border-radius: 1rem; padding: 1.5rem; width: 480px;"
+                "background: #0f172a !important; z-index: 9999; "
+                "border: 1px solid var(--sky-border); border-radius: 1rem; "
+                "padding: 1.5rem; width: 480px;"
             ),
         ):
             ui.add_head_html("""
@@ -1348,7 +1245,7 @@ body {
             from sky_claw.antigravity.comms.telegram_polling import TelegramPolling
             from sky_claw.antigravity.comms.telegram_sender import TelegramSender
 
-            self.ctx.sender = TelegramSender(bot_token=token, gateway=self.ctx.gateway, session=self.ctx.session)
+            self.ctx.sender = TelegramSender(bot_token=token, gateway=self.ctx.network.gateway, session=self.ctx.session)
             cid = int(chat_id) if chat_id else None
             if cid:
                 from sky_claw.antigravity.comms.telegram import TelegramWebhook
@@ -1362,7 +1259,7 @@ body {
                 self.ctx.polling = TelegramPolling(
                     token=token,
                     webhook_handler=webhook_handler,
-                    gateway=self.ctx.gateway,
+                    gateway=self.ctx.network.gateway,
                     session=self.ctx.session,
                     authorized_chat_id=cid,
                 )

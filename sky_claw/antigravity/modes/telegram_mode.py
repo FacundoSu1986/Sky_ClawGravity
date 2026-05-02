@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _run_telegram(ctx: AppContext, host: str, port: int) -> None:
-    assert ctx.router and ctx.session and ctx.gateway
+    assert ctx.router and ctx.session and ctx.network.gateway
     if ctx.sender is None:
         logger.error("TELEGRAM_BOT_TOKEN required.")
         sys.exit(1)
@@ -23,7 +23,7 @@ async def _run_telegram(ctx: AppContext, host: str, port: int) -> None:
     polling = TelegramPolling(
         token=ctx.sender._token,
         webhook_handler=webhook_handler,
-        gateway=ctx.gateway,
+        gateway=ctx.network.gateway,
         session=ctx.session,
         authorized_chat_id=ctx._args.operator_chat_id,
     )

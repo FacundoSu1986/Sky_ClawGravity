@@ -728,7 +728,7 @@ class FrontendBridge:
 
             self.ctx.sender = TelegramSender(
                 bot_token=token,
-                gateway=self.ctx.gateway,
+                gateway=self.ctx.network.gateway,
                 session=self.ctx.session,
             )
 
@@ -745,7 +745,7 @@ class FrontendBridge:
             self.ctx.polling = TelegramPolling(
                 token=token,
                 webhook_handler=webhook_handler,
-                gateway=self.ctx.gateway,
+                gateway=self.ctx.network.gateway,
                 session=self.ctx.session,
                 authorized_chat_id=chat_id or None,
             )
