@@ -7,7 +7,6 @@ import pathlib
 import queue
 import tempfile
 from contextlib import AsyncExitStack
-from typing import Any
 
 import aiohttp
 import keyring
