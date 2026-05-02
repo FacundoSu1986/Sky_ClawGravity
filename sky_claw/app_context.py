@@ -7,7 +7,6 @@ import pathlib
 import queue
 import tempfile
 from contextlib import AsyncExitStack
-from typing import Any
 
 import aiohttp
 import keyring
@@ -114,7 +113,6 @@ class AppContext:
         self.sender: TelegramSender | None = None
         self.polling: TelegramPolling | None = None
         self.tools_installer: ToolsInstaller | None = None
-        self.frontend_bridge: Any | None = None  # From sky_claw.antigravity.comms.frontend_bridge
 
         # ARC-02: AsyncExitStack para compensación atómica ante fallos
         self._exit_stack = AsyncExitStack()
@@ -170,7 +168,7 @@ class AppContext:
         order, preventing zombie processes and leaked resources (ARC-02).
 
         R-06: Protected by asyncio.Lock to prevent re-entrant calls
-        (e.g. concurrent hot-reload from FrontendBridge).
+        (e.g. concurrent hot-reload from external triggers).
         """
         async with self._start_full_lock:
             await self._start_full_inner()
@@ -430,19 +428,6 @@ class AppContext:
             await self.router.open()
             self._exit_stack.push_async_callback(self._close_router)
 
-            # Initialize Frontend Bridge (Gateway port 18789 ↔ Daemon)
-            from sky_claw.antigravity.comms.frontend_bridge import FrontendBridge
-
-            self.frontend_bridge = FrontendBridge(
-                router=self.router,
-                session=self.network.session,
-                config=local_cfg,
-                app_context=self,
-            )
-            self._track_task(self.frontend_bridge.start(), name="frontend-bridge")
-            self._exit_stack.push_async_callback(self._stop_frontend_bridge)
-            logger.info("Frontend Bridge iniciado en segundo plano.")
-
             if bot_token and getattr(self._args, "mode", "cli") != "telegram":
                 webhook_handler = TelegramWebhook(
                     router=self.router,
@@ -472,7 +457,6 @@ class AppContext:
             await self._exit_stack.aclose()
             # ARC-03: Sanitizar referencias para evitar zombie state tras rollback fallido
             self.router = self.polling = self.hitl = self.sender = None
-            self.frontend_bridge = None
             self.tools_installer = None
             raise
 
@@ -492,12 +476,6 @@ class AppContext:
         if self.router is not None:
             await self.router.close()
             self.router = None
-
-    async def _stop_frontend_bridge(self) -> None:
-        """Callback for AsyncExitStack: stop frontend bridge."""
-        if self.frontend_bridge is not None:
-            await self.frontend_bridge.stop()
-            self.frontend_bridge = None
 
     async def stop(self) -> None:
         """Gracefully shutdown all resources via AsyncExitStack (LIFO order)."""

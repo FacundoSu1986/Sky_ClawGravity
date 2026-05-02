@@ -128,7 +128,6 @@ class TestAppContextResilience:
         ctx.polling = MagicMock()
         ctx.hitl = MagicMock()
         ctx.sender = MagicMock()
-        ctx.frontend_bridge = MagicMock()
         ctx.tools_installer = MagicMock()
 
         # Force failure inside the try block by making database.initialize raise.
@@ -142,5 +141,4 @@ class TestAppContextResilience:
         assert ctx.polling is None
         assert ctx.hitl is None
         assert ctx.sender is None
-        assert ctx.frontend_bridge is None
         assert ctx.tools_installer is None
