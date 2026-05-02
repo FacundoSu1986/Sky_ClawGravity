@@ -1237,7 +1237,9 @@ body {
             from sky_claw.antigravity.comms.telegram_polling import TelegramPolling
             from sky_claw.antigravity.comms.telegram_sender import TelegramSender
 
-            self.ctx.sender = TelegramSender(bot_token=token, gateway=self.ctx.network.gateway, session=self.ctx.session)
+            self.ctx.sender = TelegramSender(
+                bot_token=token, gateway=self.ctx.network.gateway, session=self.ctx.session
+            )
             cid = int(chat_id) if chat_id else None
             if cid:
                 from sky_claw.antigravity.comms.telegram import TelegramWebhook
