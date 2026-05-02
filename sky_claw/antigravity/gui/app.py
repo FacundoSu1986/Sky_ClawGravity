@@ -763,10 +763,8 @@ class DashboardGUI:
             "dyndolod": "Optimizar gráficos",
         }
         name = names.get(tool_key, tool_key)
-        try:
+        with contextlib.suppress(RuntimeError):
             ui.notify(f"▶ Ejecutando: {name}...", type="info", position="top")
-        except RuntimeError:
-            pass
         if hasattr(self, "ctx") and hasattr(self.ctx, "logic_queue"):
             self.ctx.logic_queue.put_nowait(
                 {
@@ -779,10 +777,8 @@ class DashboardGUI:
 
     async def _on_prepare_game(self) -> None:
         """Handle the master 'Preparar Juego' button."""
-        try:
+        with contextlib.suppress(RuntimeError):
             ui.notify("🚀 Preparando juego...", type="positive", position="top")
-        except RuntimeError:
-            pass
         self.append_chat_message(
             "🚀 **Preparar Juego** — Secuencia completa:\n"
             "1. Backup automático\n2. Ordenar mods (LOOT)\n"
@@ -797,16 +793,12 @@ class DashboardGUI:
         if self._env_snapshot:
             for m in self._env_snapshot.missing:
                 if m.name.lower().replace(" ", "_") == tool_key:
-                    try:
+                    with contextlib.suppress(RuntimeError):
                         ui.notify(f"Abriendo descarga de {m.name}...", type="info")
-                    except RuntimeError:
-                        pass
                     ui.navigate.to(m.download_url, new_tab=True)
                     return
-        try:
+        with contextlib.suppress(RuntimeError):
             ui.notify(f"Instalación de {tool_key} pendiente", type="warning")
-        except RuntimeError:
-            pass
 
     # ── Mod Panel ─────────────────────────────────────────────────────
     def _build_mod_panel(self) -> None:

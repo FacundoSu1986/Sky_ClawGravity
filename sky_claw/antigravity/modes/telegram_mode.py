@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 async def _run_telegram(ctx: AppContext, host: str, port: int) -> None:
-    assert ctx.router and ctx.session and ctx.network.gateway
+    if not (ctx.router and ctx.session and ctx.network.gateway):
+        logger.error("TELEGRAM_BOT_TOKEN or network/router initialization failed.")
+        sys.exit(1)
     if ctx.sender is None:
         logger.error("TELEGRAM_BOT_TOKEN required.")
         sys.exit(1)
