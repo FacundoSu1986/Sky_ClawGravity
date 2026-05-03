@@ -1,0 +1,7 @@
+# Enforce Unix line endings for Python files across all platforms
+*.py text eol=lf
+
+# Mark .git internals as binary to prevent IDE/agent text indexing
+.git/** binary linguist-generated
+.git/objects/** binary linguist-generated
+.git/packed-refs binary linguist-generated

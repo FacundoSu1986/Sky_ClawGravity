@@ -1,0 +1,45 @@
+# Roo Code - File exclusion patterns
+# Prevents the Roo agent from scanning, indexing, or reading these paths
+# Syntax: One glob pattern per line (same as .gitignore)
+
+# === GIT INTERNALS (CRITICAL: Do not remove) ===
+# The .git directory contains 937+ binary objects that freeze the agent
+.git/
+.git/**
+.git/objects/
+.git/objects/**
+.git/refs/
+.git/refs/**
+.git/logs/
+.git/logs/**
+.git/hooks/
+.git/hooks/**
+.git/info/
+.git/modules/
+
+# === OTHER BINARY/HEAVY DIRECTORIES ===
+node_modules/
+.venv/
+venv/
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# === IDE METADATA ===
+.idea/
+.roo/
+.serena/
+
+# === LARGE GENERATED FILES ===
+*.db
+*.db-shm
+*.db-wal
+*.pyc
+*.pyo
+*.so
+*.egg
+*.spec

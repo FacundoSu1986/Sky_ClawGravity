@@ -1,0 +1,37 @@
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <moduleName>Simple Test Mod</moduleName>
+    <requiredInstallFiles>
+        <file source="core\main.esp" destination="main.esp" />
+    </requiredInstallFiles>
+    <installSteps>
+        <installStep name="Main Options">
+            <optionalFileGroups>
+                <group name="Textures" type="SelectExactlyOne">
+                    <plugins>
+                        <plugin name="1K Textures">
+                            <description>Low resolution textures</description>
+                            <files>
+                                <folder source="textures\1k" destination="textures" />
+                            </files>
+                            <typeDescriptor><type name="Optional"/></typeDescriptor>
+                        </plugin>
+                        <plugin name="2K Textures">
+                            <description>Medium resolution textures</description>
+                            <files>
+                                <folder source="textures\2k" destination="textures" />
+                            </files>
+                            <typeDescriptor><type name="Recommended"/></typeDescriptor>
+                        </plugin>
+                        <plugin name="4K Textures">
+                            <description>High resolution textures</description>
+                            <files>
+                                <folder source="textures\4k" destination="textures" />
+                            </files>
+                            <typeDescriptor><type name="Optional"/></typeDescriptor>
+                        </plugin>
+                    </plugins>
+                </group>
+            </optionalFileGroups>
+        </installStep>
+    </installSteps>
+</config>

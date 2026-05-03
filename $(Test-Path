@@ -1,0 +1,4 @@
+E:\SkyClaw claude2 = (Join-Path E:\SkyClaw claude2 '.git'))
+E:\skyclaw ollama = (Join-Path E:\skyclaw ollama '.git'))
+E:\Skyclaw1.4.26.16.32 = (Join-Path E:\Skyclaw1.4.26.16.32 '.git'))
+E:\skyclawantesdekilo = (Join-Path E:\skyclawantesdekilo '.git'))

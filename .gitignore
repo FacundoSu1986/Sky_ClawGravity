@@ -1,0 +1,181 @@
+# =============================================================================
+# Sky-Claw .gitignore — Post-Deadlock Hardened Shield (2026-05-03)
+# =============================================================================
+# Purpose: Exclude all file-watcher deadlock vectors identified in forensic
+# analysis. Each section is annotated with the reason for exclusion.
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 1: DEADLOCK VECTORS (identified in forensic analysis)
+# These directories directly caused the File Watcher OOM/deadlock.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# .mypy_cache — 35.7 MB, deep nested tree replicating site-packages structure.
+# Burst-writes on every mypy run saturate ReadDirectoryChangesW event queue.
+.mypy_cache/
+
+# __pycache__ — 255 .pyc files across 32 directories.
+# Simultaneous regeneration during pytest/runtime overwhelms fs.watch() callbacks.
+__pycache__/
+*.py[cod]
+*$py.class
+
+# logs/ — sky_claw.log grows append-only (5.56 MB), generates continuous
+# CHANGE events with no throttle. watcher.log also contributes.
+logs/
+local_logs/
+*.log
+
+# .pytest_cache — Small but generates file churn on every test run.
+.pytest_cache/
+
+# .ruff_cache — Linter cache, 37 files regenerated on each linting pass.
+.ruff_cache/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 2: PYTHON ECOSYSTEM
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Compiled/optimized Python
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual environments (not present but shield proactively)
+.venv/
+venv/
+env/
+.tox/
+.nox/
+
+# Coverage artifacts
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Type checker / linter state
+.pyre/
+.pytype/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3: NODE.JS ECOSYSTEM
+# ─────────────────────────────────────────────────────────────────────────────
+
+node_modules/
+sky_claw/antigravity/comms/telegram_gateway_node/node_modules/
+package-lock.json
+sky_claw/antigravity/comms/telegram_gateway_node/package-lock.json
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 4: DATABASES & RUNTIME STATE
+# ─────────────────────────────────────────────────────────────────────────────
+
+# SQLite databases and WAL/SHM journal files (runtime state, not source)
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite3
+
+# TOML config with secrets
+config.toml
+
+# PID lock files (agent runtime)
+.run/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 5: SECRETS & ENVIRONMENT
+# ─────────────────────────────────────────────────────────────────────────────
+
+**/.env
+.env
+.env.*
+*.token
+
+# Gateway secrets
+sky_claw/antigravity/comms/telegram_gateway_node/.env
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 6: IDE / EDITOR / TOOL METADATA
+# ─────────────────────────────────────────────────────────────────────────────
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Agent/IDE metadata (Antigravity, Claude, Serena, Roo, Kimi, Kilo)
+.antigravity/*
+!/.antigravity/config.json
+!/.antigravity/settings.json
+.claude/worktrees/
+.serena/
+.roo/
+.kimi/
+.kilo/
+.agents/
+sky_claw/.kilocode/
+sky_claw/.llm-chat-history/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 7: WINDOWS / macOS
+# ─────────────────────────────────────────────────────────────────────────────
+
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows null device artifact
+nul
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 8: TEMPORARY / SCRATCH / EXPLORATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+/tmp/
+scratch/
+autoskills_tmp/
+scrapskyclaw/
+plans/
+.worktrees/
+.skyclaw_backups/
+
+# Debug / test scripts that may contain secrets
+debug_llm.py
+dummy_malicious.py
+dummy_*.py
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 9: AUDIT / REPORT ARTIFACTS (not source code)
+# ─────────────────────────────────────────────────────────────────────────────
+
+skyscraping/
+project_scrape/
+Auditorias/
+INFORME_ANALISIS_ESTATICO.md
+informe_revision.md
+CODE_REVIEW_RESOLUTION.md
+SYNC_PROTOCOL_REPORT.md
+REFACTOR-VALIDATION.md
+IMPLEMENTATION-SUMMARY.txt
+"plan KIMI fase2.txt"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 10: BACKUP FILES
+# ─────────────────────────────────────────────────────────────────────────────
+
+*.backup
+*.bak
+*.orig
+*.tmp
