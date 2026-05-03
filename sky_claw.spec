@@ -13,7 +13,6 @@ block_cipher = None
 
 # Collect data files: web UI static assets and xEdit scripts.
 datas = [
-    ("sky_claw/antigravity/web/static", "sky_claw/antigravity/web/static"),
     ("sky_claw/local/xedit/scripts", "sky_claw/local/xedit/scripts"),
 ]
 
@@ -38,9 +37,6 @@ hiddenimports = [
     "rarfile",
     # LLM providers
     "sky_claw.antigravity.agent.providers",
-    # Web UI
-    "sky_claw.antigravity.web",
-    "sky_claw.antigravity.web.app",
     # SSL/TLS for HTTPS
     "ssl",
     "certifi",
