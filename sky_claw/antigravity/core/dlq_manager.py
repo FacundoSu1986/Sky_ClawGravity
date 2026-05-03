@@ -197,12 +197,19 @@ class DLQManager:
 
     @contextlib.asynccontextmanager
     async def _connect(self) -> AsyncGenerator[aiosqlite.Connection, None]:
-        """Abre conexión con pragmas de producción."""
+        """Abre conexión con pragmas de producción.
+
+        ``busy_timeout`` must be configured *before* any pragma that may
+        require a write lock (e.g. ``journal_mode=WAL``).  Setting it last
+        means any concurrent connection racing on the WAL mode change would
+        receive an immediate ``OperationalError: database is locked`` instead
+        of waiting, which is the root cause of the flaky DLQ test failure.
+        """
         async with aiosqlite.connect(self._db_path) as db:
+            await db.execute("PRAGMA busy_timeout=5000")  # must be first
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("PRAGMA foreign_keys=ON")
             await db.execute("PRAGMA synchronous=NORMAL")
-            await db.execute("PRAGMA busy_timeout=5000")
             db.row_factory = aiosqlite.Row
             yield db
 
