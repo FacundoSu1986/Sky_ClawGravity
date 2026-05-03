@@ -5,7 +5,9 @@
    Palette derived from "Sky-Claw Operations Hub" reference.
    ═══════════════════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Cinzel:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Runic&display=swap');
+/* External font import removed — use system/local fallbacks for offline support.
+   Font stacks below reference MedievalSharp/Cinzel/JetBrains Mono/Noto Sans Runic
+   via --f-display/--f-body/--f-mono/--f-rune; serve from assets/fonts/ if needed. */
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
    0. DESIGN TOKENS — Forge Palette
