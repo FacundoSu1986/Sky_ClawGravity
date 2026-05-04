@@ -827,7 +827,7 @@ body {
                         cfg._data["llm_provider"] = new_provider
                         if new_tg_chatid:
                             cfg._data["telegram_chat_id"] = new_tg_chatid
-                        cfg.save()
+                        await cfg.async_save()
 
                         await self._hot_reload_provider(new_provider, new_api_key)
 

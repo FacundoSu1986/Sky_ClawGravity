@@ -550,7 +550,7 @@ class FrontendBridge:
             if telegram_token:
                 self.config._data["telegram_bot_token"] = telegram_token
 
-            self.config.save()
+            await self.config.async_save()
             logger.info("💾 Configuración guardada en TOML + keyring.")
 
             # ── Hot-reload Phase ────────────────────────────────────────

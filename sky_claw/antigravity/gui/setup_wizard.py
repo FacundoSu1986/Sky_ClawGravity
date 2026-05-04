@@ -329,7 +329,7 @@ class SetupWizardModal:
             cfg._data["first_run"] = False
             if telegram_chatid:
                 cfg._data["telegram_chat_id"] = telegram_chatid.replace("@", "")
-            cfg.save()
+            await cfg.async_save()
 
             # Clear localStorage drafts
             await self._clear_drafts()

@@ -416,7 +416,7 @@ class AppContext:
                     config_changed = True
 
             if config_changed:
-                local_cfg.save()
+                await local_cfg.async_save()
 
             tool_registry = AsyncToolRegistry(
                 registry=self.database.registry,
@@ -604,12 +604,16 @@ class AppContext:
             except Exception as exc:
                 logger.warning("CFG-01: Failed to migrate secret '%s': %s", toml_key, exc)
 
-        # Atomic: save TOML first, then delete JSON
-        toml_cfg.save()
-        logger.info("CFG-01: TOML config saved to %s", self.config_path)
-
-        legacy_path.unlink(missing_ok=True)
-        logger.info("CFG-01: Legacy JSON purged — single source of truth established")
+        # Atomic: save TOML first, then delete JSON only if save succeeded
+        if toml_cfg.save():
+            logger.info("CFG-01: TOML config saved to %s", self.config_path)
+            legacy_path.unlink(missing_ok=True)
+            logger.info("CFG-01: Legacy JSON purged — single source of truth established")
+        else:
+            logger.error(
+                "CFG-01: Failed to persist TOML config. Legacy JSON retained at %s to prevent data loss.",
+                legacy_path,
+            )
 
 
 async def start_full(args) -> AppContext:
