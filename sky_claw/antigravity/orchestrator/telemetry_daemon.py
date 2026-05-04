@@ -21,7 +21,7 @@ from sky_claw.antigravity.core.event_bus import CoreEventBus, Event
 
 logger = logging.getLogger("SkyClaw.Telemetry")
 
-TELEMETRY_TOPIC: Final[str] = "ops.telemetry.update"
+TELEMETRY_TOPIC: Final[str] = "system.telemetry.metrics"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +90,6 @@ class TelemetryDaemon:
                             "cpu": metrics.cpu,
                             "ram_mb": metrics.ram_mb,
                             "ram_percent": metrics.ram_percent,
-                            "memory_mb": metrics.ram_mb,
                         },
                         source="telemetry-daemon",
                     )

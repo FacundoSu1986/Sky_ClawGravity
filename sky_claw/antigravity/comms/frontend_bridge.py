@@ -233,7 +233,7 @@ class FrontendBridge:
 
     def _handle_reconnect_error(self, exc: Exception, msg: str, backoff: float) -> None:
         """Log reconnection errors with attempt counter."""
-        logger.debug(
+        logger.warning(
             "⚠️ %s (%s). Reintento %d/%d en %.1fs...",
             msg,
             type(exc).__name__,
@@ -245,10 +245,10 @@ class FrontendBridge:
     def _check_reconnect_limit(self) -> None:
         """Check if reconnection attempts exceed limit.
 
-        If max attempts reached, log debug about 5-minute pause.
+        If max attempts reached, log warning about 5-minute pause.
         """
         if self._reconnect_count >= MAX_RECONNECT_ATTEMPTS:
-            logger.debug(
+            logger.warning(
                 "⚠️ Límite de intentos de reconexión (%d) alcanzado. Pausa de %d segundos antes de reintentar...",
                 MAX_RECONNECT_ATTEMPTS,
                 RECONNECT_PAUSE_DURATION,
@@ -550,7 +550,7 @@ class FrontendBridge:
             if telegram_token:
                 self.config._data["telegram_bot_token"] = telegram_token
 
-            await self.config.async_save()
+            self.config.save()
             logger.info("💾 Configuración guardada en TOML + keyring.")
 
             # ── Hot-reload Phase ────────────────────────────────────────

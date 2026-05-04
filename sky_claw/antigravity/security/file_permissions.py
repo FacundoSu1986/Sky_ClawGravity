@@ -50,8 +50,7 @@ def _restrict_windows(path: Path) -> None:
             logger.warning("Cannot determine username for ACL on %s", path)
             return
         # Reset inheritance, grant only current user full control
-        # Use universal SIDs so this works on any Windows language/locale.
-        result = subprocess.run(
+        subprocess.run(
             [
                 "icacls",
                 str(path),
@@ -59,22 +58,19 @@ def _restrict_windows(path: Path) -> None:
                 "/grant:r",
                 f"{username}:(F)",
                 "/remove",
-                "*S-1-1-0",  # Everyone
+                "Everyone",
                 "/remove",
-                "*S-1-5-32-545",  # Users (BUILTIN\Users)
+                "Users",
             ],
             capture_output=True,
-            check=False,
+            check=True,
             timeout=10,
         )
-        if result.returncode != 0:
-            logger.warning(
-                "icacls ACL enforcement failed for %s (exit %d): %s",
-                path,
-                result.returncode,
-                result.stderr.decode("utf-8", errors="replace").strip() or "unknown error",
-            )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ) as exc:
         logger.warning("icacls ACL enforcement failed for %s: %s", path, exc)
 
 

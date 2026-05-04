@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky-Claw — Configuración inicial</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .setup-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 560px;
+            width: 100%;
+        }
+
+        .setup-card h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            color: #58a6ff;
+        }
+
+        .setup-card p.subtitle {
+            color: #8b949e;
+            margin-bottom: 28px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #c9d1d9;
+        }
+
+        .form-group .hint {
+            font-size: 12px;
+            color: #8b949e;
+            margin-bottom: 6px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.15s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+
+        .form-group input::placeholder {
+            color: #484f58;
+        }
+
+        .required::after {
+            content: " *";
+            color: #f85149;
+        }
+
+        .optional-tag {
+            font-size: 11px;
+            color: #484f58;
+            font-weight: 400;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 12px;
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+            margin-top: 8px;
+        }
+
+        .btn-primary:hover { background: #2ea043; }
+        .btn-primary:disabled {
+            background: #21262d;
+            color: #484f58;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            padding: 8px 16px;
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .btn-secondary:hover { background: #30363d; }
+        .btn-secondary:disabled { color: #484f58; cursor: not-allowed; }
+
+        .error-msg {
+            color: #f85149;
+            font-size: 13px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .success-msg {
+            color: #3fb950;
+            font-size: 14px;
+            text-align: center;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .divider {
+            border-top: 1px solid #30363d;
+            margin: 24px 0;
+        }
+
+        /* Auto-detect banner */
+        .detect-banner {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .detect-banner .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #30363d;
+            border-top-color: #58a6ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .detect-banner .status-text {
+            font-size: 14px;
+            color: #8b949e;
+        }
+
+        /* Detection status icons */
+        .detect-status {
+            display: inline-block;
+            font-size: 13px;
+            margin-left: 8px;
+        }
+
+        .detect-found {
+            color: #3fb950;
+        }
+
+        .detect-missing {
+            color: #f85149;
+        }
+
+        /* Tools section */
+        .tools-section {
+            margin-bottom: 20px;
+        }
+
+        .tools-section h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #c9d1d9;
+        }
+
+        .tool-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .tool-row .tool-info {
+            flex: 1;
+        }
+
+        .tool-row .tool-name {
+            font-weight: 600;
+            color: #c9d1d9;
+        }
+
+        .tool-row .tool-path {
+            font-size: 11px;
+            color: #8b949e;
+            word-break: break-all;
+        }
+
+        .install-progress {
+            font-size: 12px;
+            color: #58a6ff;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-card">
+        <h1>Sky-Claw</h1>
+        <p class="subtitle">
+            Configuración inicial. Sky-Claw detecta automáticamente tu setup.
+            Solo necesitás poner tu API key.
+        </p>
+
+        <div class="detect-banner" id="detectBanner">
+            <span class="spinner" id="detectSpinner"></span>
+            <span class="status-text" id="detectStatus">Buscando Skyrim y MO2 en tu sistema...</span>
+        </div>
+
+        <form id="setupForm" onsubmit="return false;">
+            <div class="form-group">
+                <label>
+                    Carpeta de MO2
+                    <span class="detect-status" id="mo2Status"></span>
+                </label>
+                <div class="hint">Ruta a tu instalación portable de Mod Organizer 2</div>
+                <input type="text" id="mo2Root" placeholder="C:\MO2Portable" required>
+            </div>
+
+            <div class="form-group">
+                <label class="required">API Key (Anthropic o DeepSeek)</label>
+                <div class="hint">Necesaria para el agente IA. Se guarda localmente ofuscada.</div>
+                <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="new-password" required>
+            </div>
+
+            <div class="form-group">
+                <label>API Key de Nexus Mods <span class="optional-tag">opcional</span></label>
+                <div class="hint">Para descargar mods automáticamente</div>
+                <input type="password" id="nexusApiKey" placeholder="Tu API key de nexusmods.com" autocomplete="new-password">
+            </div>
+
+            <div class="divider"></div>
+            
+            <div class="form-group">
+                <label>Telegram Bot Token <span class="optional-tag">opcional</span></label>
+                <div class="hint">Activa el bot de aprobacion remota (Agente HITL)</div>
+                <input type="password" id="telegramBotToken" placeholder="123456789:ABCDefghIJKLmnop..." autocomplete="new-password">
+            </div>
+
+            <div class="form-group">
+                <label>Telegram Chat ID <span class="optional-tag">opcional</span></label>
+                <div class="hint">Tu ID numerico privado donde recibiras las alertas obligatorias</div>
+                <input type="text" id="telegramChatId" placeholder="123456789">
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="form-group">
+                <label>Ruta de Pandora Behavior Engine <span class="optional-tag">opcional</span></label>
+                <div class="hint">Reemplazo moderno de Nemesis/FNIS (ej: C:\Modding\Pandora\Pandora.exe)</div>
+                <input type="text" id="pandoraExe" placeholder="C:\...\Pandora.exe">
+            </div>
+
+            <div class="form-group">
+                <label>Ruta de BodySlide <span class="optional-tag">opcional</span></label>
+                <div class="hint">Necesario para batch build de cuerpos y físicas (ej: C:\Modding\BodySlide\BodySlide x64.exe)</div>
+                <input type="text" id="bodyslideExe" placeholder="C:\...\BodySlide x64.exe">
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="form-group">
+                <label>
+                    Carpeta de Skyrim SE
+                    <span class="detect-status" id="skyrimStatus"></span>
+                </label>
+                <div class="hint">Se auto-detecta si esta en Steam</div>
+                <input type="text" id="skyrimPath" placeholder="C:\SteamLibrary\steamapps\common\Skyrim Special Edition">
+            </div>
+
+            <div class="form-group">
+                <label>Carpeta de instalacion de herramientas <span class="optional-tag">opcional</span></label>
+                <div class="hint">Donde Sky-Claw instalara LOOT y SSEEdit automaticamente</div>
+                <input type="text" id="installDir" placeholder="C:\Modding">
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="tools-section">
+                <h3>Herramientas detectadas:</h3>
+                <div class="tool-row" id="lootRow">
+                    <div class="tool-info">
+                        <span class="tool-name">LOOT</span>
+                        <span class="detect-status" id="lootStatus"></span>
+                        <div class="tool-path" id="lootPath"></div>
+                    </div>
+                    <button type="button" class="btn-secondary" id="installLootBtn"
+                            onclick="installTool('loot')" style="display:none">
+                        Instalar
+                    </button>
+                    <span class="install-progress" id="lootProgress">Instalando...</span>
+                </div>
+                <div class="tool-row" id="xeditRow">
+                    <div class="tool-info">
+                        <span class="tool-name">SSEEdit</span>
+                        <span class="detect-status" id="xeditStatus"></span>
+                        <div class="tool-path" id="xeditPath"></div>
+                    </div>
+                    <button type="button" class="btn-secondary" id="installXeditBtn"
+                            onclick="installTool('xedit')" style="display:none">
+                        Instalar
+                    </button>
+                    <span class="install-progress" id="xeditProgress">Instalando...</span>
+                </div>
+            </div>
+
+            <button type="button" class="btn-primary" id="saveBtn" onclick="saveSetup()">
+                Guardar y empezar
+            </button>
+
+            <div class="error-msg" id="errorMsg"></div>
+            <div class="success-msg" id="successMsg">
+                Configuracion guardada. Redirigiendo...
+            </div>
+        </form>
+    </div>
+
+    <script>
+        let detected = {};
+
+        function setDetectIcon(elId, found, path) {
+            const el = document.getElementById(elId);
+            if (found) {
+                el.className = 'detect-status detect-found';
+                el.textContent = 'Detectado';
+            } else {
+                el.className = 'detect-status detect-missing';
+                el.textContent = 'No encontrado';
+            }
+        }
+
+        async function runAutoDetect() {
+            try {
+                const resp = await fetch('/api/auto-detect');
+                if (!resp.ok) throw new Error('Auto-detect failed');
+                detected = await resp.json();
+
+                // Fill fields with detected values.
+                if (detected.mo2_root) {
+                    document.getElementById('mo2Root').value = detected.mo2_root;
+                    setDetectIcon('mo2Status', true);
+                } else {
+                    setDetectIcon('mo2Status', false);
+                }
+
+                if (detected.skyrim_path) {
+                    document.getElementById('skyrimPath').value = detected.skyrim_path;
+                    setDetectIcon('skyrimStatus', true);
+                } else {
+                    setDetectIcon('skyrimStatus', false);
+                }
+
+                if (detected.loot_exe) {
+                    setDetectIcon('lootStatus', true);
+                    document.getElementById('lootPath').textContent = detected.loot_exe;
+                } else {
+                    setDetectIcon('lootStatus', false);
+                    document.getElementById('installLootBtn').style.display = 'inline-block';
+                }
+
+                if (detected.xedit_exe) {
+                    setDetectIcon('xeditStatus', true);
+                    document.getElementById('xeditPath').textContent = detected.xedit_exe;
+                } else {
+                    setDetectIcon('xeditStatus', false);
+                    document.getElementById('installXeditBtn').style.display = 'inline-block';
+                }
+
+                document.getElementById('detectSpinner').style.display = 'none';
+                document.getElementById('detectStatus').textContent = 'Auto-deteccion completada.';
+            } catch (e) {
+                document.getElementById('detectSpinner').style.display = 'none';
+                document.getElementById('detectStatus').textContent =
+                    'No se pudo auto-detectar. Completa los campos manualmente.';
+            }
+        }
+
+        async function installTool(tool) {
+            const btn = document.getElementById(tool === 'loot' ? 'installLootBtn' : 'installXeditBtn');
+            const progress = document.getElementById(tool === 'loot' ? 'lootProgress' : 'xeditProgress');
+            btn.style.display = 'none';
+            progress.style.display = 'inline';
+
+            try {
+                const body = {
+                    install_loot: tool === 'loot',
+                    install_xedit: tool === 'xedit',
+                    install_dir: document.getElementById('installDir').value.trim() || null,
+                };
+                const resp = await fetch('/api/install-tools', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await resp.json();
+
+                if (tool === 'loot' && data.loot) {
+                    setDetectIcon('lootStatus', true);
+                    document.getElementById('lootPath').textContent = data.loot;
+                    progress.textContent = 'Instalado';
+                    progress.style.color = '#3fb950';
+                } else if (tool === 'xedit' && data.xedit) {
+                    setDetectIcon('xeditStatus', true);
+                    document.getElementById('xeditPath').textContent = data.xedit;
+                    progress.textContent = 'Instalado';
+                    progress.style.color = '#3fb950';
+                } else {
+                    const errKey = tool + '_error';
+                    progress.textContent = data[errKey] || 'Error al instalar';
+                    progress.style.color = '#f85149';
+                    btn.style.display = 'inline-block';
+                }
+            } catch (e) {
+                progress.textContent = 'Error: ' + e.message;
+                progress.style.color = '#f85149';
+                btn.style.display = 'inline-block';
+            }
+        }
+
+        async function saveSetup() {
+            const btn = document.getElementById('saveBtn');
+            const errorEl = document.getElementById('errorMsg');
+            const successEl = document.getElementById('successMsg');
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+
+            const mo2Root = document.getElementById('mo2Root').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+
+            if (!mo2Root) {
+                errorEl.textContent = 'La carpeta de MO2 es obligatoria.';
+                errorEl.style.display = 'block';
+                return;
+            }
+            if (!apiKey) {
+                errorEl.textContent = 'La API key es obligatoria.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Guardando...';
+
+            try {
+                const resp = await fetch('/api/setup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mo2_root: mo2Root,
+                        api_key: apiKey,
+                        nexus_api_key: document.getElementById('nexusApiKey').value.trim() || null,
+                        telegram_bot_token: document.getElementById('telegramBotToken').value.trim() || null,
+                        telegram_chat_id: document.getElementById('telegramChatId').value.trim() || null,
+                        skyrim_path: document.getElementById('skyrimPath').value.trim() || null,
+                        install_dir: document.getElementById('installDir').value.trim() || null,
+                        loot_exe: detected.loot_exe || null,
+                        xedit_exe: detected.xedit_exe || null,
+                        pandora_exe: document.getElementById('pandoraExe').value.trim() || null,
+                        bodyslide_exe: document.getElementById('bodyslideExe').value.trim() || null,
+                    }),
+                });
+
+                if (!resp.ok) {
+                    const data = await resp.json();
+                    throw new Error(data.error || 'Error del servidor');
+                }
+
+                successEl.style.display = 'block';
+                setTimeout(() => { window.location.href = '/'; }, 1200);
+            } catch (err) {
+                errorEl.textContent = err.message;
+                errorEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Guardar y empezar';
+            }
+        }
+
+        // On page load: first load existing config, then run auto-detect.
+        (async function() {
+            try {
+                const resp = await fetch('/api/setup');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.mo2_root) document.getElementById('mo2Root').value = data.mo2_root;
+                    if (data.install_dir) document.getElementById('installDir').value = data.install_dir;
+                    if (data.loot_exe) {
+                        detected.loot_exe = data.loot_exe;
+                        setDetectIcon('lootStatus', true);
+                        document.getElementById('lootPath').textContent = data.loot_exe;
+                    }
+                    if (data.xedit_exe) {
+                        detected.xedit_exe = data.xedit_exe;
+                        setDetectIcon('xeditStatus', true);
+                        document.getElementById('xeditPath').textContent = data.xedit_exe;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+
+            await runAutoDetect();
+        })();
+    </script>
+</body>
+</html>

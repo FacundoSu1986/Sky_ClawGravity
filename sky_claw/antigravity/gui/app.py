@@ -116,10 +116,23 @@ class SetupWizardModal:
         self._on_complete = on_complete
         self._state = app_state or get_app_state()
         self._overlay_el: ui.element | None = None
-        self._step_label: ui.label | None = None
-        # Input references (ahora delegadas a AppState)
         # Draft fields (non-sensitive) for localStorage
         self._draft_fields: dict[str, ui.input] = {}
+        # Wizard state and UI element references — bound during build()
+        self._step: int = 1
+        self._step_label: ui.label | None = None
+        self._progress_bar: ui.element | None = None
+        self._step1_container: ui.column | None = None
+        self._step2_container: ui.column | None = None
+        self._api_key_input: ui.input | None = None
+        self._telegram_id_input: ui.input | None = None
+        self._frequency_input: ui.input | None = None
+        self._provider_toggle: ui.toggle | None = None
+        self._nexus_input: ui.input | None = None
+        self._telegram_token_input: ui.input | None = None
+        self._back_btn: ui.button | None = None
+        self._next_btn: ui.button | None = None
+        self._submit_btn: ui.button | None = None
 
     def build(self) -> None:
         """Renderiza el overlay fijo sobre el dashboard."""
@@ -153,11 +166,11 @@ class SetupWizardModal:
                     .classes("w-full mb-4")
                     .style("height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;")
                 ):
-                    progress_bar = ui.element("div").style(
+                    self._progress_bar = ui.element("div").style(
                         "width:50%; height:100%; background:var(--sky-gold); "
                         "border-radius:2px; transition:width 0.3s ease;"
                     )
-                    self._state.register_ui_element("progress_bar", progress_bar)
+                    self._state.register_ui_element("progress_bar", self._progress_bar)
 
                 # Description
                 ui.label(
@@ -166,13 +179,13 @@ class SetupWizardModal:
                 ).classes("sky-wizard-description mb-5")
 
                 # ── Step 1 ──
-                step1_container = ui.column().classes("w-full gap-4")
-                self._state.register_ui_element("step1_container", step1_container)
-                with step1_container:
+                self._step1_container = ui.column().classes("w-full gap-4")
+                self._state.register_ui_element("step1_container", self._step1_container)
+                with self._step1_container:
                     # API Key
                     with ui.column().classes("w-full gap-1"):
                         ui.label("CLAVE API DE OPERACIONES").classes("sky-wizard-label")
-                        api_key_input = (
+                        self._api_key_input = (
                             ui.input(
                                 placeholder="sk-... o clave del proveedor",
                             )
@@ -182,13 +195,13 @@ class SetupWizardModal:
                                 'input-class="sky-wizard-input" color=amber maxlength=512'
                             )
                         )
-                        self._state.register_ui_element("api_key_input", api_key_input)
+                        self._state.register_ui_element("api_key_input", self._api_key_input)
                         ui.label("Usa tu API Key de producción").classes("sky-wizard-hint")
 
                     # Telegram ID
                     with ui.column().classes("w-full gap-1"):
                         ui.label("ID DE TELEGRAM").classes("sky-wizard-label")
-                        telegram_id_input = (
+                        self._telegram_id_input = (
                             ui.input(
                                 placeholder="@usuario_id",
                             )
@@ -197,14 +210,14 @@ class SetupWizardModal:
                                 'dark standout="bg-transparent" input-class="sky-wizard-input" color=amber maxlength=32'
                             )
                         )
-                        self._state.register_ui_element("telegram_id_input", telegram_id_input)
+                        self._state.register_ui_element("telegram_id_input", self._telegram_id_input)
                         ui.label("ID único de tu cuenta de Telegram").classes("sky-wizard-hint")
-                        self._draft_fields["telegram_chatid"] = telegram_id_input
+                        self._draft_fields["telegram_chatid"] = self._telegram_id_input
 
                     # Frecuencia
                     with ui.column().classes("w-full gap-1"):
                         ui.label("FRECUENCIA (MS)").classes("sky-wizard-label")
-                        frequency_input = (
+                        self._frequency_input = (
                             ui.input(
                                 placeholder="5000",
                                 value="5000",
@@ -214,19 +227,19 @@ class SetupWizardModal:
                                 'dark standout="bg-transparent" input-class="sky-wizard-input" color=amber maxlength=10'
                             )
                         )
-                        self._state.register_ui_element("frequency_input", frequency_input)
+                        self._state.register_ui_element("frequency_input", self._frequency_input)
                         ui.label("Frecuencia de monitoreos en milisegundos").classes("sky-wizard-hint")
-                        self._draft_fields["frequency_ms"] = frequency_input
+                        self._draft_fields["frequency_ms"] = self._frequency_input
 
                 # ── Step 2 (hidden initially) ──
-                step2_container = ui.column().classes("w-full gap-4")
-                step2_container.style("display: none;")
-                self._state.register_ui_element("step2_container", step2_container)
-                with step2_container:
+                self._step2_container = ui.column().classes("w-full gap-4")
+                self._step2_container.style("display: none;")
+                self._state.register_ui_element("step2_container", self._step2_container)
+                with self._step2_container:
                     # Provider
                     with ui.column().classes("w-full gap-1"):
                         ui.label("PROVEEDOR IA").classes("sky-wizard-label")
-                        provider_toggle = (
+                        self._provider_toggle = (
                             ui.toggle(
                                 ["anthropic", "deepseek", "ollama"],
                                 value="deepseek",
@@ -234,12 +247,12 @@ class SetupWizardModal:
                             .classes("w-full")
                             .props("color=amber")
                         )
-                        self._state.register_ui_element("provider_toggle", provider_toggle)
+                        self._state.register_ui_element("provider_toggle", self._provider_toggle)
 
                     # Nexus Key
                     with ui.column().classes("w-full gap-1"):
                         ui.label("NEXUS MODS API KEY").classes("sky-wizard-label")
-                        nexus_input = (
+                        self._nexus_input = (
                             ui.input(
                                 placeholder="Opcional — para descargas automáticas",
                             )
@@ -249,12 +262,12 @@ class SetupWizardModal:
                                 'input-class="sky-wizard-input" color=amber maxlength=512'
                             )
                         )
-                        self._state.register_ui_element("nexus_input", nexus_input)
+                        self._state.register_ui_element("nexus_input", self._nexus_input)
 
                     # Telegram Token
                     with ui.column().classes("w-full gap-1"):
                         ui.label("TELEGRAM BOT TOKEN").classes("sky-wizard-label")
-                        telegram_token_input = (
+                        self._telegram_token_input = (
                             ui.input(
                                 placeholder="Opcional — para notificaciones HITL",
                             )
@@ -264,11 +277,11 @@ class SetupWizardModal:
                                 'input-class="sky-wizard-input" color=amber maxlength=512'
                             )
                         )
-                        self._state.register_ui_element("telegram_token_input", telegram_token_input)
+                        self._state.register_ui_element("telegram_token_input", self._telegram_token_input)
 
                 # ── CTA Button ──
                 with ui.row().classes("w-full justify-end gap-3 mt-4"):
-                    back_btn = (
+                    self._back_btn = (
                         ui.button(
                             "Atrás",
                             on_click=self._go_step1,
@@ -277,9 +290,9 @@ class SetupWizardModal:
                         .props("ripple flat no-caps")
                         .style("color: var(--sky-parchment-text); display: none;")
                     )
-                    self._state.register_ui_element("back_btn", back_btn)
+                    self._state.register_ui_element("back_btn", self._back_btn)
 
-                    next_btn = (
+                    self._next_btn = (
                         ui.button(
                             "Siguiente",
                             on_click=self._go_step2,
@@ -287,9 +300,9 @@ class SetupWizardModal:
                         .classes("sky-wizard-cta px-6 py-3 rounded-xl text-lg")
                         .props("ripple no-caps")
                     )
-                    self._state.register_ui_element("next_btn", next_btn)
+                    self._state.register_ui_element("next_btn", self._next_btn)
 
-                    submit_btn = (
+                    self._submit_btn = (
                         ui.button(
                             on_click=self._on_submit,
                         )
@@ -297,8 +310,8 @@ class SetupWizardModal:
                         .props("ripple no-caps")
                         .style("display: none;")
                     )
-                    self._state.register_ui_element("submit_btn", submit_btn)
-                    with submit_btn:
+                    self._state.register_ui_element("submit_btn", self._submit_btn)
+                    with self._submit_btn:
                         ui.html(f'<span style="margin-right:8px;">{_ICON_ROCKET}</span>')
                         ui.label("Inicializar Sistema")
 
@@ -410,7 +423,7 @@ class SetupWizardModal:
             cfg._data["first_run"] = False
             if telegram_chatid:
                 cfg._data["telegram_chat_id"] = telegram_chatid.replace("@", "")
-            await cfg.async_save()
+            cfg.save()
 
             # Clear localStorage drafts
             await self._clear_drafts()
@@ -517,8 +530,8 @@ class DashboardGUI:
 
         with (
             ui.element("div")
-            .classes("w-full min-h-screen flex relative")
-            .style("background: transparent; font-family: var(--f-body); z-index: 1;")
+            .classes("w-full min-h-screen flex")
+            .style("background: transparent; font-family: var(--sky-font-family);")
         ):
             self._build_sidebar()
 
@@ -580,28 +593,29 @@ class DashboardGUI:
 
     # ── Sidebar ───────────────────────────────────────────────────────
     def _build_sidebar(self) -> None:
-        with ui.element("div").classes("w-64 min-h-screen flex flex-col shrink-0 sky-sidebar"):
+        with (
+            ui.element("div")
+            .classes("w-64 min-h-screen flex flex-col shrink-0 sky-sidebar")
+            .style("background: var(--sky-bg-secondary); border-right: 1px solid var(--sky-border);")
+        ):
             # Logo
             with (
-                ui.element("div")
-                .classes("p-6 relative")
-                .style("border-bottom: 1px solid var(--forge-edge); z-index:1;"),
+                ui.element("div").classes("p-6").style("border-bottom: 1px solid var(--sky-border);"),
                 ui.row().classes("items-center gap-3"),
             ):
                 ui.html(f"""
-                        <div style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
-                                    background: radial-gradient(circle, #3a2813 0%, #1a0f07 70%);
-                                    border: 1px solid var(--iron-rim);
-                                    box-shadow: 0 0 14px var(--gold-mist);"
+                        <div style="width:40px;height:40px;border-radius:12px;display:flex;
+                                    align-items:center;justify-content:center;
+                                    background:linear-gradient(135deg, #C8A84E, #8B7332);"
                              class="sky-glow-static">
-                            <span style="color: var(--gold-hot); filter: drop-shadow(0 0 3px var(--gold-soft));">
-                              {_ICON_LAYERS}
-                            </span>
+                            {_ICON_LAYERS}
                         </div>
                     """)
                 with ui.column().classes("gap-0"):
-                    ui.label("SKY-CLAW").classes("sky-brand-name")
-                    ui.label("TECHNICAL OPERATIONS").classes("sky-brand-sub")
+                    ui.label("SKY-CLAW").style(
+                        "color: var(--sky-gold); font-weight:800; font-size:1.1rem; letter-spacing:0.15em;"
+                    )
+                    ui.label("Technical Operations").style("color: var(--sky-text-muted); font-size:0.65rem;")
 
             # Nav
             with ui.column().classes("flex-1 p-4 gap-1"):
@@ -614,30 +628,28 @@ class DashboardGUI:
                 ]
 
                 for text, view, is_active in nav_items:
-                    cls = "w-full text-left px-4 py-3 sky-nav-item"
                     if is_active:
-                        cls += " sky-nav-item--active"
+                        active_style = (
+                            "background: rgba(200,168,78,0.1); "
+                            "border-left: 2px solid var(--sky-gold); "
+                            "color: var(--sky-gold);"
+                        )
+                    else:
+                        active_style = "color: var(--sky-text-secondary);"
+
                     ui.button(
                         text,
                         on_click=lambda v=view: self._navigate(v),
-                    ).classes(cls).props("ripple flat no-caps")
+                    ).classes("w-full text-left px-4 py-3 rounded-xl transition-all duration-200").props(
+                        "ripple flat no-caps"
+                    ).style(active_style)
 
             # Status LLM
             with (
-                ui.element("div")
-                .classes("p-4 relative")
-                .style("border-top: 1px solid var(--forge-edge); background: rgba(0,0,0,0.25); z-index:1;"),
+                ui.element("div").classes("p-4").style("border-top: 1px solid var(--sky-border);"),
                 ui.row().classes("items-center gap-2"),
             ):
-                ui.html(
-                    '<span style="width:9px;height:9px;border-radius:50%;'
-                    "background:var(--emerald);box-shadow:0 0 8px var(--emerald-glow);"
-                    'animation:sky-breathe 2.4s ease-in-out infinite;display:inline-block;"></span>'
-                )
-                self._status_label = ui.label("OPERATOR · CONECTADO").style(
-                    "color: var(--parchment); font-family: var(--f-display); "
-                    "font-size: 0.72rem; letter-spacing: 0.18em;"
-                )
+                self._status_label = ui.label("Conectado").style("color: var(--sky-text-muted); font-size:0.75rem;")
 
     def _navigate(self, view: str) -> None:
         if view == "settings":
@@ -645,43 +657,59 @@ class DashboardGUI:
 
     # ── Header ────────────────────────────────────────────────────────
     def _build_header(self) -> None:
-        with ui.element("div").classes("h-16 flex items-center justify-between px-6 shrink-0 sky-header"):
+        with (
+            ui.element("div")
+            .classes("h-16 flex items-center justify-between px-6 shrink-0")
+            .style("background: var(--sky-bg-secondary); border-bottom: 1px solid var(--sky-border);")
+        ):
             with ui.column().classes("gap-0"):
-                ui.label("OPERACIONES TÉCNICAS").classes("sky-header-title")
+                ui.label("OPERACIONES TÉCNICAS").style(
+                    "color: var(--sky-text-primary); font-weight:700; font-size:1.1rem; letter-spacing:0.1em;"
+                )
 
             # Header actions
             with ui.row().classes("items-center gap-3"):
-                # Status pill
-                with ui.element("div").classes("sky-status-pill"):
-                    ui.html('<span class="pulse"></span>')
-                    ui.label("OPERATIVO")
-
                 for label_text in ["Protocolos", "Alerta", "Ayuda"]:
-                    ui.button(label_text).classes("sky-chip").props("ripple flat no-caps")
+                    ui.button(label_text).classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
+                        "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
+                    )
 
-                # Avatar seal
-                with ui.element("div").classes("sky-avatar-seal"):
+                # Avatar
+                with ui.element("div").style(
+                    "width:36px; height:36px; border-radius:50%; display:flex; "
+                    "align-items:center; justify-content:center; cursor:pointer; "
+                    "background: linear-gradient(135deg, var(--sky-gold), #8B7332); "
+                    "color: #1C1714; font-weight:700; font-size:0.8rem;"
+                ):
                     ui.label("SC")
 
     # ── Stat Summary Cards ────────────────────────────────────────────
     def _build_stat_summary(self, title: str, value: str, icon_svg: str) -> None:
         with (
-            ui.element("div").classes("sky-widget-panel flex-1 p-5 sky-card-hover sky-animate-in"),
-            ui.row().classes("items-center justify-between w-full"),
+            ui.element("div").classes("sky-widget-panel flex-1 p-5 sky-card-hover"),
+            ui.row().classes("items-center justify-between"),
         ):
-            with ui.column().classes("gap-2"):
-                ui.label(title).classes("sky-metric-label")
+            with ui.column().classes("gap-1"):
+                ui.label(title).style(
+                    "color: var(--sky-text-muted); font-size:0.7rem; "
+                    "font-weight:600; letter-spacing:0.1em; text-transform:uppercase;"
+                )
                 ui.label(value).classes("sky-metric-value")
-            ui.html(f'<div class="sky-metric-icon">{icon_svg}</div>')
+            ui.html(f"""
+                    <div style="width:48px;height:48px;border-radius:12px;display:flex;
+                                align-items:center;justify-content:center;
+                                background:linear-gradient(135deg, rgba(200,168,78,0.12), rgba(6,182,212,0.12));
+                                border: 1px solid rgba(200,168,78,0.2);">
+                        {icon_svg}
+                    </div>
+                """)
 
     # ── Tools Section — Semantic Actions v4.0 ─────────────────────────
     def _build_tools_section(self) -> None:
         """Build the 'Herramientas' section with health banner + action buttons."""
         with ui.element("div").classes("sky-widget-panel w-full p-4 sky-animate-in"):
             with ui.row().classes("items-center gap-2 mb-3"):
-                ui.label("ᚦ").classes("sky-active-rune").style(
-                    "font-family: var(--f-rune); font-size: 1.5rem; line-height: 1;"
-                )
+                ui.label("ᚦ").style("font-size:1.4rem; color: var(--sky-amber);")
                 ui.label("HERRAMIENTAS").classes("sky-section-title")
 
             self._health_banner = ui.element("div").classes("sky-health-banner sky-health-banner--warning")
@@ -794,20 +822,20 @@ class DashboardGUI:
                 .classes("items-center justify-between p-4")
                 .style("border-bottom: 1px solid var(--sky-surface-border);")
             ):
-                with ui.row().classes("items-center gap-2"):
-                    ui.label("ᚱ").classes("sky-active-rune").style(
-                        "font-family: var(--f-rune); font-size: 1.4rem; line-height: 1;"
-                    )
-                    ui.label("MODS INSTALADOS").classes("sky-section-title")
+                ui.label("Mods Instalados").style("color: var(--sky-text-primary); font-weight:700;")
                 with ui.row().classes("gap-2"):
                     ui.button(
                         "Actualizar",
                         on_click=self._update_all,
-                    ).classes("sky-btn-forge px-3 py-1 text-xs").props("ripple flat no-caps")
+                    ).classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
+                        "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
+                    )
                     ui.button(
                         "Escanear",
                         on_click=self._scan_all,
-                    ).classes("sky-btn-forge px-3 py-1 text-xs").props("ripple flat no-caps")
+                    ).classes("px-3 py-1 rounded-lg text-xs").props("ripple flat no-caps").style(
+                        "color: var(--sky-text-secondary); border: 1px solid var(--sky-surface-border);"
+                    )
 
             with ui.scroll_area().classes("flex-1 sky-scrollbar").style("height: 300px;"):
                 self._mod_container = ui.column().classes("w-full")
@@ -858,28 +886,22 @@ class DashboardGUI:
                 ui.element("div")
                 .classes("p-4")
                 .style(
-                    "border-bottom: 1px solid var(--forge-edge); "
-                    "background: linear-gradient(180deg, rgba(40,27,16,0.6), rgba(20,13,8,0));"
+                    "border-bottom: 1px solid var(--sky-surface-border); "
+                    "background: linear-gradient(135deg, rgba(200,168,78,0.08), rgba(6,182,212,0.08));"
                 ),
                 ui.row().classes("items-center gap-3"),
             ):
                 ui.html(f"""
-                        <div style="width:40px;height:40px;border-radius:50%;display:grid;place-items:center;
-                                    background: radial-gradient(circle, #3a2813 0%, #1a0f07 70%);
-                                    border: 1px solid var(--iron-rim);
-                                    box-shadow: 0 0 14px var(--gold-mist);"
+                        <div style="width:40px;height:40px;border-radius:12px;display:flex;
+                                    align-items:center;justify-content:center;
+                                    background:linear-gradient(135deg, #C8A84E, #06b6d4);"
                              class="sky-glow-static">
-                            <span style="color: var(--gold-hot); filter: drop-shadow(0 0 3px var(--gold-soft));">
-                              {_ICON_CHAT}
-                            </span>
+                            {_ICON_CHAT}
                         </div>
                     """)
                 with ui.column().classes("gap-0"):
-                    ui.label("ASISTENTE IA").classes("sky-section-title")
-                    ui.label("Sky-Claw · Operaciones").style(
-                        "color: var(--parchment-mute); font-family: var(--f-mono); "
-                        "font-size: 0.7rem; letter-spacing: 0.08em;"
-                    )
+                    ui.label("Asistente IA").style("color: var(--sky-text-primary); font-weight:700;")
+                    ui.label("Escribiendo...").style("color: var(--sky-text-muted); font-size:0.75rem; display:none;")
 
             # Messages
             self._chat_scroll = ui.scroll_area().classes("flex-1 sky-scrollbar").style("height: 260px;")
@@ -908,7 +930,7 @@ class DashboardGUI:
                 ui.button(
                     "Enviar",
                     on_click=self._send_message,
-                ).classes("sky-wizard-cta px-5 py-2").props("ripple no-caps")
+                ).classes("sky-wizard-cta px-5 py-2 rounded-xl font-semibold").props("ripple")
 
     def append_chat_message(self, text: str, is_user: bool = False, style: str = "normal") -> None:
         self._hide_thinking()
@@ -923,7 +945,6 @@ class DashboardGUI:
             "normal": "sky-chat-message--assistant" if not is_user else "sky-chat-message--user",
             "success": "sky-chat-message--success",
             "error": "sky-chat-message--error",
-            "info": "sky-chat-message--info",
         }
         cls = style_map.get(style, style_map["normal"])
         if is_user:
@@ -984,10 +1005,10 @@ class DashboardGUI:
         with (
             ui.element("div")
             .classes("px-6 py-3 flex items-center justify-between")
-            .style("border-top: 1px solid var(--forge-edge); background: rgba(0,0,0,0.25);")
+            .style("border-top: 1px solid var(--sky-surface-border);")
         ):
             ui.label("\u00a9 2026 Sky-Claw Technical Operations Hub. Todos los derechos reservados.").style(
-                "color: var(--parchment-mute); font-family: var(--f-mono); font-size: 0.68rem; letter-spacing: 0.06em;"
+                "color: var(--sky-text-muted); font-size:0.7rem;"
             )
 
             with ui.row().classes("gap-4"):
@@ -996,11 +1017,7 @@ class DashboardGUI:
                     "API Docs",
                     "Soporte Operativo",
                 ]:
-                    ui.label(link_text).style(
-                        "color: var(--parchment-mute); font-family: var(--f-display); "
-                        "font-size: 0.68rem; letter-spacing: 0.14em; "
-                        "text-transform: uppercase; cursor: pointer;"
-                    )
+                    ui.label(link_text).style("color: var(--sky-text-muted); font-size:0.7rem; cursor:pointer;")
 
     # ── Queue Polling ─────────────────────────────────────────────────
     def _poll_queue(self) -> None:
@@ -1174,7 +1191,7 @@ body {
                         cfg._data["llm_provider"] = new_provider
                         if new_tg_chatid:
                             cfg._data["telegram_chat_id"] = new_tg_chatid
-                        await cfg.async_save()
+                        cfg.save()
 
                         await self._hot_reload_provider(new_provider, new_api_key)
 

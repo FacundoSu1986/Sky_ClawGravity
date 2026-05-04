@@ -2,119 +2,62 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
+from typing import TYPE_CHECKING
 
-from sky_claw.antigravity.orchestrator.supervisor import SupervisorAgent
-from sky_claw.app_context import AppContext, _resolve_config_path_static, start_full
-from sky_claw.logging_config import correlation_id_var
+from aiohttp import web
 
-logger = logging.getLogger("sky_claw")
+from sky_claw.antigravity.security.auth_token_manager import AuthTokenManager
+from sky_claw.antigravity.web.app import WebApp
+from sky_claw.local.local_config import load as load_local_config
 
+if TYPE_CHECKING:
+    from sky_claw.app_context import AppContext
 
-async def _web_logic_loop(ctx: AppContext) -> None:
-    """Processes chat messages from Web UI in a background task."""
-    consecutive_errors = 0
-    while True:
-        try:
-            item = await asyncio.to_thread(ctx.logic_queue.get)
-            if not isinstance(item, (tuple, list)) or len(item) < 2:
-                logger.warning("Malformed item in logic_queue: %r", item)
-                continue
-            if item[0] == "chat":
-                text = item[1]
-                if not ctx.router:
-                    ctx.gui_queue.put(("error", "Router no inicializado. Completá el setup primero."))
-                    continue
-                correlation_id_var.set(str(uuid.uuid4()))
-                try:
-                    response = await ctx.router.chat(text, ctx.session, chat_id="web-session")
-                    ctx.gui_queue.put(("response", response))
-                    consecutive_errors = 0
-                except Exception as e:
-                    logger.exception("Logic error in chat: %s", e)
-                    ctx.gui_queue.put(("error", f"Error procesando comando: {type(e).__name__}: {e}"))
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            consecutive_errors += 1
-            backoff = min(2**consecutive_errors, 30)
-            logger.exception("Web logic loop error (backoff=%ds): %s", backoff, e)
-            await asyncio.sleep(backoff)
+logger = logging.getLogger(__name__)
 
 
-async def _web_mod_update_loop(ctx: AppContext) -> None:
-    """Periodically fetches modlist for the Web UI."""
-    while True:
-        try:
-            if ctx.registry:
-                mods_dicts = await ctx.registry.search_mods("")
-                mods = [m["name"] for m in mods_dicts]
-                ctx.gui_queue.put(("modlist", mods))
-            await asyncio.sleep(10)
-        except asyncio.CancelledError:
-            break
-        except Exception as exc:
-            logger.error("Error updating modlist in Web UI: %s", exc)
-            await asyncio.sleep(5)
+async def _run_web(ctx: AppContext, port: int) -> None:
+    assert ctx.session is not None
+    local_cfg = load_local_config(ctx.config_path)
+    already_configured = not local_cfg.first_run and bool(local_cfg.get_api_key())
+    if already_configured:
+        await ctx.start_full()
 
+    auth_manager = AuthTokenManager()
+    auth_manager.generate()
+    await auth_manager.start_rotation()
 
-def run_web_mode(args):
-    from nicegui import app, ui
-
-    from sky_claw.antigravity.gui.app import DashboardGUI
-
-    config_path = _resolve_config_path_static(args)
-
-    # Shared state — initialized once, survives page reloads
-    _ctx_holder: dict[str, object] = {}
-
-    async def _ensure_context() -> AppContext:
-        """Initialize AppContext once, reuse on page reloads."""
-        if "ctx" not in _ctx_holder:
-            ctx = await start_full(args)
-            _ctx_holder["ctx"] = ctx
-
-            supervisor = SupervisorAgent()
-            _ctx_holder["supervisor"] = supervisor
-            ctx._track_task(supervisor.start(), name="supervisor-daemon")
-            ctx._track_task(_web_logic_loop(ctx), name="web-logic-loop")
-            ctx._track_task(_web_mod_update_loop(ctx), name="web-mod-update")
-            logger.info("Sky-Claw Daemon Core inicializado en background.")
-        return _ctx_holder["ctx"]
-
-    @ui.page("/setup")
-    async def setup_page():
-        """Legacy: redirige al dashboard (el wizard ahora es un modal overlay)."""
-        ui.navigate.to("/")
-
-    @ui.page("/")
-    async def main_page():
-        # Siempre renderiza el dashboard; si no está configurado,
-        # el SetupWizardModal se abre automáticamente como overlay.
-        ctx = await _ensure_context()
-        ctx.config_path = config_path  # Exponer para el wizard modal
-        gui = DashboardGUI(ctx)
-        gui.build()
-
-        supervisor = _ctx_holder.get("supervisor")
-        if supervisor and hasattr(gui, "on_ejecutar"):
-            gui.on_ejecutar = supervisor.handle_execution_signal
-
-        logger.info("Dashboard page rendered (context reused).")
-
-    async def _shutdown():
-        ctx = _ctx_holder.get("ctx")
-        if ctx:
-            await ctx.stop()
-
-    app.on_shutdown(_shutdown)
-
-    ui.run(
-        title="Sky-Claw",
-        dark=True,
-        show=True,
-        native=False,
-        reload=False,
-        port=args.port,
-        host="127.0.0.1",
+    web_app = WebApp(
+        router=ctx.router,
+        session=ctx.session,
+        config_path=ctx.config_path,
+        tools_installer=ctx.tools_installer,
+        on_setup_complete=_make_setup_callback(ctx),
+        auth_manager=auth_manager,
     )
+    runner = web.AppRunner(web_app.create_app())
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", port)
+    await site.start()
+
+    url = f"http://localhost:{port}"
+    logger.info("Sky-Claw Web UI: %s", url)
+    import webbrowser
+
+    webbrowser.open(url)
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await auth_manager.stop_rotation()
+        await runner.cleanup()
+
+
+def _make_setup_callback(ctx: AppContext):
+    async def _on_setup_complete(web_app: WebApp) -> None:
+        await ctx.start_full()
+        web_app._router = ctx.router
+        web_app._tools_installer = ctx.tools_installer
+
+    return _on_setup_complete

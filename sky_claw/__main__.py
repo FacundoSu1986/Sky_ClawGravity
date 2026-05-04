@@ -11,19 +11,6 @@ Usage::
 
 from __future__ import annotations
 
-import importlib.util
-import pkgutil
-
-# Parche de compatibilidad para Python 3.14+
-# vbuild/NiceGUI fix
-if not hasattr(pkgutil, "find_loader"):
-
-    def _find_loader_patch(fullname: str) -> object | None:
-        spec = importlib.util.find_spec(fullname)
-        return spec.loader if spec else None
-
-    pkgutil.find_loader = _find_loader_patch
-
 import argparse
 import asyncio
 import contextlib
@@ -35,7 +22,7 @@ from sky_claw.antigravity.modes.cli_mode import _run_cli, _run_oneshot
 from sky_claw.antigravity.modes.gui_mode import run_gui_mode
 from sky_claw.antigravity.modes.security_mode import _run_security
 from sky_claw.antigravity.modes.telegram_mode import _run_telegram
-from sky_claw.antigravity.modes.web_mode import run_web_mode
+from sky_claw.antigravity.modes.web_mode import _run_web
 from sky_claw.app_context import AppContext
 from sky_claw.config import Config, SystemPaths
 from sky_claw.logging_config import setup_logging
@@ -142,7 +129,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 async def _main(argv_or_args: list[str] | argparse.Namespace | None = None) -> None:
-    """Asynchronous runner for CLI, Telegram, and other async modes.
+    """Asynchronous runner for CLI, Web, and Telegram modes.
 
     Accepts either raw argv strings (for testing) or a pre-parsed Namespace.
     """
@@ -156,31 +143,35 @@ async def _main(argv_or_args: list[str] | argparse.Namespace | None = None) -> N
         sys.exit(1)
 
     ctx = AppContext(args)
-    await ctx.start()
-    try:
-        if args.mode == "cli":
-            await _run_cli(ctx)
-        elif args.mode == "oneshot":
-            await _run_oneshot(ctx, args.command)
-        elif args.mode == "telegram":
-            await _run_telegram(ctx, args.webhook_host, args.webhook_port)
-        elif args.mode == "security":
-            await _run_security(ctx, args.command)
-    finally:
-        await ctx.stop()
+    if args.mode == "web":
+        await ctx.start_minimal()
+        try:
+            await _run_web(ctx, args.port)
+        finally:
+            await ctx.stop()
+    else:
+        await ctx.start()
+        try:
+            if args.mode == "cli":
+                await _run_cli(ctx)
+            elif args.mode == "oneshot":
+                await _run_oneshot(ctx, args.command)
+            elif args.mode == "telegram":
+                await _run_telegram(ctx, args.webhook_host, args.webhook_port)
+            elif args.mode == "security":
+                await _run_security(ctx, args.command)
+        finally:
+            await ctx.stop()
 
 
 def main(argv: list[str] | None = None) -> None:
     """Unified entry point controller."""
     args = _parse_args(argv)
 
-    if args.mode in ("gui", "web"):
+    if args.mode == "gui":
         log_level = logging.DEBUG if args.verbose else logging.INFO
         setup_logging(level=log_level)
-        if args.mode == "gui":
-            run_gui_mode(args)
-        else:
-            run_web_mode(args)
+        run_gui_mode(args)
     else:
         with contextlib.suppress(KeyboardInterrupt):
             asyncio.run(_main(args))

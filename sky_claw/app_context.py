@@ -7,7 +7,6 @@ import pathlib
 import queue
 import tempfile
 from contextlib import AsyncExitStack
-from typing import Any
 
 import aiohttp
 import keyring
@@ -19,7 +18,6 @@ from sky_claw.antigravity.agent.tools_facade import AsyncToolRegistry
 from sky_claw.antigravity.comms.telegram import TelegramWebhook
 from sky_claw.antigravity.comms.telegram_polling import TelegramPolling
 from sky_claw.antigravity.comms.telegram_sender import TelegramSender
-from sky_claw.antigravity.core.event_bus import CoreEventBus
 from sky_claw.antigravity.db.async_registry import AsyncModRegistry
 from sky_claw.antigravity.orchestrator.sync_engine import SyncEngine
 from sky_claw.antigravity.scraper.masterlist import MasterlistClient
@@ -115,8 +113,6 @@ class AppContext:
         self.sender: TelegramSender | None = None
         self.polling: TelegramPolling | None = None
         self.tools_installer: ToolsInstaller | None = None
-        self.frontend_bridge: Any | None = None  # From sky_claw.antigravity.comms.frontend_bridge
-        self.event_bus = CoreEventBus()
 
         # ARC-02: AsyncExitStack para compensación atómica ante fallos
         self._exit_stack = AsyncExitStack()
@@ -159,8 +155,6 @@ class AppContext:
         self._migrate_legacy_json()
         await self.network.initialize("", None)  # Init base session
         self._exit_stack.push_async_callback(self.network.close)
-        await self.event_bus.start()
-        self._exit_stack.push_async_callback(self.event_bus.stop)
         logger.info(
             "start_minimal complete — config_path=%s, session ready",
             self.config_path,
@@ -174,7 +168,7 @@ class AppContext:
         order, preventing zombie processes and leaked resources (ARC-02).
 
         R-06: Protected by asyncio.Lock to prevent re-entrant calls
-        (e.g. concurrent hot-reload from FrontendBridge).
+        (e.g. concurrent hot-reload from external triggers).
         """
         async with self._start_full_lock:
             await self._start_full_inner()
@@ -212,7 +206,6 @@ class AppContext:
             )
 
             local_cfg = Config(config_path)
-            self.config = local_cfg
             # H-04: Eliminada mutación de os.environ. Los secretos se pasan explícitamente.
 
             mo2_root = self._args.mo2_root
@@ -300,43 +293,16 @@ class AppContext:
             if local_cfg.install_dir:
                 install_dir = pathlib.Path(local_cfg.install_dir)
 
-            # Build sandbox roots — Zero Trust: only strictly necessary directories.
-            # mo2_parent is explicitly excluded to prevent covert Path Traversal.
             sandbox_roots: list[pathlib.Path] = [
+                mo2_root,
                 pathlib.Path(tempfile.gettempdir()) / "sky_claw",
             ]
-
-            # Dynamically inject MO2 root from config into sandbox allowed roots.
-            # Normalized with .resolve() to prevent symlink-based bypass attacks.
-            _cfg_mo2_root = getattr(local_cfg, "mo2_root", "") or ""
-            if _cfg_mo2_root:
-                _cfg_mo2_path = pathlib.Path(_cfg_mo2_root).resolve()
-                if _cfg_mo2_path.exists() and _cfg_mo2_path not in sandbox_roots:
-                    sandbox_roots.append(_cfg_mo2_path)
-                    logger.info(
-                        "Sandbox: config mo2_root added as allowed root: %s",
-                        _cfg_mo2_path,
-                    )
-
-            # Also add the resolved mo2_root (from args / auto-detect) if different.
-            if mo2_root:
-                _resolved_mo2 = pathlib.Path(mo2_root).resolve()
-                if _resolved_mo2.exists() and _resolved_mo2 not in sandbox_roots:
-                    sandbox_roots.append(_resolved_mo2)
-                    logger.info(
-                        "Sandbox: resolved mo2_root added as allowed root: %s",
-                        _resolved_mo2,
-                    )
-
-            if install_dir:
-                _resolved_install = pathlib.Path(install_dir).resolve()
-                if _resolved_install not in sandbox_roots:
-                    sandbox_roots.append(_resolved_install)
-
+            if install_dir and install_dir not in sandbox_roots:
+                sandbox_roots.append(install_dir)
+            # --- DESPUÉS (Seguro - Zero Trust) ---
+            # Solo definir las carpetas estrictamente necesarias
+            # Se elimina explícitamente mo2_parent para evitar Path Traversal encubierto
             validator = PathValidator(roots=sandbox_roots)
-            self.path_validator = validator
-            if self.config.mo2_root:
-                self.path_validator.add_allowed_root(pathlib.Path(self.config.mo2_root))
             mo2 = MO2Controller(mo2_root, validator)
 
             await self.network.initialize(nexus_key, self._args.staging_dir)
@@ -420,7 +386,7 @@ class AppContext:
                     config_changed = True
 
             if config_changed:
-                await local_cfg.async_save()
+                local_cfg.save()
 
             tool_registry = AsyncToolRegistry(
                 registry=self.database.registry,
@@ -462,19 +428,6 @@ class AppContext:
             await self.router.open()
             self._exit_stack.push_async_callback(self._close_router)
 
-            # Initialize Frontend Bridge (Gateway port 18789 ↔ Daemon)
-            from sky_claw.antigravity.comms.frontend_bridge import FrontendBridge
-
-            self.frontend_bridge = FrontendBridge(
-                router=self.router,
-                session=self.network.session,
-                config=local_cfg,
-                app_context=self,
-            )
-            self._track_task(self.frontend_bridge.start(), name="frontend-bridge")
-            self._exit_stack.push_async_callback(self._stop_frontend_bridge)
-            logger.info("Frontend Bridge iniciado en segundo plano.")
-
             if bot_token and getattr(self._args, "mode", "cli") != "telegram":
                 webhook_handler = TelegramWebhook(
                     router=self.router,
@@ -504,7 +457,6 @@ class AppContext:
             await self._exit_stack.aclose()
             # ARC-03: Sanitizar referencias para evitar zombie state tras rollback fallido
             self.router = self.polling = self.hitl = self.sender = None
-            self.frontend_bridge = None
             self.tools_installer = None
             raise
 
@@ -524,12 +476,6 @@ class AppContext:
         if self.router is not None:
             await self.router.close()
             self.router = None
-
-    async def _stop_frontend_bridge(self) -> None:
-        """Callback for AsyncExitStack: stop frontend bridge."""
-        if self.frontend_bridge is not None:
-            await self.frontend_bridge.stop()
-            self.frontend_bridge = None
 
     async def stop(self) -> None:
         """Gracefully shutdown all resources via AsyncExitStack (LIFO order)."""
@@ -608,16 +554,12 @@ class AppContext:
             except Exception as exc:
                 logger.warning("CFG-01: Failed to migrate secret '%s': %s", toml_key, exc)
 
-        # Atomic: save TOML first, then delete JSON only if save succeeded
-        if toml_cfg.save():
-            logger.info("CFG-01: TOML config saved to %s", self.config_path)
-            legacy_path.unlink(missing_ok=True)
-            logger.info("CFG-01: Legacy JSON purged — single source of truth established")
-        else:
-            logger.error(
-                "CFG-01: Failed to persist TOML config. Legacy JSON retained at %s to prevent data loss.",
-                legacy_path,
-            )
+        # Atomic: save TOML first, then delete JSON
+        toml_cfg.save()
+        logger.info("CFG-01: TOML config saved to %s", self.config_path)
+
+        legacy_path.unlink(missing_ok=True)
+        logger.info("CFG-01: Legacy JSON purged — single source of truth established")
 
 
 async def start_full(args) -> AppContext:

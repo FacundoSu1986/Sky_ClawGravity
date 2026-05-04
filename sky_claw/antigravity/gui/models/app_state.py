@@ -30,15 +30,6 @@ class AppState:
     # Tareas asíncronas de fondo (mantenido por seguridad del event loop)
     _bg_tasks: set[Any] = field(default_factory=set)
 
-    # Registro de elementos UI para el nuevo diseño (referencias, no widgets como datos de dominio)
-    _ui_elements: dict[str, Any] = field(default_factory=dict, repr=False)
-
-    def register_ui_element(self, name: str, element: Any) -> None:
-        self._ui_elements[name] = element
-
-    def get_ui_element(self, name: str) -> Any | None:
-        return self._ui_elements.get(name)
-
     def clear_chat_messages(self) -> None:
         self._chat_messages.clear()
 
