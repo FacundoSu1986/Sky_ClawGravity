@@ -165,8 +165,16 @@ class Config:
         raise AttributeError(f"'Config' object has no attribute '{name}'")
 
     def save(self):
-        """Persist current configuration to TOML."""
-        self._config_path.parent.mkdir(parents=True, exist_ok=True)
+        """Persist current configuration to TOML.
+
+        Fail-Safe: never raises on disk write failure (PermissionError /
+        OSError). Retries up to 3 times with exponential backoff to absorb
+        transient Windows file locks (AV scanners, OneDrive sync, IDE handles);
+        if all attempts fail, logs an error and returns silently so the app
+        keeps running with the in-memory configuration.
+        """
+        import time
+
         import tomli_w
 
         sensitive_keys = [
@@ -193,8 +201,35 @@ class Config:
                     )
                     # Fail-closed: do NOT fall back to plaintext in config file
 
-        with open(self._config_path, "wb") as f:
-            tomli_w.dump(save_data, f)
+        max_attempts = 3
+        backoff = 0.1
+        for attempt in range(1, max_attempts + 1):
+            try:
+                self._config_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self._config_path, "wb") as f:
+                    tomli_w.dump(save_data, f)
+                return
+            except (PermissionError, OSError) as exc:
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Config save attempt %d/%d failed (%s: %s); retrying in %.2fs",
+                        attempt,
+                        max_attempts,
+                        type(exc).__name__,
+                        exc,
+                        backoff,
+                    )
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                logger.error(
+                    "Fail-Safe activado: No se pudo guardar config.toml tras %d intentos "
+                    "(%s: %s). La aplicación continuará con la configuración en memoria.",
+                    max_attempts,
+                    type(exc).__name__,
+                    exc,
+                )
+                return
 
     @property
     def as_dict(self) -> dict[str, Any]:
