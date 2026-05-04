@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import pathlib
 import sys
@@ -95,14 +96,12 @@ class Config:
         # Verify the save succeeds; if it fails, log a critical warning so the
         # operator is aware that plaintext secrets remain on disk.
         if migrated:
-            try:
-                self.save()
+            if self.save():
                 logger.info("Migrated sensitive keys to keyring and scrubbed plaintext from TOML.")
-            except OSError as exc:
+            else:
                 logger.critical(
-                    "Failed to scrub plaintext secrets from TOML after keyring migration: %s. "
+                    "Failed to scrub plaintext secrets from TOML after keyring migration. "
                     "Sensitive data may remain on disk at %s.",
-                    exc,
                     self._config_path,
                 )
 
@@ -164,15 +163,19 @@ class Config:
             return self._data[name]
         raise AttributeError(f"'Config' object has no attribute '{name}'")
 
-    def save(self):
+    def save(self) -> bool:
         """Persist current configuration to TOML.
 
-        Fail-Safe: never raises on disk write failure (PermissionError /
-        OSError). Retries up to 3 times with exponential backoff to absorb
-        transient Windows file locks (AV scanners, OneDrive sync, IDE handles);
-        if all attempts fail, logs an error and returns silently so the app
-        keeps running with the in-memory configuration.
+        Uses atomic write (temp file + os.replace) to prevent config corruption
+        on mid-write failure. Retries up to 3 times with exponential backoff to
+        absorb transient Windows file locks (AV scanners, OneDrive sync, IDE
+        handles). Never raises on disk write failure.
+
+        Returns:
+            True if successfully persisted, False if all attempts failed.
         """
+        import os
+        import tempfile
         import time
 
         import tomli_w
@@ -204,12 +207,23 @@ class Config:
         max_attempts = 3
         backoff = 0.1
         for attempt in range(1, max_attempts + 1):
+            tmp_path = None
             try:
                 self._config_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(self._config_path, "wb") as f:
-                    tomli_w.dump(save_data, f)
-                return
+                with tempfile.NamedTemporaryFile(
+                    "wb",
+                    dir=self._config_path.parent,
+                    delete=False,
+                    suffix=".tmp",
+                ) as tmp:
+                    tmp_path = pathlib.Path(tmp.name)
+                    tomli_w.dump(save_data, tmp)
+                os.replace(tmp_path, self._config_path)
+                return True
             except (PermissionError, OSError) as exc:
+                if tmp_path is not None:
+                    with contextlib.suppress(OSError):
+                        tmp_path.unlink(missing_ok=True)
                 if attempt < max_attempts:
                     logger.warning(
                         "Config save attempt %d/%d failed (%s: %s); retrying in %.2fs",
@@ -223,13 +237,24 @@ class Config:
                     backoff *= 2
                     continue
                 logger.error(
-                    "Fail-Safe activado: No se pudo guardar config.toml tras %d intentos "
+                    "Fail-Safe activado: No se pudo guardar %s tras %d intentos "
                     "(%s: %s). La aplicación continuará con la configuración en memoria.",
+                    self._config_path,
                     max_attempts,
                     type(exc).__name__,
                     exc,
                 )
-                return
+                return False
+
+    async def async_save(self) -> bool:
+        """Async wrapper for save() — runs blocking I/O in a thread pool.
+
+        Use this from async (NiceGUI) call sites to avoid blocking the event loop
+        during retries/backoff.
+        """
+        import asyncio
+
+        return await asyncio.to_thread(self.save)
 
     @property
     def as_dict(self) -> dict[str, Any]:

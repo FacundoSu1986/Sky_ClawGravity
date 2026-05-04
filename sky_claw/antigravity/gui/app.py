@@ -409,7 +409,7 @@ class SetupWizardModal:
             cfg._data["first_run"] = False
             if telegram_chatid:
                 cfg._data["telegram_chat_id"] = telegram_chatid.replace("@", "")
-            cfg.save()
+            await cfg.async_save()
 
             # Clear localStorage drafts
             await self._clear_drafts()
@@ -1173,7 +1173,7 @@ body {
                         cfg._data["llm_provider"] = new_provider
                         if new_tg_chatid:
                             cfg._data["telegram_chat_id"] = new_tg_chatid
-                        cfg.save()
+                        await cfg.async_save()
 
                         await self._hot_reload_provider(new_provider, new_api_key)
 
