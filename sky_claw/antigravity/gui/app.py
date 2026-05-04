@@ -116,6 +116,7 @@ class SetupWizardModal:
         self._on_complete = on_complete
         self._state = app_state or get_app_state()
         self._overlay_el: ui.element | None = None
+        self._step_label: ui.label | None = None
         # Input references (ahora delegadas a AppState)
         # Draft fields (non-sensitive) for localStorage
         self._draft_fields: dict[str, ui.input] = {}
@@ -143,8 +144,8 @@ class SetupWizardModal:
                             </div>
                         """)
                         ui.label("ASISTENTE DE CONFIGURACIÓN").classes("sky-wizard-title")
-                    step_label = ui.label("Paso 1 de 2").classes("sky-wizard-step")
-                    self._state.register_ui_element("step_label", step_label)
+                    self._step_label = ui.label("Paso 1 de 2").classes("sky-wizard-step")
+                    self._state.register_ui_element("step_label", self._step_label)
 
                 # Progress bar
                 with (

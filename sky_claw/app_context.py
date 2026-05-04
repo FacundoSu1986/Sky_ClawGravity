@@ -212,6 +212,7 @@ class AppContext:
             )
 
             local_cfg = Config(config_path)
+            self.config = local_cfg
             # H-04: Eliminada mutación de os.environ. Los secretos se pasan explícitamente.
 
             mo2_root = self._args.mo2_root
@@ -333,6 +334,9 @@ class AppContext:
                     sandbox_roots.append(_resolved_install)
 
             validator = PathValidator(roots=sandbox_roots)
+            self.path_validator = validator
+            if self.config.mo2_root:
+                self.path_validator.add_allowed_root(pathlib.Path(self.config.mo2_root))
             mo2 = MO2Controller(mo2_root, validator)
 
             await self.network.initialize(nexus_key, self._args.staging_dir)

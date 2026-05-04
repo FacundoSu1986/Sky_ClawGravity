@@ -130,6 +130,12 @@ class PathValidator:
     def roots(self) -> tuple[pathlib.Path, ...]:
         return self._roots
 
+    def add_allowed_root(self, root: pathlib.Path) -> None:
+        """Add a new sandbox root dynamically."""
+        resolved = root.resolve()
+        if resolved not in self._roots:
+            self._roots = self._roots + (resolved,)
+
     def validate(self, path: str | pathlib.Path, *, strict_symlink: bool = True) -> pathlib.Path:
         """Return the resolved *path* if it is inside the sandbox.
 
