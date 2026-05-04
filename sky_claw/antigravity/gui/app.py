@@ -116,9 +116,23 @@ class SetupWizardModal:
         self._on_complete = on_complete
         self._state = app_state or get_app_state()
         self._overlay_el: ui.element | None = None
-        # Input references (ahora delegadas a AppState)
         # Draft fields (non-sensitive) for localStorage
         self._draft_fields: dict[str, ui.input] = {}
+        # Wizard state and UI element references — bound during build()
+        self._step: int = 1
+        self._step_label: ui.label | None = None
+        self._progress_bar: ui.element | None = None
+        self._step1_container: ui.column | None = None
+        self._step2_container: ui.column | None = None
+        self._api_key_input: ui.input | None = None
+        self._telegram_id_input: ui.input | None = None
+        self._frequency_input: ui.input | None = None
+        self._provider_toggle: ui.toggle | None = None
+        self._nexus_input: ui.input | None = None
+        self._telegram_token_input: ui.input | None = None
+        self._back_btn: ui.button | None = None
+        self._next_btn: ui.button | None = None
+        self._submit_btn: ui.button | None = None
 
     def build(self) -> None:
         """Renderiza el overlay fijo sobre el dashboard."""
@@ -143,8 +157,8 @@ class SetupWizardModal:
                             </div>
                         """)
                         ui.label("ASISTENTE DE CONFIGURACIÓN").classes("sky-wizard-title")
-                    step_label = ui.label("Paso 1 de 2").classes("sky-wizard-step")
-                    self._state.register_ui_element("step_label", step_label)
+                    self._step_label = ui.label("Paso 1 de 2").classes("sky-wizard-step")
+                    self._state.register_ui_element("step_label", self._step_label)
 
                 # Progress bar
                 with (
@@ -152,11 +166,11 @@ class SetupWizardModal:
                     .classes("w-full mb-4")
                     .style("height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;")
                 ):
-                    progress_bar = ui.element("div").style(
+                    self._progress_bar = ui.element("div").style(
                         "width:50%; height:100%; background:var(--sky-gold); "
                         "border-radius:2px; transition:width 0.3s ease;"
                     )
-                    self._state.register_ui_element("progress_bar", progress_bar)
+                    self._state.register_ui_element("progress_bar", self._progress_bar)
 
                 # Description
                 ui.label(
@@ -165,13 +179,13 @@ class SetupWizardModal:
                 ).classes("sky-wizard-description mb-5")
 
                 # ── Step 1 ──
-                step1_container = ui.column().classes("w-full gap-4")
-                self._state.register_ui_element("step1_container", step1_container)
-                with step1_container:
+                self._step1_container = ui.column().classes("w-full gap-4")
+                self._state.register_ui_element("step1_container", self._step1_container)
+                with self._step1_container:
                     # API Key
                     with ui.column().classes("w-full gap-1"):
                         ui.label("CLAVE API DE OPERACIONES").classes("sky-wizard-label")
-                        api_key_input = (
+                        self._api_key_input = (
                             ui.input(
                                 placeholder="sk-... o clave del proveedor",
                             )
@@ -181,13 +195,13 @@ class SetupWizardModal:
                                 'input-class="sky-wizard-input" color=amber maxlength=512'
                             )
                         )
-                        self._state.register_ui_element("api_key_input", api_key_input)
+                        self._state.register_ui_element("api_key_input", self._api_key_input)
                         ui.label("Usa tu API Key de producción").classes("sky-wizard-hint")
 
                     # Telegram ID
                     with ui.column().classes("w-full gap-1"):
                         ui.label("ID DE TELEGRAM").classes("sky-wizard-label")
-                        telegram_id_input = (
+                        self._telegram_id_input = (
                             ui.input(
                                 placeholder="@usuario_id",
                             )
@@ -196,14 +210,14 @@ class SetupWizardModal:
                                 'dark standout="bg-transparent" input-class="sky-wizard-input" color=amber maxlength=32'
                             )
                         )
-                        self._state.register_ui_element("telegram_id_input", telegram_id_input)
+                        self._state.register_ui_element("telegram_id_input", self._telegram_id_input)
                         ui.label("ID único de tu cuenta de Telegram").classes("sky-wizard-hint")
-                        self._draft_fields["telegram_chatid"] = telegram_id_input
+                        self._draft_fields["telegram_chatid"] = self._telegram_id_input
 
                     # Frecuencia
                     with ui.column().classes("w-full gap-1"):
                         ui.label("FRECUENCIA (MS)").classes("sky-wizard-label")
-                        frequency_input = (
+                        self._frequency_input = (
                             ui.input(
                                 placeholder="5000",
                                 value="5000",
@@ -213,19 +227,19 @@ class SetupWizardModal:
                                 'dark standout="bg-transparent" input-class="sky-wizard-input" color=amber maxlength=10'
                             )
                         )
-                        self._state.register_ui_element("frequency_input", frequency_input)
+                        self._state.register_ui_element("frequency_input", self._frequency_input)
                         ui.label("Frecuencia de monitoreos en milisegundos").classes("sky-wizard-hint")
-                        self._draft_fields["frequency_ms"] = frequency_input
+                        self._draft_fields["frequency_ms"] = self._frequency_input
 
                 # ── Step 2 (hidden initially) ──
-                step2_container = ui.column().classes("w-full gap-4")
-                step2_container.style("display: none;")
-                self._state.register_ui_element("step2_container", step2_container)
-                with step2_container:
+                self._step2_container = ui.column().classes("w-full gap-4")
+                self._step2_container.style("display: none;")
+                self._state.register_ui_element("step2_container", self._step2_container)
+                with self._step2_container:
                     # Provider
                     with ui.column().classes("w-full gap-1"):
                         ui.label("PROVEEDOR IA").classes("sky-wizard-label")
-                        provider_toggle = (
+                        self._provider_toggle = (
                             ui.toggle(
                                 ["anthropic", "deepseek", "ollama"],
                                 value="deepseek",
@@ -233,12 +247,12 @@ class SetupWizardModal:
                             .classes("w-full")
                             .props("color=amber")
                         )
-                        self._state.register_ui_element("provider_toggle", provider_toggle)
+                        self._state.register_ui_element("provider_toggle", self._provider_toggle)
 
                     # Nexus Key
                     with ui.column().classes("w-full gap-1"):
                         ui.label("NEXUS MODS API KEY").classes("sky-wizard-label")
-                        nexus_input = (
+                        self._nexus_input = (
                             ui.input(
                                 placeholder="Opcional — para descargas automáticas",
                             )
@@ -248,12 +262,12 @@ class SetupWizardModal:
                                 'input-class="sky-wizard-input" color=amber maxlength=512'
                             )
                         )
-                        self._state.register_ui_element("nexus_input", nexus_input)
+                        self._state.register_ui_element("nexus_input", self._nexus_input)
 
                     # Telegram Token
                     with ui.column().classes("w-full gap-1"):
                         ui.label("TELEGRAM BOT TOKEN").classes("sky-wizard-label")
-                        telegram_token_input = (
+                        self._telegram_token_input = (
                             ui.input(
                                 placeholder="Opcional — para notificaciones HITL",
                             )
@@ -263,11 +277,11 @@ class SetupWizardModal:
                                 'input-class="sky-wizard-input" color=amber maxlength=512'
                             )
                         )
-                        self._state.register_ui_element("telegram_token_input", telegram_token_input)
+                        self._state.register_ui_element("telegram_token_input", self._telegram_token_input)
 
                 # ── CTA Button ──
                 with ui.row().classes("w-full justify-end gap-3 mt-4"):
-                    back_btn = (
+                    self._back_btn = (
                         ui.button(
                             "Atrás",
                             on_click=self._go_step1,
@@ -276,9 +290,9 @@ class SetupWizardModal:
                         .props("ripple flat no-caps")
                         .style("color: var(--sky-parchment-text); display: none;")
                     )
-                    self._state.register_ui_element("back_btn", back_btn)
+                    self._state.register_ui_element("back_btn", self._back_btn)
 
-                    next_btn = (
+                    self._next_btn = (
                         ui.button(
                             "Siguiente",
                             on_click=self._go_step2,
@@ -286,9 +300,9 @@ class SetupWizardModal:
                         .classes("sky-wizard-cta px-6 py-3 rounded-xl text-lg")
                         .props("ripple no-caps")
                     )
-                    self._state.register_ui_element("next_btn", next_btn)
+                    self._state.register_ui_element("next_btn", self._next_btn)
 
-                    submit_btn = (
+                    self._submit_btn = (
                         ui.button(
                             on_click=self._on_submit,
                         )
@@ -296,8 +310,8 @@ class SetupWizardModal:
                         .props("ripple no-caps")
                         .style("display: none;")
                     )
-                    self._state.register_ui_element("submit_btn", submit_btn)
-                    with submit_btn:
+                    self._state.register_ui_element("submit_btn", self._submit_btn)
+                    with self._submit_btn:
                         ui.html(f'<span style="margin-right:8px;">{_ICON_ROCKET}</span>')
                         ui.label("Inicializar Sistema")
 
