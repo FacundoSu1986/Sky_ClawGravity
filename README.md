@@ -92,6 +92,16 @@ Sky-Claw aplica una política de seguridad estricta:
 
 ---
 
+## 🛠️ Mantenimiento y Estabilidad
+
+### ⚠️ Regla Inquebrantable de Arquitectura
+Para garantizar la estabilidad de la orquestación y proteger el event loop de **Antigravity IDE**:
+> Cualquier herramienta nueva que se integre en el futuro (compiladores, generadores de assets, bases de datos locales vectoriales, etc.) que produzca archivos dinámicos, **debe ser declarada en el `.gitignore` antes de ejecutarse por primera vez.**
+
+Esto evita deadlocks masivos en el File Watcher causados por ráfagas de I/O en directorios no ignorados.
+
+---
+
 ## ✅ Roadmap (Estado Actual)
 
 - [x] Soporte Multi-LLM (OpenAI, Anthropic, DeepSeek, Ollama)

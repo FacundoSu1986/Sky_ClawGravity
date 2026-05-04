@@ -1,6 +1,12 @@
 # =============================================================================
 # Sky-Claw .gitignore — Post-Deadlock Hardened Shield (2026-05-03)
 # =============================================================================
+# ⚠️ PREVENCIÓN: REGLA INQUEBRANTABLE DE ARQUITECTURA
+# Cualquier herramienta nueva que se integre (compiladores, generadores de
+# assets, bases de datos locales vectoriales) que produzca archivos dinámicos,
+# DEBE ser declarada en este .gitignore ANTES de ejecutarse por primera vez.
+# Esto protege el event loop de Antigravity y mantiene la orquestación estable.
+# =============================================================================
 # Purpose: Exclude all file-watcher deadlock vectors identified in forensic
 # analysis. Each section is annotated with the reason for exclusion.
 # =============================================================================

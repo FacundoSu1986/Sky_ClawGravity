@@ -233,7 +233,7 @@ class FrontendBridge:
 
     def _handle_reconnect_error(self, exc: Exception, msg: str, backoff: float) -> None:
         """Log reconnection errors with attempt counter."""
-        logger.warning(
+        logger.debug(
             "⚠️ %s (%s). Reintento %d/%d en %.1fs...",
             msg,
             type(exc).__name__,
@@ -245,10 +245,10 @@ class FrontendBridge:
     def _check_reconnect_limit(self) -> None:
         """Check if reconnection attempts exceed limit.
 
-        If max attempts reached, log warning about 5-minute pause.
+        If max attempts reached, log debug about 5-minute pause.
         """
         if self._reconnect_count >= MAX_RECONNECT_ATTEMPTS:
-            logger.warning(
+            logger.debug(
                 "⚠️ Límite de intentos de reconexión (%d) alcanzado. Pausa de %d segundos antes de reintentar...",
                 MAX_RECONNECT_ATTEMPTS,
                 RECONNECT_PAUSE_DURATION,
