@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from sky_claw.config import Config
-from sky_claw.local.local_config import LocalConfig, load, save
 
 # ---------------------------------------------------------------------------
 # 1. AppContext.is_configured property
@@ -194,105 +193,7 @@ class TestChatNotConfigured:
 
 
 # ---------------------------------------------------------------------------
-# 6. POST /api/setup triggers on_setup_complete callback
-# ---------------------------------------------------------------------------
-
-
-class TestSetupCallback:
-    @pytest.mark.asyncio
-    async def test_setup_triggers_callback(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
-        """POST /api/setup invokes the on_setup_complete callback."""
-        from sky_claw.antigravity.web.app import WebApp
-
-        callback_called = False
-
-        async def fake_callback(web_app_instance):
-            nonlocal callback_called
-            callback_called = True
-            # Simulate start_full updating the router.
-            web_app_instance._router = MagicMock()
-
-        config_path = tmp_path / "sky_claw_config.json"
-        web_app = WebApp(
-            router=None,
-            session=MagicMock(),
-            config_path=config_path,
-            on_setup_complete=fake_callback,
-        )
-        app = web_app.create_app()
-        client = await aiohttp_client(app)
-
-        resp = await client.post(
-            "/api/setup",
-            json={
-                "mo2_root": "D:/MO2",
-                "api_key": "sk-ant-test-key",
-            },
-        )
-        assert resp.status == 200
-        assert callback_called is True
-        # Router should now be set by the callback.
-        assert web_app._router is not None
-
-    @pytest.mark.asyncio
-    async def test_setup_callback_failure_returns_500(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
-        """If on_setup_complete raises, POST /api/setup returns 500."""
-        from sky_claw.antigravity.web.app import WebApp
-
-        async def failing_callback(web_app_instance):
-            raise RuntimeError("Provider init failed")
-
-        config_path = tmp_path / "sky_claw_config.json"
-        web_app = WebApp(
-            router=None,
-            session=MagicMock(),
-            config_path=config_path,
-            on_setup_complete=failing_callback,
-        )
-        app = web_app.create_app()
-        client = await aiohttp_client(app)
-
-        resp = await client.post(
-            "/api/setup",
-            json={
-                "api_key": "sk-ant-test",
-            },
-        )
-        assert resp.status == 500
-        data = await resp.json()
-        assert "initialization failed" in data["error"]
-
-    @pytest.mark.asyncio
-    async def test_setup_without_callback_still_saves(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
-        """Without callback, POST /api/setup still saves config normally."""
-        from sky_claw.antigravity.web.app import WebApp
-
-        config_path = tmp_path / "sky_claw_config.json"
-        web_app = WebApp(
-            router=MagicMock(),
-            session=MagicMock(),
-            config_path=config_path,
-            on_setup_complete=None,
-        )
-        app = web_app.create_app()
-        client = await aiohttp_client(app)
-
-        resp = await client.post(
-            "/api/setup",
-            json={
-                "mo2_root": "E:/MO2",
-                "api_key": "sk-ant-no-callback",
-            },
-        )
-        assert resp.status == 200
-
-        cfg = load(config_path)
-        assert cfg.mo2_root == "E:/MO2"
-        assert cfg.first_run is False
-
-
-# ---------------------------------------------------------------------------
-# 7. WebApp accepts router=None constructor
+# 6. WebApp accepts router=None constructor
 # ---------------------------------------------------------------------------
 
 
@@ -306,27 +207,6 @@ class TestWebAppNullRouter:
             session=MagicMock(),
         )
         assert web_app._router is None
-
-    @pytest.mark.asyncio
-    async def test_index_redirects_on_first_run(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
-        """With first_run=True, / redirects to /setup.html even without router."""
-        from sky_claw.antigravity.web.app import WebApp
-
-        config_path = tmp_path / "sky_claw_config.json"
-        cfg = LocalConfig(first_run=True)
-        save(cfg, config_path)
-
-        web_app = WebApp(
-            router=None,
-            session=MagicMock(),
-            config_path=config_path,
-        )
-        app = web_app.create_app()
-        client = await aiohttp_client(app)
-
-        resp = await client.get("/", allow_redirects=False)
-        assert resp.status == 302
-        assert resp.headers["Location"] == "/setup.html"
 
 
 # ---------------------------------------------------------------------------

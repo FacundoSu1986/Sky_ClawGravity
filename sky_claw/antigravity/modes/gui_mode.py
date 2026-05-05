@@ -1,9 +1,12 @@
+"""GUI mode entry point — boots the NiceGUI Forge interface."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import uuid
 
+from sky_claw.antigravity.gui.sky_claw_gui import set_runtime_context, setup_app
 from sky_claw.antigravity.orchestrator.supervisor import SupervisorAgent
 from sky_claw.app_context import AppContext, _resolve_config_path_static, start_full
 from sky_claw.logging_config import correlation_id_var
@@ -12,7 +15,7 @@ logger = logging.getLogger("sky_claw")
 
 
 async def _gui_logic_loop(ctx: AppContext) -> None:
-    """Processes chat messages from GUI in a background task."""
+    """Process chat messages from the GUI in a background task."""
     consecutive_errors = 0
     while True:
         try:
@@ -43,7 +46,7 @@ async def _gui_logic_loop(ctx: AppContext) -> None:
 
 
 async def _gui_mod_update_loop(ctx: AppContext) -> None:
-    """Periodically fetches modlist for the GUI."""
+    """Periodically fetch the mod list for the GUI queue consumer."""
     while True:
         try:
             if ctx.registry:
@@ -58,54 +61,37 @@ async def _gui_mod_update_loop(ctx: AppContext) -> None:
             await asyncio.sleep(5)
 
 
-def run_gui_mode(args):
+def run_gui_mode(args) -> None:
     from nicegui import app, ui
-
-    from sky_claw.antigravity.gui.app import DashboardGUI
 
     config_path = _resolve_config_path_static(args)
 
-    # Shared state — initialized once, survives page reloads
-    _ctx_holder: dict[str, object] = {}
+    setup_app()
 
-    async def _ensure_context() -> AppContext:
-        """Initialize AppContext once, reuse on page reloads."""
-        if "ctx" not in _ctx_holder:
-            ctx = await start_full(args)
-            _ctx_holder["ctx"] = ctx
+    _runtime: dict[str, object] = {}
 
-            supervisor = SupervisorAgent()
-            _ctx_holder["supervisor"] = supervisor
-            ctx._track_task(supervisor.start(), name="supervisor-daemon")
-            ctx._track_task(_gui_logic_loop(ctx), name="gui-logic-loop")
-            ctx._track_task(_gui_mod_update_loop(ctx), name="gui-mod-update")
-            logger.info("Sky-Claw Daemon Core inicializado en background.")
-        return _ctx_holder["ctx"]
+    async def _bootstrap() -> None:
+        """Spin up AppContext + supervisor + background loops, then publish."""
+        if "ctx" in _runtime:
+            return
+        ctx = await start_full(args)
+        _runtime["ctx"] = ctx
 
-    @ui.page("/setup")
-    async def setup_page():
-        """Legacy: redirige al dashboard (el wizard ahora es un modal overlay)."""
-        ui.navigate.to("/")
+        supervisor = SupervisorAgent()
+        _runtime["supervisor"] = supervisor
+        ctx._track_task(supervisor.start(), name="supervisor-daemon")
+        ctx._track_task(_gui_logic_loop(ctx), name="gui-logic-loop")
+        ctx._track_task(_gui_mod_update_loop(ctx), name="gui-mod-update")
 
-    @ui.page("/")
-    async def main_page():
-        # Siempre renderiza el dashboard; si no está configurado,
-        # el SetupWizardModal se abre automáticamente como overlay.
-        ctx = await _ensure_context()
-        ctx.config_path = config_path  # Exponer para el wizard modal
-        gui = DashboardGUI(ctx)
-        gui.build()
+        set_runtime_context(app_context=ctx, config_path=config_path, supervisor=supervisor)
+        logger.info("Sky-Claw Daemon Core initialised; runtime context published.")
 
-        supervisor = _ctx_holder.get("supervisor")
-        if supervisor and hasattr(gui, "on_ejecutar"):
-            gui.on_ejecutar = supervisor.handle_execution_signal
+    app.on_startup(_bootstrap)
 
-        logger.info("Dashboard page rendered (context reused).")
-
-    async def _shutdown():
-        ctx = _ctx_holder.get("ctx")
-        if ctx:
-            await ctx.stop()
+    async def _shutdown() -> None:
+        ctx = _runtime.get("ctx")
+        if ctx is not None:
+            await ctx.stop()  # type: ignore[attr-defined]
 
     app.on_shutdown(_shutdown)
 

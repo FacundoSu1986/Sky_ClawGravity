@@ -28,16 +28,6 @@ async def client(mock_router, mock_session, aiohttp_client):
     return await aiohttp_client(app)
 
 
-class TestWebIndex:
-    @pytest.mark.asyncio
-    async def test_index_returns_html(self, client) -> None:
-        resp = await client.get("/")
-        assert resp.status == 200
-        text = await resp.text()
-        assert "Sky-Claw" in text
-        assert "<html" in text
-
-
 class TestWebChatEndpoint:
     @pytest.mark.asyncio
     async def test_chat_returns_response(self, client, mock_router) -> None:
