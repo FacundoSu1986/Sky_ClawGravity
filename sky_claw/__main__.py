@@ -17,7 +17,7 @@ import logging
 import pathlib
 import sys
 
-# Apply Python 3.14+ polyfills before any sky_claw import that could
+# Apply Python 3.14+ polyfills before importing sky_claw submodules that could
 # transitively pull NiceGUI / vbuild. Must run before the package imports below.
 from sky_claw.compat import setup_python_compat
 
