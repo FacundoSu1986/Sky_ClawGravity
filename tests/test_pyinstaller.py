@@ -279,5 +279,3 @@ class TestSystemPrompt:
 
         assert "Default" in SYSTEM_PROMPT
         assert "perfil" in SYSTEM_PROMPT.lower()
-
-

@@ -108,7 +108,9 @@ class _StoreProxy:
     """Adapts ``store.get(key)/store.set(key, value)`` to ``.get()/.set(v)``.
 
     Preserves the API previously exposed by ``_ReactiveVar`` so existing
-    call sites (counters, flags) keep working without changes.
+    call sites (counters, flags) keep working without changes.  The
+    ``_value`` property lets NiceGUI's ``bind_text_from(var, "_value")``
+    observe the current value via ``getattr`` polling.
     """
 
     __slots__ = ("_key", "_store")
@@ -118,6 +120,10 @@ class _StoreProxy:
         self._key = key
         if store.get(key) is None:
             store.set(key, initial)
+
+    @property
+    def _value(self) -> Any:
+        return self._store.get(self._key)
 
     def get(self) -> Any:
         return self._store.get(self._key)
@@ -426,9 +432,12 @@ def setup_app() -> None:
 
     # Subscribe the page to the gate-driving keys so the Wizard→Dashboard
     # transition is instantaneous in the same session.
+    # Also refresh on is_loading changes so the chat panel re-renders
+    # when the user sends a message or the assistant responds.
     store = get_store()
     store.subscribe(_FIRST_RUN_KEY, main_page.refresh)
     store.subscribe(_RUNTIME_KEY, main_page.refresh)
+    store.subscribe("is_loading", main_page.refresh)
 
     app.on_startup(lambda: get_agent_client().start())
 

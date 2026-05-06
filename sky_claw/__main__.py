@@ -156,6 +156,7 @@ def main(argv: list[str] | None = None) -> None:
         log_level = logging.DEBUG if args.verbose else logging.INFO
         setup_logging(level=log_level)
         from sky_claw.antigravity.modes.gui_mode import run_gui_mode  # lazy: pulls NiceGUI
+
         run_gui_mode(args)
     else:
         with contextlib.suppress(KeyboardInterrupt):

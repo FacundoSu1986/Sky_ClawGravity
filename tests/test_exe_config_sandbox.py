@@ -286,5 +286,3 @@ class TestAppContextConfigPath:
         args = MagicMock()
         ctx = AppContext(args)
         assert ctx.config_path is None  # Before start()
-
-

@@ -6,7 +6,9 @@ import asyncio
 import logging
 import uuid
 
-from sky_claw.antigravity.gui.sky_claw_gui import set_runtime_context, setup_app
+from sky_claw.antigravity.gui.gui_event_adapter import EventType, SkyClawEvent
+from sky_claw.antigravity.gui.gui_event_adapter import event_bus as gui_event_bus
+from sky_claw.antigravity.gui.sky_claw_gui import get_state, set_runtime_context, setup_app
 from sky_claw.antigravity.orchestrator.supervisor import SupervisorAgent
 from sky_claw.app_context import AppContext, _resolve_config_path_static, start_full
 from sky_claw.logging_config import correlation_id_var
@@ -15,7 +17,13 @@ logger = logging.getLogger("sky_claw")
 
 
 async def _gui_logic_loop(ctx: AppContext) -> None:
-    """Process chat messages from the GUI in a background task."""
+    """Process chat messages from the GUI in a background task.
+
+    Reads ``ctx.logic_queue`` items placed by callers that prefer the
+    direct-router path (e.g. integration scripts).  The modern GUI chat
+    path uses ChatController → EventBus instead; this loop is kept as the
+    offline-fallback processor so both paths co-exist.
+    """
     consecutive_errors = 0
     while True:
         try:
@@ -26,16 +34,30 @@ async def _gui_logic_loop(ctx: AppContext) -> None:
             if item[0] == "chat":
                 text = item[1]
                 if not ctx.router:
-                    ctx.gui_queue.put(("error", "Router no inicializado. Completá el setup primero."))
+                    gui_event_bus.publish(
+                        SkyClawEvent(
+                            type=EventType.LLM_RESPONSE,
+                            data={"response": "⚠️ Router no inicializado. Completá el setup primero."},
+                            source="logic_loop",
+                        )
+                    )
                     continue
                 correlation_id_var.set(str(uuid.uuid4()))
                 try:
                     response = await ctx.router.chat(text, ctx.session, chat_id="gui-session")
-                    ctx.gui_queue.put(("response", response))
+                    gui_event_bus.publish(
+                        SkyClawEvent(type=EventType.LLM_RESPONSE, data={"response": response}, source="logic_loop")
+                    )
                     consecutive_errors = 0
                 except Exception as e:
                     logger.exception("Logic error in chat: %s", e)
-                    ctx.gui_queue.put(("error", f"Error procesando comando: {type(e).__name__}: {e}"))
+                    gui_event_bus.publish(
+                        SkyClawEvent(
+                            type=EventType.LLM_RESPONSE,
+                            data={"response": f"⚠️ Error: {type(e).__name__}: {e}"},
+                            source="logic_loop",
+                        )
+                    )
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -46,13 +68,12 @@ async def _gui_logic_loop(ctx: AppContext) -> None:
 
 
 async def _gui_mod_update_loop(ctx: AppContext) -> None:
-    """Periodically fetch the mod list for the GUI queue consumer."""
+    """Periodically refresh the active-mod counter in the reactive store."""
     while True:
         try:
             if ctx.registry:
                 mods_dicts = await ctx.registry.search_mods("")
-                mods = [m["name"] for m in mods_dicts]
-                ctx.gui_queue.put(("modlist", mods))
+                get_state().active_mods.set(len(mods_dicts))
             await asyncio.sleep(10)
         except asyncio.CancelledError:
             break
@@ -83,12 +104,31 @@ def run_gui_mode(args) -> None:
         ctx._track_task(_gui_logic_loop(ctx), name="gui-logic-loop")
         ctx._track_task(_gui_mod_update_loop(ctx), name="gui-mod-update")
 
+        # Start the aiohttp sub-server for /api/chat + Operations Hub WS.
+        # Runs on port 8765 so external scripts and AgentCommunicationClient
+        # can reach the chat endpoint without conflicting with NiceGUI (8080).
+        from aiohttp import web as aiohttp_web
+
+        from sky_claw.antigravity.web.app import WebApp
+
+        web_app_inst = WebApp(router=ctx.router, session=ctx.session)
+        aiohttp_app = web_app_inst.create_app()
+        runner = aiohttp_web.AppRunner(aiohttp_app)
+        await runner.setup()
+        site = aiohttp_web.TCPSite(runner, "127.0.0.1", 8765)
+        await site.start()
+        _runtime["aiohttp_runner"] = runner
+        logger.info("aiohttp API server started on 127.0.0.1:8765 (/api/chat)")
+
         set_runtime_context(app_context=ctx, config_path=config_path, supervisor=supervisor)
         logger.info("Sky-Claw Daemon Core initialised; runtime context published.")
 
     app.on_startup(_bootstrap)
 
     async def _shutdown() -> None:
+        runner = _runtime.get("aiohttp_runner")
+        if runner is not None:
+            await runner.cleanup()
         ctx = _runtime.get("ctx")
         if ctx is not None:
             await ctx.stop()  # type: ignore[attr-defined]
