@@ -357,7 +357,9 @@ def main_page() -> None:
         "storage_used": state.storage_used,
     }
 
-    sample_mods = [
+    # Use live mod data from the store (written by _gui_mod_update_loop).
+    # Fall back to placeholder only until the first DB refresh arrives.
+    mods: list[dict[str, Any]] = get_store().get("mods_list") or [
         {"name": "Skyrim 202X", "status": "active", "size_mb": 2400},
         {"name": "Immersive Armors", "status": "active", "size_mb": 156},
         {"name": "Lux Via", "status": "update", "size_mb": 89},
@@ -384,7 +386,7 @@ def main_page() -> None:
 
     render_dashboard(
         stats=stats,
-        mods=sample_mods,
+        mods=mods,
         chat_messages=chat_messages,
         is_thinking=state.is_thinking,
         callbacks=callbacks,
@@ -438,6 +440,7 @@ def setup_app() -> None:
     store.subscribe(_FIRST_RUN_KEY, main_page.refresh)
     store.subscribe(_RUNTIME_KEY, main_page.refresh)
     store.subscribe("is_loading", main_page.refresh)
+    store.subscribe("mods_list", main_page.refresh)
 
     app.on_startup(lambda: get_agent_client().start())
 

@@ -68,12 +68,15 @@ async def _gui_logic_loop(ctx: AppContext) -> None:
 
 
 async def _gui_mod_update_loop(ctx: AppContext) -> None:
-    """Periodically refresh the active-mod counter in the reactive store."""
+    """Periodically refresh active-mod count and mod list in the reactive store."""
+    from sky_claw.antigravity.gui.state import get_store
+
     while True:
         try:
             if ctx.registry:
                 mods_dicts = await ctx.registry.search_mods("")
                 get_state().active_mods.set(len(mods_dicts))
+                get_store().set("mods_list", mods_dicts)
             await asyncio.sleep(10)
         except asyncio.CancelledError:
             break
