@@ -1,141 +1,173 @@
-"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║          SKY-CLAW GUI v2.1 — PUNTO DE ENSAMBLAJE (ASSEMBLY POINT)          ║
-║      Refactoring Fase 4: MVVM completo con Inyección de Dependencias       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+"""Sky-Claw NiceGUI Forge — assembly point.
 
-Arquitectura MVVM:
-  • VIEW:        sky_claw.antigravity.gui.views          (componentes visuales puros)
-  • VIEWMODEL:   ReactiveState               (variables NiceGUI reactivas)
-  • MODEL:       sky_claw.antigravity.gui.models         (AppState puro, thread-safe)
-  • CONTROLLERS: sky_claw.antigravity.gui.controllers    (lógica de negocio aislada)
+Single-source-of-truth reactive composition: the wizard and the dashboard
+share the process-wide :class:`ReactiveStore`, so a Wizard submission
+that flips ``first_run`` immediately re-renders the page in the same
+session via ``@ui.refreshable``.
 
-Este archivo es un Dependency Injector: instancia estado, controladores y vistas.
-NO contiene lógica de negocio propia.
+Architecture
+============
+* MODEL  ``models.app_state.AppState`` (pure, thread-safe)
+* STATE  ``state.reactive_store.ReactiveStore`` (subscribers + ui.refreshable)
+* VIEWMODEL  ``ReactiveState`` (proxies that read/write the store)
+* CONTROLLERS  ``controllers.*`` (business logic)
+* VIEWS  ``views.*`` (pure visual code)
+
+The module exposes :func:`setup_app` (registers controllers, EventBus,
+static assets) and :func:`set_runtime_context` (called once by the entry
+mode with the live ``AppContext`` so the page can resolve the config
+path).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from nicegui import app, ui
 
-# ── Core imports ───────────────────────────────────────────────────────────────
 from sky_claw.antigravity.core.database import DatabaseAgent
 from sky_claw.antigravity.gui.agent_communication import AgentCommunicationClient
-
-# ── Controller imports ─────────────────────────────────────────────────────────
-from sky_claw.antigravity.gui.controllers import ChatController, ModController, NavigationController
-from sky_claw.antigravity.gui.gui_event_adapter import EventBus, EventType, SkyClawEvent, event_bus
+from sky_claw.antigravity.gui.controllers import (
+    ChatController,
+    ModController,
+    NavigationController,
+)
+from sky_claw.antigravity.gui.gui_event_adapter import (
+    EventBus,
+    EventType,
+    SkyClawEvent,
+    event_bus,
+)
 from sky_claw.antigravity.gui.models.app_state import AppState, get_app_state
-
-# ── View imports ───────────────────────────────────────────────────────────────
+from sky_claw.antigravity.gui.setup_wizard import SetupWizardModal
+from sky_claw.antigravity.gui.state import ReactiveStore, get_store
 from sky_claw.antigravity.gui.views import render_dashboard
+from sky_claw.config import Config
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# CONFIGURACIÓN Y CONSTANTES
-# ═══════════════════════════════════════════════════════════════════════════════
+logger = logging.getLogger(__name__)
 
-# Resolve paths relative to this module
 _CSS_PATH = Path(__file__).resolve().parent / "styles.css"
 _ASSETS_PATH = Path(__file__).resolve().parent / "assets"
 _WEB_STATIC_PATH = Path(__file__).resolve().parent.parent / "web" / "static"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# CAPA DE ACCESO A DATOS — DB AGENT
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Runtime context ───────────────────────────────────────────────────────────
+
+
+@dataclass(slots=True)
+class RuntimeContext:
+    """Live runtime references injected by the launching mode."""
+
+    app_context: Any
+    config_path: Path
+    supervisor: Any | None = None
+
+
+_RUNTIME_KEY = "runtime"
+_FIRST_RUN_KEY = "first_run"
+
+
+def set_runtime_context(
+    app_context: Any,
+    config_path: Path,
+    supervisor: Any | None = None,
+) -> None:
+    """Publish the live AppContext + config path into the reactive store."""
+    store = get_store()
+    store.set(
+        _RUNTIME_KEY,
+        RuntimeContext(app_context=app_context, config_path=config_path, supervisor=supervisor),
+    )
+
+
+def get_runtime_context() -> RuntimeContext | None:
+    return get_store().get(_RUNTIME_KEY)
+
+
+# ── Database (UI-side seed agent) ─────────────────────────────────────────────
 
 _db_agent: DatabaseAgent | None = None
 
 
 def get_db_agent() -> DatabaseAgent:
-    """Lazy initializer — avoids module-level instantiation outside async context."""
+    """Lazy initialiser — avoids module-level instantiation outside async context."""
     global _db_agent
     if _db_agent is None:
         _db_agent = DatabaseAgent()
     return _db_agent
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# VIEWMODEL — REACTIVE STATE (NiceGUI variables)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Reactive proxies ──────────────────────────────────────────────────────────
 
 
-class _ReactiveVar:
-    """Thin wrapper that mimics the .get()/.set() API expected by ReactiveState.
+class _StoreProxy:
+    """Adapts ``store.get(key)/store.set(key, value)`` to ``.get()/.set(v)``.
 
-    NiceGUI does NOT expose a public ``ui.core.variable`` API.
-    Reactive bindings are achieved via ``.bind_text_from(obj, 'attr')`` against
-    plain Python attributes or via ``ui.refreshable``.  Since the dashboard
-    currently reads these values eagerly at render time (no declarative bind),
-    a simple mutable box is sufficient.  When proper binding is needed, replace
-    this with a dict-backed reactive store and call ``ui.update()`` after mutations.
+    Preserves the API previously exposed by ``_ReactiveVar`` so existing
+    call sites (counters, flags) keep working without changes.  The
+    ``_value`` property lets NiceGUI's ``bind_text_from(var, "_value")``
+    observe the current value via ``getattr`` polling.
     """
 
-    __slots__ = ("_value",)
+    __slots__ = ("_key", "_store")
 
-    def __init__(self, initial_value: Any) -> None:
-        self._value = initial_value
+    def __init__(self, store: ReactiveStore, key: str, initial: Any) -> None:
+        self._store = store
+        self._key = key
+        if store.get(key) is None:
+            store.set(key, initial)
+
+    @property
+    def _value(self) -> Any:
+        return self._store.get(self._key)
 
     def get(self) -> Any:
-        return self._value
+        return self._store.get(self._key)
 
     def set(self, value: Any) -> None:
-        self._value = value
+        self._store.set(self._key, value)
 
 
 class ReactiveState:
-    """
-    ViewModel: variables reactivas NiceGUI. Se suscribe al EventBus para
-    actualizar la UI en respuesta a eventos del dominio.
-
-    NO contiene lógica de negocio — solo sincroniza estado con la capa visual.
-    """
+    """ViewModel: proxies the reactive store and subscribes to the EventBus."""
 
     def __init__(
         self,
         app_state: AppState | None = None,
         event_bus_instance: EventBus | None = None,
+        store: ReactiveStore | None = None,
     ) -> None:
         self._app_state = app_state or get_app_state_instance()
+        self._store = store or get_store()
 
-        # Variables UI reactivas — backed by plain _ReactiveVar boxes.
-        # Call .get() to read, .set(value) to write (same API as before).
-        self.active_mods = _ReactiveVar(0)
-        self.pending_updates = _ReactiveVar(0)
-        self.conflicts_count = _ReactiveVar(0)
-        self.storage_used = _ReactiveVar(0.0)
-        self.is_agent_connected = _ReactiveVar(False)
-        self.is_loading = _ReactiveVar(False)
+        self.active_mods = _StoreProxy(self._store, "active_mods", 0)
+        self.pending_updates = _StoreProxy(self._store, "pending_updates", 0)
+        self.conflicts_count = _StoreProxy(self._store, "conflicts_count", 0)
+        self.storage_used = _StoreProxy(self._store, "storage_used", 0.0)
+        self.is_agent_connected = _StoreProxy(self._store, "is_agent_connected", False)
+        self.is_loading = _StoreProxy(self._store, "is_loading", False)
 
-        # Suscribirse al EventBus para sincronizar la UI
         if event_bus_instance:
             event_bus_instance.subscribe(EventType.MOD_ADDED, self.handle_mod_added)
             event_bus_instance.subscribe(EventType.CONFLICT_DETECTED, self.handle_conflict_detected)
             event_bus_instance.subscribe(EventType.LLM_RESPONSE, self._handle_llm_notification)
             event_bus_instance.subscribe(EventType.AGENT_STATUS_CHANGE, self._handle_agent_status)
 
-    # ── Properties ─────────────────────────────────────────────────────────────
-
     @property
     def is_thinking(self) -> bool:
-        """Lee el estado de procesamiento desde AppState."""
         return self._app_state.is_thinking
 
     @property
     def wizard_step(self) -> int:
-        """Expone wizard_step de AppState."""
         return self._app_state.wizard_step
 
     @wizard_step.setter
     def wizard_step(self, value: int) -> None:
         self._app_state.wizard_step = value
-
-    # ── Chat helpers ────────────────────────────────────────────────────────────
 
     def add_chat_message(self, role: str, content: str) -> None:
         self._app_state.add_chat_message(role, content)
@@ -149,10 +181,7 @@ class ReactiveState:
     def get_message_count(self) -> int:
         return self._app_state.get_message_count()
 
-    # ── DB sync ─────────────────────────────────────────────────────────────────
-
     async def update_from_db(self) -> None:
-        """Async pull from consolidated DB para inicializar variables reactivas."""
         try:
             mods = await get_db_agent().get_mods(status="active")
             conflicts = await get_db_agent().get_conflicts(resolved=False)
@@ -162,20 +191,16 @@ class ReactiveState:
             total_size = sum(m.get("size_mb", 0) for m in mods)
             self.storage_used.set(round(total_size / 1024, 1))
         except Exception as exc:
-            logging.error("Error actualizando estado desde DB: %s", exc)
-
-    # ── UI event handlers ───────────────────────────────────────────────────────
+            logger.error("Error actualizando estado desde DB: %s", exc)
 
     def notify(self, message: str, type: str = "info") -> None:
         ui.notify(message, type=type)
 
     def handle_mod_added(self, event: SkyClawEvent) -> None:
-        """Actualiza contador de mods activos y notifica al usuario."""
         self.active_mods.set(self.active_mods.get() + 1)
         self.notify(f"Mod '{event.data.get('name')}' added!", type="positive")
 
     def handle_conflict_detected(self, event: SkyClawEvent) -> None:
-        """Actualiza contador de conflictos y notifica al usuario."""
         self.conflicts_count.set(self.conflicts_count.get() + 1)
         self.notify(
             f"Conflict: {event.data.get('description', 'Unknown')}",
@@ -186,18 +211,14 @@ class ReactiveState:
         self.is_agent_connected.set(connected)
 
     def _handle_llm_notification(self, event: SkyClawEvent) -> None:
-        """Muestra notificación UI cuando llega respuesta del LLM."""
         response = event.data.get("response", event.data.get("text", ""))
         self.notify(f"AI: {response[:80]}...", type="info")
 
     def _handle_agent_status(self, event: SkyClawEvent) -> None:
-        """Actualiza variable reactiva is_loading al cambiar estado del agente."""
         self.is_loading.set(event.data.get("is_thinking", False))
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SINGLETON INSTANCES — ASSEMBLY POINT
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Singletons ────────────────────────────────────────────────────────────────
 
 _app_state: AppState | None = None
 _state: ReactiveState | None = None
@@ -207,7 +228,6 @@ _nav_controller: NavigationController | None = None
 
 
 def get_app_state_instance() -> AppState:
-    """Lazy initializer para AppState centralizado."""
     global _app_state
     if _app_state is None:
         _app_state = get_app_state()
@@ -215,22 +235,22 @@ def get_app_state_instance() -> AppState:
 
 
 def get_state() -> ReactiveState:
-    """Lazy initializer — debe llamarse dentro del contexto NiceGUI."""
     global _state, _app_state
     if _state is None:
         if _app_state is None:
             _app_state = get_app_state_instance()
-        _state = ReactiveState(app_state=_app_state, event_bus_instance=event_bus)
+        _state = ReactiveState(
+            app_state=_app_state,
+            event_bus_instance=event_bus,
+            store=get_store(),
+        )
     return _state
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# AGENT COMMUNICATION — WebSocket bridge al daemon
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Daemon WebSocket bridge ───────────────────────────────────────────────────
 
 
 def _handle_daemon_message(data: dict[str, Any]) -> None:
-    """Traduce mensajes WS del daemon a eventos EventBus."""
     msg_type = data.get("type", "")
 
     if msg_type == "agent_result":
@@ -276,7 +296,6 @@ agent_client: AgentCommunicationClient | None = None
 
 
 def get_agent_client() -> AgentCommunicationClient:
-    """Lazy initializer — deferred until NiceGUI context is ready."""
     global agent_client
     if agent_client is None:
         agent_client = AgentCommunicationClient(
@@ -287,37 +306,50 @@ def get_agent_client() -> AgentCommunicationClient:
     return agent_client
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# MAIN PAGE — Orquestador Delgado (Dependency Injector)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Wizard / Dashboard gate ───────────────────────────────────────────────────
 
 
-@ui.page("/")
-def main_page():
-    """
-    Página principal — solo ensambla estado, controladores y vistas.
-    No contiene lógica de negocio: delega todo a los controladores.
-    """
+def _is_first_run(config_path: Path) -> bool:
+    """Resolve ``first_run`` once and mirror it in the reactive store."""
+    store = get_store()
+    cached = store.get(_FIRST_RUN_KEY)
+    if cached is not None:
+        return bool(cached)
+    try:
+        cfg = Config(config_path)
+        first = bool(cfg._data.get("first_run", True))
+    except Exception:
+        logger.exception("Could not read config at %s; assuming first_run=True", config_path)
+        first = True
+    store.set(_FIRST_RUN_KEY, first)
+    return first
+
+
+async def _on_wizard_complete() -> None:
+    """Wizard ``on_complete`` callback: flip the flag and refresh the page."""
+    get_store().set(_FIRST_RUN_KEY, False)
+    ui.notify("Configuración guardada — bienvenido a Sky-Claw", type="positive")
+
+
+@ui.refreshable
+def main_page() -> None:
+    """Single page that gates between Wizard and Dashboard via the store."""
     ui.dark_mode().enable()
 
-    ui.add_head_html("""
-        <link rel="stylesheet" href="/static/styles.css">
-        <script>
-            const sounds = {
-                'click': 'https://www.soundjay.com/buttons/button-16.mp3',
-                'hover': 'https://www.soundjay.com/buttons/button-20.mp3',
-                'success': 'https://www.soundjay.com/buttons/button-09.mp3'
-            };
-            function playSkyrimSound(type) {
-                const audio = new Audio(sounds[type]);
-                audio.volume = 0.2;
-                audio.play();
-            }
-        </script>
-    """)
+    runtime = get_runtime_context()
+    if runtime is None:
+        ui.label("Inicializando contexto…").classes("p-8 text-lg")
+        return
+
+    if _is_first_run(runtime.config_path):
+        wizard = SetupWizardModal(
+            config_path=runtime.config_path,
+            on_complete=_on_wizard_complete,
+        )
+        wizard.build()
+        return
 
     state = get_state()
-
     stats = {
         "active_mods": state.active_mods,
         "pending_updates": state.pending_updates,
@@ -325,57 +357,60 @@ def main_page():
         "storage_used": state.storage_used,
     }
 
-    # Datos de preview (sample hasta que DB async esté disponible en la vista)
-    sample_mods = [
+    # Use live mod data from the store (written by _gui_mod_update_loop).
+    # Fall back to placeholder only until the first DB refresh arrives.
+    mods: list[dict[str, Any]] = get_store().get("mods_list") or [
         {"name": "Skyrim 202X", "status": "active", "size_mb": 2400},
         {"name": "Immersive Armors", "status": "active", "size_mb": 156},
         {"name": "Lux Via", "status": "update", "size_mb": 89},
         {"name": "Ordinator", "status": "conflict", "size_mb": 45},
     ]
 
-    chat_messages = _chat_controller.prepare_messages_for_view(state._app_state._chat_messages)
+    chat_messages = (
+        _chat_controller.prepare_messages_for_view(state._app_state._chat_messages)
+        if _chat_controller is not None
+        else []
+    )
 
-    # Inyección de dependencias: métodos de controladores como callbacks de vistas
-    callbacks = {
-        "on_send_message": lambda msg: asyncio.create_task(_chat_controller.handle_send_message(msg)),
-        "on_view_all_mods": _mod_controller.handle_view_all_mods,
-        "on_mod_click": _mod_controller.handle_mod_click,
-        "on_navigate": _nav_controller.handle_navigation,
-        "on_cta_primary": _nav_controller.handle_cta_primary,
-        "on_cta_secondary": _nav_controller.handle_cta_secondary,
-        "on_feature_click": _nav_controller.handle_feature_click,
-    }
+    callbacks: dict[str, Any] = {}
+    if _chat_controller is not None:
+        callbacks["on_send_message"] = lambda msg: asyncio.create_task(_chat_controller.handle_send_message(msg))
+    if _mod_controller is not None:
+        callbacks["on_view_all_mods"] = _mod_controller.handle_view_all_mods
+        callbacks["on_mod_click"] = _mod_controller.handle_mod_click
+    if _nav_controller is not None:
+        callbacks["on_navigate"] = _nav_controller.handle_navigation
+        callbacks["on_cta_primary"] = _nav_controller.handle_cta_primary
+        callbacks["on_cta_secondary"] = _nav_controller.handle_cta_secondary
+        callbacks["on_feature_click"] = _nav_controller.handle_feature_click
 
     render_dashboard(
         stats=stats,
-        mods=sample_mods,
+        mods=mods,
         chat_messages=chat_messages,
         is_thinking=state.is_thinking,
         callbacks=callbacks,
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# APP SETUP & ENTRY POINT
-# ═══════════════════════════════════════════════════════════════════════════════
+@ui.page("/")
+def _page_root() -> None:
+    main_page()
+
+
+# ── App setup ─────────────────────────────────────────────────────────────────
 
 
 def setup_app() -> None:
-    """Configura la aplicación e instancia controladores con DI."""
+    """Configure NiceGUI app: assets, controllers, EventBus, store wiring."""
     global _chat_controller, _mod_controller, _nav_controller
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
-    # Serve CSS and Assets
     app.add_static_files("/static", str(_CSS_PATH.parent))
     app.add_static_files("/assets", str(_ASSETS_PATH))
-    app.add_static_files("/web", str(_WEB_STATIC_PATH))
+    if _WEB_STATIC_PATH.exists():
+        app.add_static_files("/web", str(_WEB_STATIC_PATH))
 
-    # Initialize DB and seed sample data
-    async def _init():
+    async def _seed_db() -> None:
         await get_db_agent().init_db()
         mods = await get_db_agent().get_mods()
         if not mods:
@@ -384,12 +419,10 @@ def setup_app() -> None:
             await get_db_agent().add_mod("Lux Via", "1.5", 89, "Nexusmods")
         await get_state().update_from_db()
 
-    app.on_startup(_init)
+    app.on_startup(_seed_db)
 
-    # Start event bus
     event_bus.start()
 
-    # Instanciar controladores con Inyección de Dependencias
     app_state = get_app_state_instance()
     _chat_controller = ChatController(
         app_state=app_state,
@@ -399,33 +432,26 @@ def setup_app() -> None:
     _mod_controller = ModController(app_state=app_state, event_bus=event_bus)
     _nav_controller = NavigationController(app_state=app_state, event_bus=event_bus)
 
-    # Start agent communication client — deferred until NiceGUI loop is live
+    # Subscribe the page to the gate-driving keys so the Wizard→Dashboard
+    # transition is instantaneous in the same session.
+    # Also refresh on is_loading changes so the chat panel re-renders
+    # when the user sends a message or the assistant responds.
+    store = get_store()
+    store.subscribe(_FIRST_RUN_KEY, main_page.refresh)
+    store.subscribe(_RUNTIME_KEY, main_page.refresh)
+    store.subscribe("is_loading", main_page.refresh)
+    store.subscribe("mods_list", main_page.refresh)
+
     app.on_startup(lambda: get_agent_client().start())
 
-    # Cleanup on shutdown
-    async def _cleanup():
+    async def _cleanup() -> None:
         event_bus.stop()
-        await get_agent_client().stop()
+        client = agent_client
+        if client is not None:
+            await client.stop()
 
     app.on_shutdown(_cleanup)
 
 
 def cleanup() -> None:
     event_bus.stop()
-
-
-if __name__ in {"__main__", "__mp_main__"}:
-    setup_app()
-
-    try:
-        ui.run(
-            title="Sky-Claw — Mod Manager v2.1",
-            port=8080,
-            host="127.0.0.1",
-            reload=True,
-            show=True,
-            dark=True,
-            favicon="🔮",
-        )
-    except KeyboardInterrupt:
-        cleanup()

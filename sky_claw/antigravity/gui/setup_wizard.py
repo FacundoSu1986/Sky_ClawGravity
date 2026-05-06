@@ -12,6 +12,7 @@ from nicegui import ui
 
 from .gui_helpers import _load_css
 from .icons import _ICON_ROCKET, _ICON_SETTINGS
+from .state import get_store
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -335,6 +336,10 @@ class SetupWizardModal:
             await self._clear_drafts()
 
             logger.info("Setup completado — provider=%s", provider)
+
+            # Publish first_run=False to the reactive store so any subscriber
+            # (gate refresh, dashboard, etc.) reacts in the same session.
+            get_store().set("first_run", False)
 
             # Remove overlay from DOM
             if self._overlay_el:

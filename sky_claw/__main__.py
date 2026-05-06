@@ -5,7 +5,6 @@ Usage::
     python -m sky_claw --mode cli          # interactive REPL
     python -m sky_claw --mode telegram     # Telegram webhook server
     python -m sky_claw --mode oneshot "install Requiem"
-    python -m sky_claw --mode web --port 8888  # local web UI
     python -m sky_claw --mode gui         # local desktop UI (NiceGUI)
 """
 
@@ -19,10 +18,8 @@ import pathlib
 import sys
 
 from sky_claw.antigravity.modes.cli_mode import _run_cli, _run_oneshot
-from sky_claw.antigravity.modes.gui_mode import run_gui_mode
 from sky_claw.antigravity.modes.security_mode import _run_security
 from sky_claw.antigravity.modes.telegram_mode import _run_telegram
-from sky_claw.antigravity.modes.web_mode import _run_web
 from sky_claw.app_context import AppContext
 from sky_claw.config import Config, SystemPaths
 from sky_claw.logging_config import setup_logging
@@ -41,15 +38,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["cli", "telegram", "oneshot", "web", "gui", "security"],
+        choices=["cli", "telegram", "oneshot", "gui", "security"],
         default="cli",
         help="Operation mode (default: cli)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8888,
-        help="Port for the web UI server (default: 8888)",
     )
     parser.add_argument(
         "--provider",
@@ -123,13 +114,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Enable debug logging",
     )
     if getattr(sys, "frozen", False):
-        parser.set_defaults(mode="web")
+        parser.set_defaults(mode="gui")
 
     return parser.parse_args(argv)
 
 
 async def _main(argv_or_args: list[str] | argparse.Namespace | None = None) -> None:
-    """Asynchronous runner for CLI, Web, and Telegram modes.
+    """Asynchronous runner for CLI, Telegram, oneshot and security modes.
 
     Accepts either raw argv strings (for testing) or a pre-parsed Namespace.
     """
@@ -143,25 +134,18 @@ async def _main(argv_or_args: list[str] | argparse.Namespace | None = None) -> N
         sys.exit(1)
 
     ctx = AppContext(args)
-    if args.mode == "web":
-        await ctx.start_minimal()
-        try:
-            await _run_web(ctx, args.port)
-        finally:
-            await ctx.stop()
-    else:
-        await ctx.start()
-        try:
-            if args.mode == "cli":
-                await _run_cli(ctx)
-            elif args.mode == "oneshot":
-                await _run_oneshot(ctx, args.command)
-            elif args.mode == "telegram":
-                await _run_telegram(ctx, args.webhook_host, args.webhook_port)
-            elif args.mode == "security":
-                await _run_security(ctx, args.command)
-        finally:
-            await ctx.stop()
+    await ctx.start()
+    try:
+        if args.mode == "cli":
+            await _run_cli(ctx)
+        elif args.mode == "oneshot":
+            await _run_oneshot(ctx, args.command)
+        elif args.mode == "telegram":
+            await _run_telegram(ctx, args.webhook_host, args.webhook_port)
+        elif args.mode == "security":
+            await _run_security(ctx, args.command)
+    finally:
+        await ctx.stop()
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -171,6 +155,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.mode == "gui":
         log_level = logging.DEBUG if args.verbose else logging.INFO
         setup_logging(level=log_level)
+        from sky_claw.antigravity.modes.gui_mode import run_gui_mode  # lazy: pulls NiceGUI
+
         run_gui_mode(args)
     else:
         with contextlib.suppress(KeyboardInterrupt):

@@ -1,9 +1,9 @@
-"""Tests for the zero-config AutoDetector and related endpoints."""
+"""Tests for the zero-config AutoDetector."""
 
 from __future__ import annotations
 
 import pathlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -12,7 +12,6 @@ from sky_claw.local.auto_detect import (
     _parse_steam_library_folders,
     _read_registry_value,
 )
-from sky_claw.local.local_config import LocalConfig, save
 
 # ---------------------------------------------------------------------------
 # find_mo2
@@ -259,67 +258,6 @@ class TestRegistryHelper:
 
 
 # ---------------------------------------------------------------------------
-# /api/auto-detect endpoint
-# ---------------------------------------------------------------------------
-
-
-class TestAutoDetectEndpoint:
-    @pytest.mark.asyncio
-    async def test_auto_detect_endpoint(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
-        from sky_claw.antigravity.web.app import WebApp
-
-        router = MagicMock()
-        session = MagicMock()
-        config_path = tmp_path / "config.json"
-
-        web_app = WebApp(router=router, session=session, config_path=config_path)
-        app = web_app.create_app()
-        client = await aiohttp_client(app)
-
-        mock_result = {
-            "mo2_root": "C:/MO2",
-            "skyrim_path": "C:/Skyrim",
-            "loot_exe": None,
-            "xedit_exe": None,
-        }
-        with patch.object(AutoDetector, "detect_all", return_value=mock_result):
-            resp = await client.get("/api/auto-detect")
-
-        assert resp.status == 200
-        data = await resp.json()
-        assert data["mo2_root"] == "C:/MO2"
-        assert data["skyrim_path"] == "C:/Skyrim"
-        assert data["loot_exe"] is None
-
-
-# ---------------------------------------------------------------------------
-# /api/install-tools endpoint
-# ---------------------------------------------------------------------------
-
-
-class TestInstallToolsEndpoint:
-    @pytest.mark.asyncio
-    async def test_install_tools_no_installer(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
-        from sky_claw.antigravity.web.app import WebApp
-
-        router = MagicMock()
-        session = MagicMock()
-        config_path = tmp_path / "config.json"
-
-        web_app = WebApp(
-            router=router,
-            session=session,
-            config_path=config_path,
-            tools_installer=None,
-        )
-        app = web_app.create_app()
-        client = await aiohttp_client(app)
-
-        resp = await client.post("/api/install-tools", json={})
-        assert resp.status == 503
-
-
-# ---------------------------------------------------------------------------
 # SYSTEM_PROMPT updated
 # ---------------------------------------------------------------------------
 
@@ -339,36 +277,3 @@ class TestSystemPromptZeroConfig:
         from sky_claw.app_context import SYSTEM_PROMPT
 
         assert "instalarla" in SYSTEM_PROMPT
-
-
-# ---------------------------------------------------------------------------
-# Setup wizard auto-fills detected values
-# ---------------------------------------------------------------------------
-
-
-class TestSetupAutoFill:
-    @pytest.mark.asyncio
-    async def test_get_setup_includes_tool_paths(self, tmp_path: pathlib.Path, aiohttp_client) -> None:
-        from sky_claw.antigravity.web.app import WebApp
-
-        router = MagicMock()
-        session = MagicMock()
-        config_path = tmp_path / "config.json"
-
-        cfg = LocalConfig(
-            mo2_root="C:/MO2",
-            loot_exe="C:/LOOT/LOOT.exe",
-            xedit_exe="C:/SSEEdit/SSEEdit.exe",
-            first_run=True,
-        )
-        save(cfg, config_path)
-
-        web_app = WebApp(router=router, session=session, config_path=config_path)
-        app = web_app.create_app()
-        client = await aiohttp_client(app)
-
-        resp = await client.get("/api/setup")
-        assert resp.status == 200
-        data = await resp.json()
-        assert data["loot_exe"] == "C:/LOOT/LOOT.exe"
-        assert data["xedit_exe"] == "C:/SSEEdit/SSEEdit.exe"
