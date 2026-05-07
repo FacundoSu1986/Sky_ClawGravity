@@ -226,9 +226,7 @@ class CredentialVault:
                     return plain_secret
         except aiosqlite.Error as db_exc:
             logger.exception("RCA (Vault): Database error accessing service_hash=%s.", svc_hash)
-            raise VaultStorageError(
-                f"Vault storage read failed for service_hash={svc_hash}"
-            ) from db_exc
+            raise VaultStorageError(f"Vault storage read failed for service_hash={svc_hash}") from db_exc
 
     async def set_secret(self, service_name: str, plain_secret: str) -> bool:
         """Cifra en memoria y almacena en SQLite safely."""

@@ -231,8 +231,7 @@ class LLMRouter:
             api_key = await self._vault.get_secret(f"{new_provider_name}_api_key")
         except VaultStorageError:
             logger.exception(
-                "RCA: Vault storage failure during Hot-Swap for %s. "
-                "Transient fault — retry recommended.",
+                "RCA: Vault storage failure during Hot-Swap for %s. Transient fault — retry recommended.",
                 new_provider_name,
             )
             return False
