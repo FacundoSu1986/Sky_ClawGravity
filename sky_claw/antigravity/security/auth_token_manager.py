@@ -111,8 +111,10 @@ class AuthTokenManager:
 
         Used to notify subscribers (e.g., WebSocket handler) that existing
         connections should be closed and re-authenticated with the new token.
+        Idempotent — registering the same callable twice is a no-op.
         """
-        self._rotation_callbacks.append(cb)
+        if cb not in self._rotation_callbacks:
+            self._rotation_callbacks.append(cb)
 
     async def _rotation_loop(self) -> None:
         while True:

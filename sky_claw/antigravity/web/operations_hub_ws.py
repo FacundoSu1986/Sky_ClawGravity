@@ -81,6 +81,7 @@ class OperationsHubWSHandler:
         self._auth_manager = auth_manager
         self._clients: set[web.WebSocketResponse] = set()
         self._clients_lock = asyncio.Lock()
+        self._token_rotating = False
         self._started = False
 
     # ------------------------------------------------------------------ #
@@ -127,18 +128,28 @@ class OperationsHubWSHandler:
         Unlike :meth:`stop`, this does NOT unsubscribe from the event bus — the
         handler keeps running and will accept new connections authenticated with
         the rotated token.
+
+        Sets ``_token_rotating`` inside the clients lock before clearing, so any
+        concurrent ``websocket_handler`` coroutine that acquires the lock after
+        this call sees the flag and rejects the connection immediately instead of
+        silently surviving the rotation window.
         """
         async with self._clients_lock:
+            self._token_rotating = True
             stale = list(self._clients)
             self._clients.clear()
-        for ws in stale:
-            try:
-                await ws.close(
-                    code=aiohttp.WSCloseCode.POLICY_VIOLATION,
-                    message=b"Token rotated -- reconnect required",
-                )
-            except (ConnectionResetError, RuntimeError) as exc:
-                logger.debug("WS close during token rotation: %s", exc)
+        try:
+            for ws in stale:
+                try:
+                    await ws.close(
+                        code=aiohttp.WSCloseCode.POLICY_VIOLATION,
+                        message=b"Token rotated -- reconnect required",
+                    )
+                except Exception as exc:
+                    logger.debug("WS close during token rotation: %s", exc)
+        finally:
+            async with self._clients_lock:
+                self._token_rotating = False
         logger.info("Closed %d WS client(s) on token rotation.", len(stale))
 
     # ------------------------------------------------------------------ #
@@ -210,6 +221,14 @@ class OperationsHubWSHandler:
         await ws.prepare(request)
 
         async with self._clients_lock:
+            if self._token_rotating:
+                # Token rotation is in progress; reject rather than admit a
+                # connection that will immediately be invalid.
+                await ws.close(
+                    code=aiohttp.WSCloseCode.POLICY_VIOLATION,
+                    message=b"Token rotation in progress -- reconnect shortly",
+                )
+                return ws
             self._clients.add(ws)
             client_count = len(self._clients)
         logger.info(

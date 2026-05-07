@@ -41,6 +41,14 @@ class TestRotationCallbackRegistry:
         mgr.register_rotation_callback(cb2)
         assert mgr._rotation_callbacks == [cb1, cb2]
 
+    def test_register_same_callback_twice_is_idempotent(self, tmp_path):
+        """Registering the same callable twice must not duplicate it."""
+        mgr = AuthTokenManager(token_dir=str(tmp_path))
+        cb = AsyncMock()
+        mgr.register_rotation_callback(cb)
+        mgr.register_rotation_callback(cb)
+        assert mgr._rotation_callbacks.count(cb) == 1
+
     @pytest.mark.asyncio
     async def test_rotation_loop_calls_callbacks_on_success(self, tmp_path):
         """After generate() succeeds, all registered callbacks are awaited."""
@@ -167,6 +175,64 @@ class TestCloseAllClients:
         """No clients → function completes without error."""
         handler = self._make_handler()
         await handler.close_all_clients()  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_close_all_tolerates_timeout_error(self):
+        """asyncio.TimeoutError during close must not abort remaining closes."""
+        import asyncio
+
+        handler = self._make_handler()
+        ws_timeout = AsyncMock(spec=aiohttp.web.WebSocketResponse)
+        ws_timeout.close.side_effect = asyncio.TimeoutError
+        ws_ok = AsyncMock(spec=aiohttp.web.WebSocketResponse)
+        handler._clients = {ws_timeout, ws_ok}
+
+        await handler.close_all_clients()  # must not raise
+
+        ws_ok.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_close_all_sets_token_rotating_flag_during_execution(self):
+        """_token_rotating must be True while close_all_clients runs so concurrent
+        websocket_handler calls that acquire the lock see the flag."""
+        handler = self._make_handler()
+        flag_during_close: list[bool] = []
+
+        async def slow_close(**_kwargs):
+            flag_during_close.append(handler._token_rotating)
+
+        ws = AsyncMock(spec=aiohttp.web.WebSocketResponse)
+        ws.close.side_effect = slow_close
+        handler._clients = {ws}
+
+        await handler.close_all_clients()
+
+        assert flag_during_close == [True]
+        assert not handler._token_rotating
+
+    @pytest.mark.asyncio
+    async def test_websocket_handler_rejects_connection_during_rotation(self):
+        """A connection that arrives while _token_rotating=True is closed immediately."""
+        handler = self._make_handler()
+        handler._token_rotating = True
+
+        ws_mock = AsyncMock(spec=aiohttp.web.WebSocketResponse)
+        ws_mock.closed = False
+
+        request = MagicMock()
+        request.remote = "127.0.0.1"
+        request.headers = {}
+
+        with (
+            patch.object(handler, "_validate_ws_auth", return_value=True),
+            patch("aiohttp.web.WebSocketResponse", return_value=ws_mock),
+        ):
+            await handler.websocket_handler(request)
+
+        ws_mock.close.assert_awaited_once()
+        _, kwargs = ws_mock.close.call_args
+        assert kwargs.get("code") == aiohttp.WSCloseCode.POLICY_VIOLATION
+        assert ws_mock not in handler._clients
 
 
 # ---------------------------------------------------------------------------
