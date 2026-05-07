@@ -3,8 +3,8 @@
 Covers the Windows ICACLS hardening path and its SID-based retry:
   1. Username-based icacls succeeds → done.
   2. Username-based icacls fails → SID resolved → SID-based icacls succeeds.
-  3. Username-based icacls fails → SID resolved → SID-based icacls fails → CRITICAL.
-  4. Username-based icacls fails → SID resolution fails → CRITICAL (no os.chmod).
+  3. Username-based icacls fails → SID resolved → SID-based icacls fails → fail closed.
+  4. Username-based icacls fails → SID resolution fails → fail closed (no os.chmod).
   5. getpass.getuser() raises → skip to SID-based path.
   6. Non-existent path → returns early without calling icacls.
   7. POSIX path → os.chmod called, icacls NOT called.
@@ -97,8 +97,8 @@ class TestRestrictWindows:
         sid_calls = [c for c in run_calls if any(f"*{sid}" in str(a) for a in c)]
         assert sid_calls, "Expected SID-based icacls call not found"
 
-    def test_username_fails_sid_icacls_also_fails_logs_critical(self, tmp_path, caplog):
-        """Both icacls attempts fail → CRITICAL logged, no os.chmod."""
+    def test_username_fails_sid_icacls_also_fails_closed(self, tmp_path, caplog):
+        """Both icacls attempts fail → CRITICAL logged, no os.chmod, PermissionError."""
         target = _make_file(tmp_path)
         sid = "S-1-5-21-123-456-789-1001"
 
@@ -114,14 +114,15 @@ class TestRestrictWindows:
             patch("subprocess.run", side_effect=fake_run),
             patch("os.chmod") as mock_chmod,
             caplog.at_level(logging.CRITICAL),
+            pytest.raises(PermissionError, match="Owner-only ACL enforcement failed"),
         ):
             restrict_to_owner(target)
 
         mock_chmod.assert_not_called()
         assert any("SECURITY" in r.message for r in caplog.records)
 
-    def test_sid_resolution_fails_logs_critical(self, tmp_path, caplog):
-        """SID resolution fails (PowerShell error) → CRITICAL, no icacls, no os.chmod."""
+    def test_sid_resolution_fails_closed(self, tmp_path, caplog):
+        """SID resolution fails → CRITICAL logged, no os.chmod, PermissionError."""
         target = _make_file(tmp_path)
 
         def fake_run(cmd, **kwargs):
@@ -134,6 +135,7 @@ class TestRestrictWindows:
             patch("subprocess.run", side_effect=fake_run),
             patch("os.chmod") as mock_chmod,
             caplog.at_level(logging.CRITICAL),
+            pytest.raises(PermissionError, match="SID resolution failed"),
         ):
             restrict_to_owner(target)
 
@@ -179,8 +181,8 @@ class TestRestrictWindows:
         mock_run.assert_not_called()
         mock_chmod.assert_not_called()
 
-    def test_icacls_not_found_escalates_to_sid(self, tmp_path, caplog):
-        """icacls binary missing (FileNotFoundError) → escalates to SID path."""
+    def test_icacls_not_found_escalates_to_sid_then_fails_closed(self, tmp_path, caplog):
+        """icacls missing → escalates to SID path, then fails closed if SID path fails."""
         target = _make_file(tmp_path)
 
         def fake_run(cmd, **kwargs):
@@ -192,6 +194,7 @@ class TestRestrictWindows:
             patch("subprocess.run", side_effect=fake_run),
             patch("os.chmod") as mock_chmod,
             caplog.at_level(logging.CRITICAL),
+            pytest.raises(PermissionError, match="SID resolution failed"),
         ):
             restrict_to_owner(target)
 
@@ -234,13 +237,14 @@ class TestRestrictPosix:
         mock_chmod.assert_called_once_with(target, 0o700)
         mock_run.assert_not_called()
 
-    def test_posix_chmod_failure_logged(self, tmp_path, caplog):
-        """os.chmod failure on POSIX → warning logged, no exception raised."""
+    def test_posix_chmod_failure_fails_closed(self, tmp_path, caplog):
+        """os.chmod failure on POSIX → ERROR logged, PermissionError raised."""
         target = _make_file(tmp_path)
         with (
             patch("os.chmod", side_effect=OSError("read-only fs")),
-            caplog.at_level(logging.WARNING),
+            caplog.at_level(logging.ERROR),
+            pytest.raises(PermissionError, match="Owner-only chmod failed"),
         ):
-            restrict_to_owner(target)  # must not raise
+            restrict_to_owner(target)
 
         assert any("chmod" in r.message for r in caplog.records)

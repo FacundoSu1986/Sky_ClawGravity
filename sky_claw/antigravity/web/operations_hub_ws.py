@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Heartbeat cadence for browser WebSocket clients (seconds).
 HEARTBEAT_SECONDS: Final[float] = 30.0
+ROTATION_CLOSE_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # Topic patterns forwarded to the Operations Hub.  New Sky-Claw modules should
 # publish under the ``ops.*`` namespace; the legacy topics listed below are
@@ -141,12 +142,15 @@ class OperationsHubWSHandler:
         try:
             for ws in stale:
                 try:
-                    await ws.close(
-                        code=aiohttp.WSCloseCode.POLICY_VIOLATION,
-                        message=b"Token rotated -- reconnect required",
+                    await asyncio.wait_for(
+                        ws.close(
+                            code=aiohttp.WSCloseCode.POLICY_VIOLATION,
+                            message=b"Token rotated -- reconnect required",
+                        ),
+                        timeout=ROTATION_CLOSE_TIMEOUT_SECONDS,
                     )
-                except Exception as exc:
-                    logger.debug("WS close during token rotation: %s", exc)
+                except (TimeoutError, ConnectionResetError, OSError, RuntimeError) as exc:
+                    logger.warning("WS close during token rotation failed: %s", exc)
         finally:
             async with self._clients_lock:
                 self._token_rotating = False

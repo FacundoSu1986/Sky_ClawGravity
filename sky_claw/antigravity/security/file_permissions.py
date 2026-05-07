@@ -38,7 +38,8 @@ def restrict_to_owner(path: Path) -> None:
         try:
             os.chmod(path, mode)
         except OSError as exc:
-            logger.warning("chmod(%s, %o) failed: %s", path, mode, exc)
+            logger.error("chmod(%s, %o) failed: %s", path, mode, exc)
+            raise PermissionError(f"Owner-only chmod failed for {path}") from exc
 
 
 def _get_current_user_sid() -> str | None:
@@ -137,7 +138,7 @@ def _restrict_windows(path: Path) -> None:
                 path,
                 exc,
             )
-            return
+            raise PermissionError(f"Owner-only ACL enforcement failed for {path}") from exc
 
     # SID resolution itself failed — no icacls possible
     logger.critical(
@@ -145,6 +146,7 @@ def _restrict_windows(path: Path) -> None:
         "no icacls fallback is available. File may be world-readable.",
         path,
     )
+    raise PermissionError(f"Owner-only ACL enforcement failed for {path}: SID resolution failed")
 
 
 async def restrict_to_owner_async(path: Path) -> None:

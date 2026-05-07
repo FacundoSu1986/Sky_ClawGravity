@@ -28,6 +28,11 @@ from sky_claw.antigravity.web.operations_hub_ws import OperationsHubWSHandler
 
 
 class TestRotationCallbackRegistry:
+    @pytest.fixture(autouse=True)
+    def bypass_token_dir_permissions(self):
+        with patch("sky_claw.antigravity.security.auth_token_manager.restrict_to_owner"):
+            yield
+
     def test_register_single_callback(self, tmp_path):
         mgr = AuthTokenManager(token_dir=str(tmp_path))
         cb = AsyncMock()
@@ -190,6 +195,25 @@ class TestCloseAllClients:
         await handler.close_all_clients()  # must not raise
 
         ws_ok.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_close_all_times_out_hung_client_and_resets_rotation_flag(self):
+        """A hung close must not leave token rotation stuck forever."""
+        handler = self._make_handler()
+
+        async def never_closes(**_kwargs):
+            await asyncio.Event().wait()
+
+        ws_hung = AsyncMock(spec=aiohttp.web.WebSocketResponse)
+        ws_hung.close.side_effect = never_closes
+        ws_ok = AsyncMock(spec=aiohttp.web.WebSocketResponse)
+        handler._clients = {ws_hung, ws_ok}
+
+        with patch("sky_claw.antigravity.web.operations_hub_ws.ROTATION_CLOSE_TIMEOUT_SECONDS", 0.01):
+            await handler.close_all_clients()
+
+        ws_ok.close.assert_awaited_once()
+        assert not handler._token_rotating
 
     @pytest.mark.asyncio
     async def test_close_all_sets_token_rotating_flag_during_execution(self):
