@@ -229,12 +229,11 @@ class LLMRouter:
         # Las llaves deben guardarse en la Bóveda como '{provider}_api_key'
         try:
             api_key = await self._vault.get_secret(f"{new_provider_name}_api_key")
-        except VaultStorageError as exc:
-            logger.error(
-                "RCA: Vault storage failure during Hot-Swap for %s: %s. "
+        except VaultStorageError:
+            logger.exception(
+                "RCA: Vault storage failure during Hot-Swap for %s. "
                 "Transient fault — retry recommended.",
                 new_provider_name,
-                exc,
             )
             return False
         if not api_key:
