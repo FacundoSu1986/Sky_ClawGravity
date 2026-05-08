@@ -26,7 +26,6 @@ from sky_claw.antigravity.security.file_permissions import (
     restrict_to_owner_async,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
