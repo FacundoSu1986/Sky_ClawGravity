@@ -72,7 +72,7 @@ class TestAsyncHash:
 
         assert digest is not None
         ticks_during = [t for t in ticks if hash_start <= t <= hash_end]
-        gaps = [b - a for a, b in zip(ticks_during, ticks_during[1:])]
+        gaps = [b - a for a, b in zip(ticks_during, ticks_during[1:], strict=False)]
         max_gap = max(gaps, default=0.0)
 
         # If the loop were blocked by sync I/O, all ticks would clump at the
