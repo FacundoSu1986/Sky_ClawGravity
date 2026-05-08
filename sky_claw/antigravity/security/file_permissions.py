@@ -1,13 +1,17 @@
 """Cross-platform file permission enforcement.
 
 On Windows, uses icacls to restrict file access to the current user
-AND post-validates the effective DACL. On POSIX, uses os.chmod with
+AND post-validates the effective DACL.  On POSIX, uses os.chmod with
 restrictive permissions.
 
-Both paths are fail-closed: if the requested permission state cannot
-be verified after the action, the artifact is destroyed (files only —
-directories are preserved to avoid wiping user data) and a
-``PermissionError`` is raised.
+**Windows** is fail-closed: if the DACL cannot be verified as owner-only
+after hardening, the file artifact is destroyed (unlinked) and a
+``PermissionError`` is raised.  Directories are never recursively deleted —
+callers handle higher-level cleanup.
+
+**POSIX** raises ``PermissionError`` on ``os.chmod`` failure but does *not*
+unlink the file — the chmod failure itself indicates a permission problem on
+the filesystem, not a leaked secret.
 """
 
 from __future__ import annotations
@@ -16,7 +20,6 @@ import asyncio
 import getpass
 import logging
 import os
-import re
 import subprocess
 import sys
 from typing import TYPE_CHECKING
@@ -27,13 +30,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _IS_WINDOWS = sys.platform == "win32"
-
-# Match `IDENTIFIER:(PERMS)` ACE tokens in `icacls <path>` output.
-# IDENTIFIER may be `username`, `DOMAIN\username`, `*S-1-...`, or `S-1-...`.
-# The character class excludes whitespace, colons, and parens, so the
-# leading path on the first line (e.g. ``C:\path\file``) never matches —
-# paths contain colons but are not followed by ``(...)``.
-_ACE_TOKEN_RE = re.compile(r"([^\s:()]+):\(([^)]+)\)")
 
 
 def restrict_to_owner(path: Path) -> None:
@@ -92,19 +88,24 @@ def _get_current_user_sid() -> str | None:
 
 
 def _dacl_is_owner_only(icacls_output: str, allowed_identifiers: list[str]) -> bool:
-    """Parse `icacls <path>` stdout and assert every ACE belongs to an allowed identifier.
+    """Parse ``icacls <path>`` stdout and assert every ACE belongs to an allowed identifier.
+
+    Uses line-based parsing around the ``:(`` separator so that
+    space-containing ACE principals such as ``NT AUTHORITY\\SYSTEM`` and
+    ``CREATOR OWNER`` are extracted in full rather than being split at the
+    embedded space.
 
     Args:
         icacls_output: stdout from ``icacls <path>`` (no flags).
         allowed_identifiers: list of acceptable identifiers — typically
             ``[username]``, ``[username, sid]``, or ``[sid]``. Comparison is
-            case-insensitive and tolerates ``DOMAIN\\`` prefixes and the
-            leading ``*`` used by icacls grant syntax for SIDs.
+            case-insensitive; ``DOMAIN\\`` prefixes and the leading ``*`` used
+            by icacls SID grant syntax are normalised away before comparison.
 
     Returns:
-        True iff at least one ACE was found and every ACE's identifier
-        matches one of ``allowed_identifiers``. Returns False on empty
-        output, missing identifiers, or any non-allowed ACE (e.g.
+        ``True`` iff at least one ACE was found and *every* ACE's identifier
+        matches one of ``allowed_identifiers``.  Returns ``False`` on empty
+        output, an empty allowed list, or any non-allowed ACE (e.g.
         ``Everyone``, ``BUILTIN\\Users``, ``NT AUTHORITY\\SYSTEM``,
         ``BUILTIN\\Administrators``).
     """
@@ -119,16 +120,71 @@ def _dacl_is_owner_only(icacls_output: str, allowed_identifiers: list[str]) -> b
         normalized = ident.lstrip("*").lower()
         allowed_full.add(normalized)
         # Bare form (strip DOMAIN\ prefix) so `username:(F)` matches
-        # when icacls resolves the SID and drops the domain.
+        # when icacls resolves the SID and drops the domain prefix.
         allowed_bare.add(normalized.split("\\")[-1])
 
     found_any = False
-    for match in _ACE_TOKEN_RE.finditer(icacls_output):
-        ident = match.group(1).lstrip("*").lower()
-        bare = ident.split("\\")[-1]
-        if ident not in allowed_full and bare not in allowed_bare:
-            return False
-        found_any = True
+
+    for line in icacls_output.splitlines():
+        # Skip lines that have no ACE pattern at all.
+        if ":(" not in line:
+            continue
+
+        # Determine whether this is an indented ACE-only line or the path line
+        # (the first line emitted by icacls, which carries the file path before
+        # the first ACE).  Indented lines start with whitespace; the path line
+        # does not.
+        is_path_line = bool(line) and not line[0].isspace()
+
+        # Split on ":(" to locate every ACE boundary on this line.
+        # For "  NT AUTHORITY\SYSTEM:(F)(OI)":
+        #   parts = ["  NT AUTHORITY\SYSTEM", "F)(OI)"]
+        # For "C:\file alice:(F)":
+        #   parts = ["C:\file alice", "F)"]
+        # For "  alice:(F) BUILTIN\Admins:(F)":
+        #   parts = ["  alice", "F) BUILTIN\Admins", "F)"]
+        parts = line.split(":(")
+
+        for i, segment in enumerate(parts[:-1]):
+            # Locate the identifier preceding this ":(":
+            #
+            # Case 1 — after a previous ACE on the same line (i > 0, or i == 0
+            #           when the segment contains a closing paren from the path):
+            #   The previous ACE's permissions end with ")".  Everything after
+            #   the last ")" is the next identifier (may contain spaces, e.g.
+            #   "F) NT AUTHORITY\SYSTEM" → identifier = "NT AUTHORITY\SYSTEM").
+            #
+            # Case 2 — first segment on an indented line (no previous ACE):
+            #   The full stripped segment is the identifier (handles
+            #   "  NT AUTHORITY\SYSTEM" → "NT AUTHORITY\SYSTEM").
+            #
+            # Case 3 — first segment on the path line (is_path_line, i == 0):
+            #   Format is "C:\path\file IDENTIFIER".  The identifier is the
+            #   last whitespace-delimited token.  Space-containing identifiers
+            #   on the path line are not expected after our /inheritance:r
+            #   /grant:r hardening (only the owner ACE appears there), so the
+            #   last-token heuristic is sufficient in practice.
+
+            last_paren = segment.rfind(")")
+            if last_paren != -1:
+                # Case 1: identifier follows the last closing paren
+                candidate = segment[last_paren + 1:].strip()
+            elif i == 0 and not is_path_line:
+                # Case 2: indented line, full stripped segment is the identifier
+                candidate = segment.strip()
+            else:
+                # Case 3: path line, take the last whitespace-delimited token
+                candidate = segment.strip().split()[-1] if segment.strip() else ""
+
+            if not candidate:
+                continue
+
+            ident = candidate.lstrip("*").lower()
+            bare = ident.split("\\")[-1]
+
+            if ident not in allowed_full and bare not in allowed_bare:
+                return False
+            found_any = True
 
     return found_any
 
@@ -142,18 +198,25 @@ def _fail_closed(path: Path, reason: str) -> None:
     lets higher-level callers decide whether to recover, regenerate,
     or abort startup.
 
+    The raised message reflects the *actual* deletion outcome so callers
+    and audit logs can distinguish a clean destroy from a best-effort
+    attempt that was blocked (e.g. a locked file on Windows).
+
     Always raises; never returns.
     """
+    destroyed = False
     try:
         if path.is_file():
             path.unlink(missing_ok=True)
+            destroyed = True
     except OSError as exc:
         # Best-effort destruction; the security error must still propagate.
         logger.warning("fail_closed: unlink(%s) failed: %s", path, exc)
 
+    outcome = "artifact destroyed" if destroyed else "artifact destruction attempted"
     raise PermissionError(
         f"Owner-only ACL enforcement failed for {path}; "
-        f"artifact destroyed to prevent leak. Reason: {reason}"
+        f"{outcome} to prevent leak. Reason: {reason}"
     )
 
 
