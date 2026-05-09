@@ -138,9 +138,8 @@ async def test_in_progress_rows_recovered_on_startup(tmp_path: Path) -> None:
         await db.commit()
 
     # Pre-condición: fila está in_progress
-    async with aiosqlite.connect(db_path) as db:
-        async with db.execute("SELECT status FROM dead_letter_events") as cur:
-            row_before = await cur.fetchone()
+    async with aiosqlite.connect(db_path) as db, db.execute("SELECT status FROM dead_letter_events") as cur:
+        row_before = await cur.fetchone()
     assert row_before is not None and row_before[0] == "in_progress", (
         "Pre-condición fallida: la fila debe estar in_progress"
     )
@@ -151,9 +150,8 @@ async def test_in_progress_rows_recovered_on_startup(tmp_path: Path) -> None:
     await dlq_new._ensure_schema()
 
     # Verificar que la fila fue recuperada a 'pending'
-    async with aiosqlite.connect(db_path) as db:
-        async with db.execute("SELECT status FROM dead_letter_events") as cur:
-            row_after = await cur.fetchone()
+    async with aiosqlite.connect(db_path) as db, db.execute("SELECT status FROM dead_letter_events") as cur:
+        row_after = await cur.fetchone()
 
     assert row_after is not None and row_after[0] == "pending", (
         f"H-05: la fila in_progress debe recuperarse a 'pending' en startup. "

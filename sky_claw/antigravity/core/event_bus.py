@@ -31,13 +31,17 @@ logger = logging.getLogger(__name__)
 Subscriber = Callable[["Event"], Awaitable[None]]
 
 
-class BackpressureDropped(RuntimeError):
+class BackpressureDroppedError(RuntimeError):
     """Excepción que representa un evento descartado por backpressure del bus.
 
     Se usa como causa en la DLQ cuando ``_MAX_PENDING_TASKS`` está lleno y
     el evento no puede despacharse; la DLQ permite su reintento posterior.
     Si no hay DLQ configurada el comportamiento original (drop silencioso) se mantiene.
     """
+
+
+# Alias para backward-compat con código que importe el nombre anterior.
+BackpressureDropped = BackpressureDroppedError
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,7 +190,7 @@ class CoreEventBus:
         Se invoca como fire-and-forget task para no bloquear _dispatch_loop.
         Si el enqueue falla, registra critical pero no propaga (best-effort).
         """
-        exc = BackpressureDropped(
+        exc = BackpressureDroppedError(
             f"Backpressure: {self._MAX_PENDING_TASKS} pending tasks alcanzado — "
             f"handler '{self._handler_name(callback)}' topic '{event.topic}'"
         )

@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from sky_claw.antigravity.core.event_bus import BackpressureDropped, CoreEventBus, Event
+from sky_claw.antigravity.core.event_bus import BackpressureDroppedError, CoreEventBus, Event
 from tests.polling_utils import poll_until
 
 
@@ -86,6 +86,6 @@ async def test_backpressure_routes_dropped_events_to_dlq() -> None:
         f"El evento encolado debe ser event_2 ('{event_2.topic}'), "
         f"no '{call_event.topic}'"
     )
-    assert isinstance(call_exc, BackpressureDropped), (
-        f"La excepción debe ser BackpressureDropped, obtenido {type(call_exc).__name__}"
+    assert isinstance(call_exc, BackpressureDroppedError), (
+        f"La excepción debe ser BackpressureDroppedError, obtenido {type(call_exc).__name__}"
     )
