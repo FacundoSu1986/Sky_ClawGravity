@@ -127,7 +127,12 @@ class AsyncModRegistry:
         Path to the SQLite file.  Created if it does not exist.
     """
 
-    def __init__(self, db_path: pathlib.Path | str | None = None) -> None:
+    def __init__(
+        self,
+        db_path: pathlib.Path | str | None = None,
+        *,
+        lifecycle=None,  # DatabaseLifecycleManager | None — evita import en runtime circular
+    ) -> None:
         raw_path = str(db_path or DB_PATH)
         from sky_claw.antigravity.core.validators.path import PathTraversalValidator
 
@@ -137,6 +142,8 @@ class AsyncModRegistry:
             raise ValueError(f"Path traversal detected in database path '{raw_path}': {result.error_message}")
 
         self._db_path = raw_path
+        self._lifecycle = lifecycle  # DatabaseLifecycleManager | None
+        self._owns_lifecycle: bool = False
         self._conn: aiosqlite.Connection | None = None
 
     # ------------------------------------------------------------------
@@ -146,6 +153,10 @@ class AsyncModRegistry:
     async def open(self) -> None:
         """Open (or create) the database and ensure the schema exists.
 
+        M-01: Si se inyectó un DatabaseLifecycleManager, la conexión se pide
+        a él (WAL recovery + pragmas ya aplicados). En caso contrario se crea
+        un lifecycle propio (backwards-compat para tests y código legacy).
+
         Runs a quick integrity check on open.  If the database is corrupt,
         it automatically renames the corrupt file as a backup and creates a
         fresh database to prevent agent fatal loops.
@@ -153,19 +164,41 @@ class AsyncModRegistry:
         if self._conn is not None:
             return
 
-        self._conn = await aiosqlite.connect(self._db_path)
-        self._conn.row_factory = aiosqlite.Row
+        # --- Obtener o crear el lifecycle ---
+        if self._lifecycle is None:
+            from sky_claw.antigravity.core.db_lifecycle import (
+                DatabaseLifecycleConfig,
+                DatabaseLifecycleManager,
+            )
+
+            self._lifecycle = DatabaseLifecycleManager(
+                db_paths=[],
+                config=DatabaseLifecycleConfig(enable_signal_handlers=False),
+            )
+            self._owns_lifecycle = True
+        else:
+            self._owns_lifecycle = False
+
+        # --- Obtener conexión con pragmas ya aplicadas ---
         try:
-            await self._conn.execute("PRAGMA journal_mode=WAL")
-            await self._conn.execute("PRAGMA foreign_keys=ON")
+            self._conn = await self._lifecycle.get_connection(self._db_path)
+            self._conn.row_factory = aiosqlite.Row
+
             async with self._conn.execute("PRAGMA quick_check") as cur:
                 row = await cur.fetchone()
                 if row is None or str(row[0]).lower() != "ok":
                     # DB-004: Use specific exception to avoid catching unrelated RuntimeErrors
                     raise _DatabaseCorruptionError(f"SQLite integrity check failed for {self._db_path}")
+
         except _DatabaseCorruptionError:
-            await self._conn.close()
+            # Cerrar y evictar la conexión corrupta del lifecycle
+            try:
+                await self._conn.close()
+            except Exception:
+                pass
             self._conn = None
+            path_key = str(pathlib.Path(self._db_path).resolve())
+            self._lifecycle._connections.pop(path_key, None)
 
             db_file = pathlib.Path(self._db_path)
 
@@ -189,23 +222,24 @@ class AsyncModRegistry:
                     logger.error("Failed to backup corrupt database: %s", e)
                     raise
 
-            # Reopen fresh
-            self._conn = await aiosqlite.connect(self._db_path)
+            # Reopen fresh vía lifecycle (path ahora apunta a archivo vacío/nuevo)
+            self._conn = await self._lifecycle.get_connection(self._db_path)
             self._conn.row_factory = aiosqlite.Row
-            await self._conn.execute("PRAGMA journal_mode=WAL")
-            await self._conn.execute("PRAGMA foreign_keys=ON")
 
         except Exception as exc:
-            if self._conn is not None:
-                await self._conn.close()
-                self._conn = None
+            self._conn = None
             logger.error("Failed to open async registry: %s", exc)
             raise
+
         await self._conn.executescript(_SCHEMA_SQL)
 
     async def close(self) -> None:
         if self._conn is not None:
-            await self._conn.close()
+            if self._owns_lifecycle and self._lifecycle is not None:
+                # Lifecycle propio: shutdown completo (checkpoint + close)
+                await self._lifecycle.shutdown_all()
+            # Si el lifecycle es externo, no cerramos la conexión aquí;
+            # el propietario (LifecycleContext) la cierra en shutdown_all().
             self._conn = None
 
     # ------------------------------------------------------------------

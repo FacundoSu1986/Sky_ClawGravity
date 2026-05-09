@@ -223,13 +223,20 @@ class OperationJournal:
     CREATE INDEX IF NOT EXISTS idx_journal_path ON journal_entries(target_path);
     """
 
-    def __init__(self, db_path: pathlib.Path | None = None) -> None:
+    def __init__(
+        self,
+        db_path: pathlib.Path | None = None,
+        *,
+        lifecycle=None,  # DatabaseLifecycleManager | None — evita import circular en runtime
+    ) -> None:
         """
         Inicializa el journal.
 
         Args:
             db_path: Path al archivo de base de datos SQLite.
                      Si es None, usa un path por defecto.
+            lifecycle: DatabaseLifecycleManager opcional (M-01 DI). Si es None,
+                       se crea uno interno (backwards-compat).
         """
         raw_path = str(db_path or ".skyclaw_journal.db")
         from sky_claw.antigravity.core.validators.path import PathTraversalValidator
@@ -240,20 +247,40 @@ class OperationJournal:
             raise ValueError(f"Path traversal detected in journal path '{raw_path}': {result.error_message}")
 
         self._db_path = pathlib.Path(raw_path)
+        self._lifecycle = lifecycle  # DatabaseLifecycleManager | None
+        self._owns_lifecycle: bool = False
         self._db: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
         self._current_transaction: int | None = None
 
     async def open(self) -> None:
-        """Abre la conexión a la base de datos y crea el schema si es necesario."""
+        """Abre la conexión a la base de datos y crea el schema si es necesario.
+
+        M-01: Si se inyectó un DatabaseLifecycleManager, la conexión se pide
+        a él (WAL recovery + pragmas ya aplicados). En caso contrario se crea
+        un lifecycle propio (backwards-compat).
+        """
         if self._db is not None:
             return
 
         try:
-            self._db = await aiosqlite.connect(str(self._db_path))
+            if self._lifecycle is None:
+                from sky_claw.antigravity.core.db_lifecycle import (
+                    DatabaseLifecycleConfig,
+                    DatabaseLifecycleManager,
+                )
+
+                self._lifecycle = DatabaseLifecycleManager(
+                    db_paths=[],
+                    config=DatabaseLifecycleConfig(enable_signal_handlers=False),
+                )
+                self._owns_lifecycle = True
+            else:
+                self._owns_lifecycle = False
+
+            self._db = await self._lifecycle.get_connection(self._db_path)
+            # Schema y pragmas WAL+FK ya aplicados por el lifecycle
             await self._db.executescript(self._SCHEMA_SQL)
-            await self._db.execute("PRAGMA journal_mode=WAL")
-            await self._db.execute("PRAGMA foreign_keys=ON")
             logger.info("Journal database opened", extra={"db_path": str(self._db_path)})
         except sqlite3.Error as e:
             raise JournalConnectionError(f"Failed to open journal database: {e}") from e
@@ -261,7 +288,11 @@ class OperationJournal:
     async def close(self) -> None:
         """Cierra la conexión a la base de datos."""
         if self._db:
-            await self._db.close()
+            if self._owns_lifecycle and self._lifecycle is not None:
+                # Lifecycle propio: shutdown completo (checkpoint + close)
+                await self._lifecycle.shutdown_all()
+            # Si lifecycle es externo, no cerramos la conexión aquí;
+            # el propietario (LifecycleContext) la cierra en shutdown_all().
             self._db = None
             self._current_transaction = None
             logger.info("Journal database closed")
