@@ -142,6 +142,19 @@ class AsyncPathResolver:
                 self._inflight.pop(key, None)
             fut.set_exception(domain_exc)
             raise domain_exc from exc
+        except BaseException as exc:
+            # C-2: MemoryError, CancelledError y cualquier excepción no anticipada.
+            # Limpiar _inflight y señalizar al Future para que los waiters
+            # no queden colgados indefinidamente esperando un resultado que
+            # nunca llegará.
+            async with self._lock:
+                self._inflight.pop(key, None)
+            if not fut.done():
+                if isinstance(exc, asyncio.CancelledError):
+                    fut.cancel()
+                else:
+                    fut.set_exception(exc)
+            raise
 
         async with self._lock:
             self._cache[key] = resolved
