@@ -249,7 +249,7 @@ class OperationJournal:
 
         self._db_path = pathlib.Path(raw_path)
         self._lifecycle = lifecycle  # DatabaseLifecycleManager | None
-        self._owns_lifecycle: bool = False
+        self._owns_conn: bool = False  # True when we opened the connection directly (no lifecycle)
         self._db: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
         self._current_transaction: int | None = None
@@ -257,58 +257,61 @@ class OperationJournal:
     async def open(self) -> None:
         """Abre la conexión a la base de datos y crea el schema si es necesario.
 
-        M-01: Si se inyectó un DatabaseLifecycleManager, la conexión se pide
-        a él (WAL recovery + pragmas ya aplicados). En caso contrario se crea
-        un lifecycle propio (backwards-compat).
+        M-01: If a DatabaseLifecycleManager was injected, the connection is
+        requested from it (WAL recovery + hardened pragmas already applied).
+        Otherwise falls back to a direct ``aiosqlite.connect`` with manual
+        pragmas (pre-M-01 behaviour), which avoids spawning a lifecycle that
+        creates non-daemon aiosqlite worker threads — those block process exit
+        on CPython 3.11 when callers omit ``close()`` (CI 20-minute timeout).
         """
         if self._db is not None:
             return
 
         try:
-            if self._lifecycle is None:
-                from sky_claw.antigravity.core.db_lifecycle import (
-                    DatabaseLifecycleConfig,
-                    DatabaseLifecycleManager,
-                )
-
-                self._lifecycle = DatabaseLifecycleManager(
-                    db_paths=[],
-                    config=DatabaseLifecycleConfig(enable_signal_handlers=False),
-                )
-                self._owns_lifecycle = True
+            if self._lifecycle is not None:
+                # ----------------------------------------------------------
+                # M-01 DI path — lifecycle owns and manages the connection
+                # ----------------------------------------------------------
+                self._owns_conn = False
+                self._db = await self._lifecycle.get_connection(self._db_path)
             else:
-                self._owns_lifecycle = False
+                # ----------------------------------------------------------
+                # Backwards-compat path — direct aiosqlite.connect (pre-M-01)
+                # ----------------------------------------------------------
+                # Does NOT create a DatabaseLifecycleManager internally.
+                # Lifecycle managers spawn non-daemon aiosqlite worker threads;
+                # on CPython 3.11 those threads block process exit when callers
+                # omit close(), causing observed CI 20-minute timeouts.
+                self._owns_conn = True
+                self._db = await aiosqlite.connect(self._db_path)
+                await self._db.execute("PRAGMA journal_mode=WAL")
+                await self._db.execute("PRAGMA foreign_keys=ON")
+                await self._db.execute("PRAGMA busy_timeout=5000")
+                await self._db.execute("PRAGMA synchronous=NORMAL")
 
-            self._db = await self._lifecycle.get_connection(self._db_path)
-            # Schema y pragmas WAL+FK ya aplicados por el lifecycle
+            # Schema is the same regardless of path
             await self._db.executescript(self._SCHEMA_SQL)
             logger.info("Journal database opened", extra={"db_path": str(self._db_path)})
         except sqlite3.Error as e:
-            # Limpiar recursos sin importar si _db fue asignado.
-            # El lifecycle pudo haberse creado internamente antes de que
-            # get_connection() o executescript() falle.
-            if self._lifecycle is not None:
-                if self._db is not None:
+            if self._db is not None:
+                if self._owns_conn:
+                    with contextlib.suppress(Exception):
+                        await self._db.close()
+                elif self._lifecycle is not None:
                     with contextlib.suppress(Exception):
                         self._lifecycle.evict_connection(self._db_path)
-                if self._owns_lifecycle:
-                    with contextlib.suppress(Exception):
-                        await self._lifecycle.shutdown_all()
-                    self._lifecycle = None
-                    self._owns_lifecycle = False
             self._db = None
+            self._owns_conn = False
             raise JournalConnectionError(f"Failed to open journal database: {e}") from e
 
     async def close(self) -> None:
         """Cierra la conexión a la base de datos."""
         if self._db:
-            if self._owns_lifecycle and self._lifecycle is not None:
-                # Lifecycle propio: shutdown completo (checkpoint + close).
-                # Reseteamos la referencia para que un eventual reopen() cree
-                # un lifecycle nuevo en lugar de tratar el apagado como externo.
-                await self._lifecycle.shutdown_all()
-                self._lifecycle = None
-                self._owns_lifecycle = False
+            if self._owns_conn:
+                # Backwards-compat: we opened the connection directly, we close it.
+                with contextlib.suppress(Exception):
+                    await self._db.close()
+                self._owns_conn = False
             # Si lifecycle es externo, no cerramos la conexión aquí;
             # el propietario (LifecycleContext) la cierra en shutdown_all().
             self._db = None
