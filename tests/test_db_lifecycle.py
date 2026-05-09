@@ -61,7 +61,7 @@ class TestInit:
     @pytest.mark.asyncio
     async def test_init_creates_wal_mode(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
         assert conn is not None
 
         async with conn.execute("PRAGMA journal_mode") as cursor:
@@ -73,7 +73,7 @@ class TestInit:
     @pytest.mark.asyncio
     async def test_pragma_application_on_connect(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
 
         # Verify all pragmas
         async with conn.execute("PRAGMA journal_mode") as cursor:
@@ -129,7 +129,7 @@ class TestRecovery:
         await lifecycle.init_all()
 
         # Step 4: Verify data is accessible
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
         async with conn.execute("SELECT val FROM test") as cursor:
             rows = await cursor.fetchall()
             assert len(rows) == 1
@@ -141,7 +141,7 @@ class TestRecovery:
     async def test_init_with_clean_state(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
         """Init on a clean database should work without issues."""
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
         assert conn is not None
         await lifecycle.shutdown_all()
 
@@ -155,7 +155,7 @@ class TestCheckpoint:
     @pytest.mark.asyncio
     async def test_passive_checkpoint(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
 
         # Write some data to generate WAL content
         await conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, val TEXT)")
@@ -172,7 +172,7 @@ class TestCheckpoint:
     @pytest.mark.asyncio
     async def test_truncate_checkpoint(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
 
         await conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, val TEXT)")
         await conn.execute("INSERT INTO test (val) VALUES ('truncate_test')")
@@ -196,7 +196,7 @@ class TestShutdown:
     async def test_shutdown_no_orphan_wal(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
         """After shutdown, WAL and SHM files should be eliminated."""
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
 
         await conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY)")
         await conn.commit()
@@ -213,7 +213,7 @@ class TestShutdown:
     async def test_shutdown_preserves_data(self, lifecycle: DatabaseLifecycleManager, db_path: Path) -> None:
         """Data written before shutdown must persist after reopening."""
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
 
         await conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, val TEXT)")
         await conn.execute("INSERT INTO test (val) VALUES ('persistent')")
@@ -259,7 +259,7 @@ class TestHealthCheck:
             ),
         )
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
 
         # Write data to generate WAL content
         await conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, val TEXT)")
@@ -288,7 +288,7 @@ class TestConcurrency:
             config=DatabaseLifecycleConfig(enable_signal_handlers=False),
         )
         await lifecycle.init_all()
-        conn = lifecycle.get_connection(str(db_path))
+        conn = await lifecycle.get_connection(db_path)
 
         await conn.execute("CREATE TABLE concurrent_test (id INTEGER PRIMARY KEY, val TEXT, thread_id TEXT)")
         await conn.commit()
@@ -357,3 +357,72 @@ class TestConfig:
         )
         with pytest.raises(ValidationError):
             health.status = "critical"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# get_connection contract (M-01 PR A)
+# ---------------------------------------------------------------------------
+
+
+class TestGetConnection:
+    """Validates the M-01 contract for DatabaseLifecycleManager.get_connection.
+
+    The method must:
+    - Return the same connection instance for the same path (singleton).
+    - Apply hardened pragmas even when the path was not pre-registered.
+    - Lazy-initialize unknown paths on first call.
+    """
+
+    @pytest.mark.asyncio
+    async def test_get_connection_returns_singleton(self, db_path: Path) -> None:
+        """Two calls with the same path return the same connection instance."""
+        lifecycle = DatabaseLifecycleManager(
+            db_paths=[db_path],
+            config=DatabaseLifecycleConfig(enable_signal_handlers=False),
+        )
+        try:
+            await lifecycle.init_all()
+            conn1 = await lifecycle.get_connection(db_path)
+            conn2 = await lifecycle.get_connection(db_path)
+            assert conn1 is conn2
+        finally:
+            await lifecycle.shutdown_all()
+
+    @pytest.mark.asyncio
+    async def test_get_connection_applies_pragmas(self, db_path: Path) -> None:
+        """Lazy-init via get_connection applies WAL + busy_timeout + FK pragmas."""
+        lifecycle = DatabaseLifecycleManager(
+            db_paths=[],  # empty — force lazy-init through get_connection
+            config=DatabaseLifecycleConfig(enable_signal_handlers=False),
+        )
+        try:
+            conn = await lifecycle.get_connection(db_path)
+
+            async with conn.execute("PRAGMA journal_mode") as cur:
+                row = await cur.fetchone()
+                assert row[0] == "wal"
+
+            async with conn.execute("PRAGMA busy_timeout") as cur:
+                row = await cur.fetchone()
+                assert row[0] == 5000
+
+            async with conn.execute("PRAGMA foreign_keys") as cur:
+                row = await cur.fetchone()
+                assert row[0] == 1
+        finally:
+            await lifecycle.shutdown_all()
+
+    @pytest.mark.asyncio
+    async def test_get_connection_lazy_init(self, db_path: Path) -> None:
+        """Paths not declared in __init__ are initialized on demand."""
+        lifecycle = DatabaseLifecycleManager(
+            db_paths=[],
+            config=DatabaseLifecycleConfig(enable_signal_handlers=False),
+        )
+        try:
+            assert str(db_path) not in lifecycle.managed_paths
+            conn = await lifecycle.get_connection(db_path)
+            assert conn is not None
+            assert str(db_path) in lifecycle.managed_paths
+        finally:
+            await lifecycle.shutdown_all()

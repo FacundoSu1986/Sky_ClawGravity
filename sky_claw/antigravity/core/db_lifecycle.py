@@ -78,6 +78,17 @@ class WALHealth(BaseModel):
 class DatabaseLifecycleManager:
     """Manages SQLite WAL lifecycle across multiple database files.
 
+    CONTRATO M-01: Este es el único punto de entrada para obtener conexiones
+    aiosqlite en sky_claw. Todos los módulos deben pedir su conexión vía
+    ``await lifecycle.get_connection(path)`` en lugar de ejecutar
+    ``aiosqlite.connect(path)`` directamente. Esto garantiza:
+
+    - WAL recovery automática para archivos huérfanos.
+    - Pragmas hardenizadas consistentes (synchronous=NORMAL, busy_timeout=5000,
+      foreign_keys=ON, temp_store=MEMORY).
+    - Shutdown coordinado vía ``shutdown_all()`` que ejecuta TRUNCATE
+      checkpoint y elimina los ``-wal``/``-shm``.
+
     Usage::
 
         lifecycle = DatabaseLifecycleManager(
@@ -447,9 +458,37 @@ class DatabaseLifecycleManager:
     # Accessors
     # ------------------------------------------------------------------
 
-    def get_connection(self, db_path: str) -> aiosqlite.Connection | None:
-        """Get a managed connection by db_path string."""
-        return self._connections.get(db_path)
+    async def get_connection(self, db_path: Path | str) -> aiosqlite.Connection:
+        """Return the managed connection for db_path, initializing on demand.
+
+        CONTRATO M-01: Ningún módulo debe llamar ``aiosqlite.connect(...)``
+        directamente. Pedir la conexión a este método garantiza WAL recovery,
+        pragmas hardenizadas (synchronous=NORMAL, busy_timeout=5000,
+        foreign_keys=ON, temp_store=MEMORY) y shutdown coordinado vía
+        ``shutdown_all()``.
+
+        Args:
+            db_path: Ruta a la DB (Path o str). Se normaliza a str para la
+                clave del dict ``_connections``.
+
+        Returns:
+            Conexión aiosqlite ya inicializada con pragmas. La misma instancia
+            ante llamadas repetidas con el mismo path (singleton por path).
+        """
+        path_obj = db_path if isinstance(db_path, Path) else Path(db_path)
+        path_str = str(path_obj)
+
+        if path_str in self._connections:
+            return self._connections[path_str]
+
+        # Lazy registration: si el path no estaba en _db_paths, agregarlo
+        # para que los métodos que iteran (health_check, shutdown verification)
+        # lo vean.
+        if not any(p.resolve() == path_obj.resolve() for p in self._db_paths):
+            self._db_paths.append(path_obj)
+
+        await self._init_single(path_obj)
+        return self._connections[path_str]
 
     @property
     def managed_paths(self) -> list[str]:

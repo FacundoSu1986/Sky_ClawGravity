@@ -36,8 +36,8 @@ class DatabaseAgent:
         self._lifecycle = DatabaseLifecycleManager(db_paths=[db_path])
         await self._lifecycle.init_all()
 
-        # Get the managed connection
-        self._conn = self._lifecycle.get_connection(self.db_path)
+        # Get the managed connection (M-01: get_connection is async + lazy)
+        self._conn = await self._lifecycle.get_connection(self.db_path)
         if self._conn is None:
             raise RuntimeError(f"DatabaseLifecycleManager failed to initialize {self.db_path}")
 
