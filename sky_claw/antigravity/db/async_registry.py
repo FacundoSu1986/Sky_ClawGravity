@@ -8,6 +8,7 @@ lock contention and I/O overhead.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import pathlib
 import sqlite3
@@ -192,10 +193,8 @@ class AsyncModRegistry:
 
         except _DatabaseCorruptionError:
             # Cerrar y evictar la conexión corrupta del lifecycle
-            try:
+            with contextlib.suppress(Exception):
                 await self._conn.close()
-            except Exception:
-                pass
             self._conn = None
             path_key = str(pathlib.Path(self._db_path).resolve())
             self._lifecycle._connections.pop(path_key, None)
