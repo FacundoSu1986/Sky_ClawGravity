@@ -31,6 +31,15 @@ logger = logging.getLogger(__name__)
 Subscriber = Callable[["Event"], Awaitable[None]]
 
 
+class BackpressureDropped(RuntimeError):
+    """Excepción que representa un evento descartado por backpressure del bus.
+
+    Se usa como causa en la DLQ cuando ``_MAX_PENDING_TASKS`` está lleno y
+    el evento no puede despacharse; la DLQ permite su reintento posterior.
+    Si no hay DLQ configurada el comportamiento original (drop silencioso) se mantiene.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class Event:
     """Envolvente inmutable de evento para transporte por el bus.
@@ -150,18 +159,46 @@ class CoreEventBus:
             for pattern, callback in self._subscriptions:
                 if fnmatch.fnmatch(event.topic, pattern):
                     if len(self._pending_tasks) >= self._MAX_PENDING_TASKS:
+                        cb_name = getattr(callback, "__name__", repr(callback))
                         logger.warning(
                             "Event bus backpressure: %d pending tasks — dropping dispatch for '%s' handler '%s'",
                             len(self._pending_tasks),
                             event.topic,
-                            getattr(callback, "__name__", repr(callback)),
+                            cb_name,
                         )
+                        # H-04: enrutar a DLQ si está configurada; preservar drop
+                        # silencioso si no hay DLQ (backward compat).
+                        if self._dlq is not None:
+                            asyncio.create_task(
+                                self._enqueue_backpressure_drop(event, callback),
+                                name=f"dlq-backpressure-{event.topic}",
+                            )
                         continue
                     task = asyncio.create_task(self._safe_execute(callback, event))
                     self._pending_tasks.add(task)
                     task.add_done_callback(self._pending_tasks.discard)
 
             self._queue.task_done()
+
+    async def _enqueue_backpressure_drop(self, event: Event, callback: Subscriber) -> None:
+        """Encola en DLQ un evento descartado por backpressure (H-04).
+
+        Se invoca como fire-and-forget task para no bloquear _dispatch_loop.
+        Si el enqueue falla, registra critical pero no propaga (best-effort).
+        """
+        exc = BackpressureDropped(
+            f"Backpressure: {self._MAX_PENDING_TASKS} pending tasks alcanzado — "
+            f"handler '{self._handler_name(callback)}' topic '{event.topic}'"
+        )
+        try:
+            await self._dlq.enqueue(event, callback, exc)  # type: ignore[union-attr]
+        except Exception:
+            logger.critical(
+                "DLQ enqueue falló bajo backpressure para evento '%s' handler '%s' — evento perdido",
+                event.topic,
+                self._handler_name(callback),
+                exc_info=True,
+            )
 
     async def _safe_execute(self, callback: Subscriber, event: Event) -> None:
         """Ejecuta un consumidor aislando sus fallos del bus. Fallos van a DLQ si está activa."""
