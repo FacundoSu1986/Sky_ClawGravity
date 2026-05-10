@@ -26,6 +26,7 @@ from sky_claw.antigravity.orchestrator.tool_dispatcher import build_orchestratio
 from sky_claw.antigravity.orchestrator.watcher_daemon import WatcherDaemon
 from sky_claw.antigravity.orchestrator.ws_event_streamer import LangGraphEventStreamer
 from sky_claw.antigravity.scraper.scraper_agent import ScraperAgent
+from sky_claw.antigravity.security.network_gateway import NetworkGateway
 from sky_claw.local.assets import AssetConflictDetector, AssetConflictReport
 from sky_claw.local.tools.dyndolod_service import DynDOLODPipelineService
 from sky_claw.local.tools.synthesis_service import SynthesisPipelineService
@@ -47,7 +48,8 @@ BACKUP_STAGING_DIR = ".skyclaw_backups/"
 class SupervisorAgent:
     def __init__(self, profile_name: str = "Default"):
         self.db = DatabaseAgent()
-        self.scraper = ScraperAgent(self.db)
+        self.gateway = NetworkGateway()
+        self.scraper = ScraperAgent(self.db, gateway=self.gateway)
         self.tools = ModdingToolsAgent()
         self.interface = InterfaceAgent()
         self.profile_name = profile_name

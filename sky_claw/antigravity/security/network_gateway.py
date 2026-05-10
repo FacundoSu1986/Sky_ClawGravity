@@ -156,7 +156,7 @@ class NetworkGateway:
 
     # Strict pre-validation: prevents scheme smuggling and CRLF injection.
     # Runs BEFORE urlparse, which is historically lenient with malformed inputs.
-    _STRICT_PREFIX_RE = re.compile(r"^https?://[a-zA-Z0-9]")
+    _STRICT_PREFIX_RE = re.compile(r"^https?://", re.IGNORECASE)
 
     async def authorize(self, method: str, url: str) -> None:
         """Validate *method* + *url* against the egress policy.
@@ -176,9 +176,11 @@ class NetworkGateway:
         if any(ord(c) <= 32 or ord(c) >= 127 for c in stripped):
             raise EgressViolationError(f"URL rejected: Contains control characters or whitespace: {url!r}")
 
-        # Block triple slashes (e.g. https:///evil.com) and ensure it starts with an alphanumeric host.
+        # Block triple slashes (e.g. https:///evil.com) before urlparse.
         if not self._STRICT_PREFIX_RE.match(stripped):
-            raise EgressViolationError(f"URL rejected: Must start with http(s):// followed by alphanumeric: {url!r}")
+            raise EgressViolationError(f"URL rejected: Must start with http(s)://: {url!r}")
+        if stripped.lower().startswith(("http:///", "https:///")):
+            raise EgressViolationError(f"URL rejected: Empty authority is not allowed: {url!r}")
 
         parsed = urlparse(stripped)
         hostname = (parsed.hostname or "").lower()

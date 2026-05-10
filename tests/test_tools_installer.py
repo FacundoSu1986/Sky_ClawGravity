@@ -189,17 +189,12 @@ class TestEnsureLoot:
         mock_dl_resp.__aenter__ = AsyncMock(return_value=mock_dl_resp)
         mock_dl_resp.__aexit__ = AsyncMock(return_value=False)
 
-        call_count = 0
-
         def _mock_get(url: str, **kwargs: Any) -> Any:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_api_resp  # GitHub API
-            return mock_dl_resp  # Asset download
+            return mock_api_resp  # GitHub release API
 
         session = MagicMock(spec=aiohttp.ClientSession)
         session.get = MagicMock(side_effect=_mock_get)
+        installer._gateway.request = AsyncMock(return_value=mock_dl_resp)  # type: ignore[method-assign]
 
         # Auto-approve HITL.
         async def _auto_approve() -> None:
@@ -215,7 +210,11 @@ class TestEnsureLoot:
         assert result.version == "0.22.4"
         assert result.exe_path.name == "loot.exe"
         assert result.exe_path.exists()
-        assert session.get.call_args_list[1].args[0] == "https://api.github.com/repos/loot/loot/releases/assets/1001"
+        installer._gateway.request.assert_awaited_once()  # type: ignore[attr-defined]
+        assert (
+            installer._gateway.request.await_args.args[1]  # type: ignore[attr-defined]
+            == "https://api.github.com/repos/loot/loot/releases/assets/1001"
+        )
 
     @pytest.mark.asyncio
     async def test_hitl_denial_raises(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
@@ -312,17 +311,12 @@ class TestEnsureXedit:
         mock_dl_resp.__aenter__ = AsyncMock(return_value=mock_dl_resp)
         mock_dl_resp.__aexit__ = AsyncMock(return_value=False)
 
-        call_count = 0
-
         def _mock_get(url: str, **kwargs: Any) -> Any:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_api_resp
-            return mock_dl_resp
+            return mock_api_resp
 
         session = MagicMock(spec=aiohttp.ClientSession)
         session.get = MagicMock(side_effect=_mock_get)
+        installer._gateway.request = AsyncMock(return_value=mock_dl_resp)  # type: ignore[method-assign]
 
         async def _auto_approve() -> None:
             await asyncio.sleep(0.01)
@@ -337,7 +331,7 @@ class TestEnsureXedit:
         assert result.version == "4.1.5"
         assert result.exe_path.name == "SSEEdit.exe"
         assert (
-            session.get.call_args_list[1].args[0]
+            installer._gateway.request.await_args.args[1]  # type: ignore[attr-defined]
             == "https://api.github.com/repos/TES5Edit/TES5Edit/releases/assets/2001"
         )
 

@@ -128,6 +128,16 @@ class TestPrivateIPBlocking:
         await gw.authorize("GET", "http://127.0.0.1:8765/health")
 
     @pytest.mark.asyncio
+    async def test_ipv6_loopback_http_scheme_allowed_when_policy_allows_host(self) -> None:
+        policy = EgressPolicy(
+            allowed_hosts=frozenset(["::1"]),
+            allowed_methods={"::1": frozenset(["GET"])},
+            block_private_ips=False,
+        )
+        gw = NetworkGateway(policy)
+        await gw.authorize("GET", "http://[::1]:8765/health")
+
+    @pytest.mark.asyncio
     async def test_loopback_literal_blocked(self, gw_strict: NetworkGateway) -> None:
         with pytest.raises(EgressViolationError, match="private/loopback"):
             await gw_strict.authorize("GET", "http://127.0.0.1:8080/data")
