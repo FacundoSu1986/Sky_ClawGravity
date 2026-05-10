@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
+import aiohttp
 import pytest
 
 from sky_claw.antigravity.security.network_gateway import (
@@ -9,6 +12,12 @@ from sky_claw.antigravity.security.network_gateway import (
     EgressViolationError,
     NetworkGateway,
 )
+
+
+class _GatewayResponse:
+    def __init__(self, status: int, headers: dict[str, str] | None = None) -> None:
+        self.status = status
+        self.headers = headers or {}
 
 
 @pytest.fixture()
@@ -64,6 +73,47 @@ class TestHostAllowList:
         # H-01: Empty URLs are now caught by strict pre-validation.
         with pytest.raises(EgressViolationError, match="URL rejected"):
             await gw.authorize("GET", "")
+
+    @pytest.mark.asyncio
+    async def test_malformed_ipv6_url_rejected_as_egress_violation(self, gw: NetworkGateway) -> None:
+        with pytest.raises(EgressViolationError, match="Malformed URL"):
+            await gw.authorize("GET", "http://[::1")
+
+    @pytest.mark.asyncio
+    async def test_github_release_asset_cdn_is_not_general_egress(self, gw: NetworkGateway) -> None:
+        with pytest.raises(EgressViolationError, match="not in the allow-list"):
+            await gw.authorize("GET", "https://objects.githubusercontent.com/github-release.zip")
+
+
+# ------------------------------------------------------------------
+# Redirect validation
+# ------------------------------------------------------------------
+
+
+class TestRedirectValidation:
+    @pytest.mark.asyncio
+    async def test_github_release_asset_api_redirect_to_configured_cdn_allowed(self, gw: NetworkGateway) -> None:
+        asset_url = "https://api.github.com/repos/loot/loot/releases/assets/1001"
+        cdn_url = "https://objects.githubusercontent.com/github-production-release-asset-2e65be/loot.zip"
+        redirect_response = _GatewayResponse(302, {"Location": cdn_url})
+        final_response = _GatewayResponse(200)
+        session = MagicMock(spec=aiohttp.ClientSession)
+        session.request = AsyncMock(side_effect=[redirect_response, final_response])
+
+        response = await gw.request("GET", asset_url, session)
+
+        assert response is final_response
+        assert [call.args[1] for call in session.request.await_args_list] == [asset_url, cdn_url]
+
+    @pytest.mark.asyncio
+    async def test_github_release_asset_api_redirect_to_unapproved_host_blocked(self, gw: NetworkGateway) -> None:
+        asset_url = "https://api.github.com/repos/loot/loot/releases/assets/1001"
+        redirect_response = _GatewayResponse(302, {"Location": "https://github.com/loot/loot/releases/download/x.zip"})
+        session = MagicMock(spec=aiohttp.ClientSession)
+        session.request = AsyncMock(return_value=redirect_response)
+
+        with pytest.raises(EgressViolationError, match="GitHub release asset redirect host"):
+            await gw.request("GET", asset_url, session)
 
 
 # ------------------------------------------------------------------
@@ -126,6 +176,16 @@ class TestPrivateIPBlocking:
         )
         gw = NetworkGateway(policy)
         await gw.authorize("GET", "http://127.0.0.1:8765/health")
+
+    @pytest.mark.asyncio
+    async def test_ipv6_loopback_http_scheme_allowed_when_policy_allows_host(self) -> None:
+        policy = EgressPolicy(
+            allowed_hosts=frozenset(["::1"]),
+            allowed_methods={"::1": frozenset(["GET"])},
+            block_private_ips=False,
+        )
+        gw = NetworkGateway(policy)
+        await gw.authorize("GET", "http://[::1]:8765/health")
 
     @pytest.mark.asyncio
     async def test_loopback_literal_blocked(self, gw_strict: NetworkGateway) -> None:

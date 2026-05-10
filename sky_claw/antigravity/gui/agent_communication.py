@@ -53,6 +53,7 @@ class AgentCommunicationClient:
 
     _DISPATCH_QUEUE_MAX = 16
     _DISPATCH_WORKERS = 4
+    _AUTH_REJECTION_CLOSE_CODES = frozenset({4001})
 
     def __init__(
         self,
@@ -176,21 +177,18 @@ class AgentCommunicationClient:
                     backoff,
                 )
 
-                # H-04: Only count genuine auth rejections (POLICY_VIOLATION
-                # close code 1008) towards the lockout counter.  Network
+                # H-04: Only count genuine auth rejections (daemon close code
+                # 4001) towards the lockout counter.  Network
                 # errors (ConnectionRefusedError, OSError, generic closures)
                 # must NOT trigger lockout — a daemon restart is routine.
-                _is_auth_rejection = (
-                    isinstance(e, (ConnectionClosed, ConnectionClosedError))
-                    and hasattr(e, "code")
-                    and e.code == 1008  # POLICY_VIOLATION
-                )
-                if _is_auth_rejection:
+                if self._is_auth_rejection(e):
                     self._consecutive_auth_failures += 1
                     if self._consecutive_auth_failures >= 5:
                         self._auth_lockout_until = time.time() + 300.0
                         logger.warning("AUTH LOCKOUT: 5 consecutive auth rejections. Pausing 5 min.")
-            except (RuntimeError, ValueError) as e:
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
                 logger.error("Unexpected error in agent comm: %s", e)
             finally:
                 self._ws = None
@@ -228,8 +226,14 @@ class AgentCommunicationClient:
                     "Dropping daemon message because callback queue is full (%d).",
                     self._dispatch_queue.maxsize,
                 )
-            except (RuntimeError, OSError, ValueError, TypeError) as e:
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
                 logger.exception("Error processing daemon message: %s", e)
+
+    def _is_auth_rejection(self, exc: BaseException) -> bool:
+        """Return True when the daemon explicitly rejected WS authentication."""
+        return getattr(exc, "code", None) in self._AUTH_REJECTION_CLOSE_CODES
 
     def _start_dispatch_workers(self) -> None:
         """Start bounded workers for synchronous callback dispatch."""
@@ -252,7 +256,9 @@ class AgentCommunicationClient:
             try:
                 if self._on_message is not None:
                     await asyncio.to_thread(self._on_message, data)
-            except (RuntimeError, OSError, ValueError, TypeError) as exc:
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
                 logger.exception("Synchronous on_message callback failed: %s", exc)
             finally:
                 self._dispatch_queue.task_done()
