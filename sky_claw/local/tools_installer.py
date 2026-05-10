@@ -22,6 +22,11 @@ from sky_claw.config import (
     SystemPaths,
 )
 
+from sky_claw.antigravity.security.network_gateway import (
+    EgressViolationError,
+    NetworkGatewayTimeoutError,
+)
+
 if TYPE_CHECKING:
     from sky_claw.antigravity.scraper.nexus_downloader import NexusDownloader
     from sky_claw.antigravity.security.network_gateway import NetworkGateway
@@ -538,8 +543,8 @@ class ToolsInstaller:
             asset.size / (1024 * 1024),
         )
 
+        resp = await self._gateway.request("GET", asset.download_url, session, headers=headers, timeout=timeout)
         try:
-            resp = await self._gateway.request("GET", asset.download_url, session, headers=headers, timeout=timeout)
             resp.raise_for_status()
             with dest.open("wb") as fh:
                 async for chunk in resp.content.iter_chunked(_DOWNLOAD_CHUNK_SIZE):
@@ -553,11 +558,14 @@ class ToolsInstaller:
                             asset.size,
                             (downloaded / asset.size * 100) if asset.size else 0,
                         )
-        except (aiohttp.ClientError, OSError, TimeoutError) as exc:
+        except (aiohttp.ClientError, OSError, TimeoutError,
+                EgressViolationError, NetworkGatewayTimeoutError) as exc:
             logger.error("Download failed for %s: %s", asset.name, exc)
             if dest.exists():
                 dest.unlink()
             raise
+        finally:
+            await resp.release()
 
         # Size validation.
         if asset.size > 0 and downloaded != asset.size:
