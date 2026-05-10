@@ -4,7 +4,9 @@ import logging.handlers
 import os
 import re
 import sys
+from collections.abc import Mapping
 from contextvars import ContextVar
+from typing import Any
 
 from pythonjsonlogger import json
 
@@ -15,17 +17,41 @@ correlation_id_var: ContextVar[str] = ContextVar("correlation_id", default="")
 
 # Get current configuration and user for redaction
 _GLOBAL_CFG = Config()
-try:
-    _CURRENT_USER = getpass.getuser()
-except Exception:
-    _CURRENT_USER = "User"
 
-_REDACTION_PATTERNS = [
-    re.compile(r"[0-9]{8,10}:[a-zA-Z0-9_\-]{35}"),  # Telegram bot token
-    re.compile(r"sk-[a-zA-Z0-9]{20,}"),  # LLM API Keys (DeepSeek/OpenAI)
-    re.compile(rf"(?i)(Users[\\/]){re.escape(_CURRENT_USER)}"),  # Windows User Path
-    re.compile(r'(?i)(?:api_key|apikey|token)["\s:=]+([A-Za-z0-9_\-]{16,})'),  # General Generic Keys
-]
+
+_USERNAME_LOOKUP_ERRORS = (OSError, KeyError, ImportError)
+
+
+def _resolve_current_user() -> str:
+    try:
+        return getpass.getuser()
+    except _USERNAME_LOOKUP_ERRORS:
+        return "User"
+
+
+_CURRENT_USER = _resolve_current_user()
+
+_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b[0-9]{6,12}:[a-zA-Z0-9_\-]{30,90}\b"), "[REDACTED]"),
+    (re.compile(r"\bsk-(?:proj|ant|live|test)?-?[a-zA-Z0-9_\-]{20,}\b"), "[REDACTED]"),
+    (re.compile(r"(?i)\b(Bearer\s+)[^\s\"',;}{]{8,}"), r"\1[REDACTED]"),
+    (
+        re.compile(r"(?i)\b(api[_-]?key|apikey|x-api-key|token|secret|password)([\"'\s:=]+)([^\s\"',;}{]{8,})"),
+        r"\1\2[REDACTED]",
+    ),
+)
+
+_LOG_RECORD_RESERVED_ATTRS = frozenset(
+    logging.LogRecord(
+        name="",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="",
+        args=(),
+        exc_info=None,
+    ).__dict__
+) | {"asctime", "correlation_id", "message"}
 
 
 class SecurityRedactionFilter(logging.Filter):
@@ -44,25 +70,55 @@ class SecurityRedactionFilter(logging.Filter):
         text = re.sub(rf"(?i)(Users[\\/]){re.escape(_CURRENT_USER)}", r"\1***", text)
 
         # Mask API Keys and Tokens
-        for pattern in _REDACTION_PATTERNS:
-            text = pattern.sub("[REDACTED]", text)
+        for pattern, replacement in _REDACTION_PATTERNS:
+            text = pattern.sub(replacement, text)
 
         return text
 
-    def filter(self, record):
+    def _redact_value(self, value: Any, seen: set[int] | None = None) -> Any:
+        if isinstance(value, str):
+            return self._redact(value)
+        if not isinstance(value, (Mapping, tuple, list, set)):
+            return value
+        if seen is None:
+            seen = set()
+
+        value_id = id(value)
+        if value_id in seen:
+            return "[REDACTED:CYCLE]"
+
+        seen.add(value_id)
+        try:
+            return self._redact_container(value, seen)
+        finally:
+            seen.remove(value_id)
+
+    def _redact_container(self, value: Any, seen: set[int]) -> Any:
+        if isinstance(value, Mapping):
+            return {
+                self._redact(key) if isinstance(key, str) else key: self._redact_value(item, seen)
+                for key, item in value.items()
+            }
+        if isinstance(value, tuple):
+            return tuple(self._redact_value(item, seen) for item in value)
+        if isinstance(value, list):
+            return [self._redact_value(item, seen) for item in value]
+        if isinstance(value, set):
+            return {self._redact_value(item, seen) for item in value}
+        return value
+
+    def filter(self, record: logging.LogRecord) -> bool:
         # Redact the main message
         if isinstance(record.msg, str):
             record.msg = self._redact(record.msg)
 
         # Redact any string arguments passed to the logger
         if record.args:
-            new_args = []
-            for arg in record.args:
-                if isinstance(arg, str):
-                    new_args.append(self._redact(arg))
-                else:
-                    new_args.append(arg)
-            record.args = tuple(new_args)
+            record.args = self._redact_value(record.args)
+
+        for key, value in list(record.__dict__.items()):
+            if key not in _LOG_RECORD_RESERVED_ATTRS:
+                setattr(record, key, self._redact_value(value))
 
         return True
 

@@ -26,6 +26,7 @@ dependencies = [
     "langchain-core>=0.1,<1",
     "langgraph>=0.0.1,<1",
     "nicegui>=1.4,<3",
+    "pyyaml>=6.0,<7",
 ]
 
 [project.optional-dependencies]
@@ -143,3 +144,6 @@ ignore_errors = false
 
 [tool.hatch.build.targets.wheel]
 packages = ["sky_claw"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"sky_claw/antigravity/security/security_policy.yaml" = "sky_claw/antigravity/security/security_policy.yaml"

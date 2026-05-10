@@ -11,10 +11,12 @@ import sys
 
 block_cipher = None
 
-# Collect data files: web UI static assets and xEdit scripts.
+# Collect data files: web UI static assets, xEdit scripts, and
+# fail-closed security policy data required at import time.
 datas = [
     ("sky_claw/antigravity/web/static", "sky_claw/antigravity/web/static"),
     ("sky_claw/local/xedit/scripts", "sky_claw/local/xedit/scripts"),
+    ("sky_claw/antigravity/security/security_policy.yaml", "sky_claw/antigravity/security"),
 ]
 
 # Hidden imports that PyInstaller cannot detect automatically.
@@ -139,5 +141,7 @@ exe = EXE(
         "InternalName": "SkyClawApp",
         "OriginalFilename": "SkyClawApp.exe",
         "LegalCopyright": "MIT License",
-    } if sys.platform == "win32" else None,
+    }
+    if sys.platform == "win32"
+    else None,
 )
