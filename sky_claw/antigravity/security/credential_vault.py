@@ -87,7 +87,12 @@ class _SQLitePool:
             if self._closed:
                 return
             self._closed = True
-
+        # Liberar a los waiters: cada release los hará despertar y ver _closed.
+        for _ in range(self._max_size):
+            try:
+                self._semaphore.release()
+            except ValueError:
+                break
         while True:
             try:
                 conn = self._pool.get_nowait()
