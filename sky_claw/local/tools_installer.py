@@ -523,7 +523,6 @@ class ToolsInstaller:
 
         Validates file size after download.  Logs progress every 10 MB.
         """
-        await self._gateway.authorize("GET", asset.download_url)
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / asset.name
         self._validator.validate(dest)
@@ -540,7 +539,11 @@ class ToolsInstaller:
         )
 
         try:
-            async with session.get(asset.download_url, headers=headers, timeout=timeout) as resp:
+            resp = await self._gateway.request(
+                "GET", asset.download_url, session,
+                headers=headers, timeout=timeout,
+            )
+            async with resp:
                 resp.raise_for_status()
                 with dest.open("wb") as fh:
                     async for chunk in resp.content.iter_chunked(_DOWNLOAD_CHUNK_SIZE):
