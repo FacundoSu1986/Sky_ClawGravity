@@ -129,10 +129,7 @@ class _SQLitePool:
         # _closed immediately via the post-acquire re-check and raise cleanly,
         # instead of waiting up to self._timeout seconds for a slot.
         for _ in range(self._max_size):
-            try:
-                self._semaphore.release()
-            except ValueError:
-                break
+            self._semaphore.release()
 
         while True:
             try:
