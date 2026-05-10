@@ -1,0 +1,80 @@
+# Sky-Claw Security Policy — Injection Pattern Definitions
+# ────────────────────────────────────────────────────────────────
+# H-05: Externalized from sanitize.py to allow security team updates
+# without code deployments.
+#
+# Format: Each entry is a regex pattern (case-insensitive by default).
+# Patterns are combined into a single compiled regex at load time.
+# The recursive multi-pass removal loop in sanitize.py ensures nested
+# bypasses (e.g., "[IN[INST]ST]") are neutralized.
+#
+# To add a new pattern: append to the appropriate section below.
+# Changes take effect on next application restart (or hot-reload if
+# the caller re-invokes load_injection_patterns()).
+
+injection_patterns:
+  # ── OpenAI chat markers ──
+  - pattern: "<\\|"
+    description: "OpenAI-style opening delimiter"
+  - pattern: "\\|>"
+    description: "OpenAI-style closing delimiter"
+
+  # ── Llama / Mistral markers ──
+  - pattern: "<<SYS>>"
+    description: "Llama system prompt open"
+  - pattern: "<</SYS>>"
+    description: "Llama system prompt close"
+  - pattern: "\\[INST\\]"
+    description: "Llama/Mistral instruction open"
+  - pattern: "\\[/INST\\]"
+    description: "Llama/Mistral instruction close"
+
+  # ── Generic system markers ──
+  - pattern: "\\[SYSTEM\\]"
+    description: "Generic system marker"
+  - pattern: "\\{system\\}"
+    description: "Template-style system marker"
+
+  # ── Anthropic turn markers ──
+  - pattern: "\\n\\nHuman:"
+    description: "Anthropic Human turn"
+  - pattern: "\\n\\nAssistant:"
+    description: "Anthropic Assistant turn"
+  - pattern: "<human>"
+    description: "Anthropic XML-style human open"
+  - pattern: "</human>"
+    description: "Anthropic XML-style human close"
+  - pattern: "<assistant>"
+    description: "Anthropic XML-style assistant open"
+  - pattern: "</assistant>"
+    description: "Anthropic XML-style assistant close"
+
+  # ── Tool / function injection markers ──
+  - pattern: "<tool_use>"
+    description: "Tool use injection open"
+  - pattern: "</tool_use>"
+    description: "Tool use injection close"
+  - pattern: "<tool_call>"
+    description: "Hermes-style tool call open"
+  - pattern: "</tool_call>"
+    description: "Hermes-style tool call close"
+  - pattern: "<function_call>"
+    description: "Function call injection open"
+  - pattern: "</function_call>"
+    description: "Function call injection close"
+  - pattern: "<tool_result>"
+    description: "Tool result injection open"
+  - pattern: "</tool_result>"
+    description: "Tool result injection close"
+
+  # ── Special tokens ──
+  - pattern: "<\\|endoftext\\|>"
+    description: "End-of-text special token"
+  - pattern: "<\\|im_start\\|>"
+    description: "ChatML im_start token"
+  - pattern: "<\\|im_end\\|>"
+    description: "ChatML im_end token"
+  - pattern: "<\\|pad\\|>"
+    description: "Padding special token"
+  - pattern: "<\\|diff_marker\\|>"
+    description: "Diff marker special token"
