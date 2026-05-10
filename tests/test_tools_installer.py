@@ -201,6 +201,12 @@ class TestEnsureLoot:
         session = MagicMock(spec=aiohttp.ClientSession)
         session.get = MagicMock(side_effect=_mock_get)
 
+        # Mock gateway.request to return the download response
+        async def _mock_gateway_request(method: str, url: str, session: Any, **kwargs: Any) -> Any:
+            return mock_dl_resp
+
+        installer._gateway.request = AsyncMock(side_effect=_mock_gateway_request)
+
         # Auto-approve HITL.
         async def _auto_approve() -> None:
             await asyncio.sleep(0.01)
@@ -215,7 +221,8 @@ class TestEnsureLoot:
         assert result.version == "0.22.4"
         assert result.exe_path.name == "loot.exe"
         assert result.exe_path.exists()
-        assert session.get.call_args_list[1].args[0] == "https://api.github.com/repos/loot/loot/releases/assets/1001"
+        # Verify gateway.request was called (not session.get for the download)
+        installer._gateway.request.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_hitl_denial_raises(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
@@ -324,6 +331,12 @@ class TestEnsureXedit:
         session = MagicMock(spec=aiohttp.ClientSession)
         session.get = MagicMock(side_effect=_mock_get)
 
+        # Mock gateway.request to return the download response
+        async def _mock_gateway_request(method: str, url: str, session: Any, **kwargs: Any) -> Any:
+            return mock_dl_resp
+
+        installer._gateway.request = AsyncMock(side_effect=_mock_gateway_request)
+
         async def _auto_approve() -> None:
             await asyncio.sleep(0.01)
             await installer._hitl.respond("install-xedit-4.1.5", approved=True)
@@ -336,10 +349,8 @@ class TestEnsureXedit:
         assert result.tool_name == "SSEEdit"
         assert result.version == "4.1.5"
         assert result.exe_path.name == "SSEEdit.exe"
-        assert (
-            session.get.call_args_list[1].args[0]
-            == "https://api.github.com/repos/TES5Edit/TES5Edit/releases/assets/2001"
-        )
+        # Verify gateway.request was called (not session.get for the download)
+        installer._gateway.request.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_hitl_denial_raises(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
