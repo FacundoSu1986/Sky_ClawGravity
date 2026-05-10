@@ -248,6 +248,16 @@ OUT_OF_SCOPE_HOSTS = frozenset(
         "patreon.com",
     ]
 )
+
+# GitHub release asset API calls redirect to signed CDN URLs. These hosts are
+# intentionally not part of ALLOWED_HOSTS; NetworkGateway may only use them as
+# validated redirect targets for /repos/.../releases/assets/{id} downloads.
+GITHUB_RELEASE_ASSET_REDIRECT_HOSTS = frozenset(
+    [
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+    ]
+)
 HITL_TIMEOUT_SECONDS = 300
 
 # Refactored common paths using SystemPaths abstraction
