@@ -336,9 +336,11 @@ class UIBroadcastServer:
         token = self._request_header(websocket, "X-Auth-Token")
         if not self._auth.validate(token):
             self._logger.warning(f"🚫 Rejected UI client — invalid token from {websocket.remote_address}")
-            # 1008 (POLICY_VIOLATION) aligns auth-fail with rate-limit and token-rotation
-            # closes so a single IP-blocking hook can be wired off one close code.
-            await websocket.close(1008, "Unauthorized")
+            # 4001 is intentional: AgentCommunicationClient._AUTH_REJECTION_CLOSE_CODES
+            # keys off this code to increment the consecutive-auth-failure counter and
+            # trigger the 5-minute lockout.  Rate-limit uses 1008 (POLICY_VIOLATION)
+            # which must NOT count toward auth lockout (network errors are routine).
+            await websocket.close(4001, "Unauthorized")
             return
 
         client_id = id(websocket)
