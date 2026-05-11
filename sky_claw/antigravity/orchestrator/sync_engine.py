@@ -34,6 +34,13 @@ from tenacity import (
 )
 
 # FASE 1.5: Imports de componentes de rollback
+from sky_claw.antigravity.core.metrics import (
+    SYNC_DURATION_SECONDS,
+    record_circuit_state,
+    record_queue_depth,
+    record_sync_failure,
+    record_sync_success,
+)
 from sky_claw.antigravity.scraper.masterlist import (
     CircuitOpenError,
     MasterlistClient,
@@ -705,8 +712,11 @@ class SyncEngine:
             if batch is _POISON:
                 queue.task_done()
                 return
+            record_queue_depth(queue.qsize())
+            record_circuit_state("masterlist", self._masterlist.circuit_state)
             try:
-                await self._process_batch(batch, session, semaphore, result)
+                with SYNC_DURATION_SECONDS.time():
+                    await self._process_batch(batch, session, semaphore, result)
             except asyncio.CancelledError:
                 raise
             except (MasterlistFetchError, CircuitOpenError, RetryError, aiohttp.ClientError) as exc:
@@ -721,6 +731,7 @@ class SyncEngine:
                     },
                 )
                 result.failed += len(batch)
+                record_sync_failure(len(batch))
                 # BUG-001 FIX: Usar método loop-safe para registrar errores
                 await self.metrics.increment_error_type(type(exc).__name__)
             finally:
@@ -735,6 +746,7 @@ class SyncEngine:
     ) -> None:
         mod_rows: list[tuple[int, str, str, str, str, str, bool, bool]] = []
         log_rows: list[tuple[int | None, str, str, str]] = []
+        batch_success_count = 0
 
         for mod_name, enabled in batch:
             nexus_id = _extract_nexus_id(mod_name)
@@ -752,6 +764,7 @@ class SyncEngine:
             ) as exc:
                 logger.warning("Skipping mod %r: %s", mod_name, exc)
                 result.failed += 1
+                record_sync_failure(1)
                 result.errors.append(f"{mod_name}: {exc}")
                 log_rows.append((None, "sync", "error", f"{mod_name}: {exc}"))
                 continue
@@ -774,9 +787,12 @@ class SyncEngine:
             )
             log_rows.append((None, "sync", "ok", mod_name))
             result.processed += 1
+            batch_success_count += 1
 
         await self._registry.upsert_mods_batch(mod_rows)
         await self._registry.log_tasks_batch(log_rows)
+        if batch_success_count:
+            record_sync_success(batch_success_count)
 
 
 def _extract_nexus_id(mod_name: str) -> int | None:

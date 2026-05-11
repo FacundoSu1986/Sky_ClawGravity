@@ -18,10 +18,15 @@ from sky_claw.antigravity.agent.tools_facade import AsyncToolRegistry
 from sky_claw.antigravity.comms.telegram import TelegramWebhook
 from sky_claw.antigravity.comms.telegram_polling import TelegramPolling
 from sky_claw.antigravity.comms.telegram_sender import TelegramSender
+from sky_claw.antigravity.core.metrics_server import (
+    start_metrics_server,
+    stop_metrics_server,
+)
 from sky_claw.antigravity.db.async_registry import AsyncModRegistry
 from sky_claw.antigravity.orchestrator.sync_engine import SyncEngine
 from sky_claw.antigravity.scraper.masterlist import MasterlistClient
 from sky_claw.antigravity.scraper.nexus_downloader import NexusDownloader
+from sky_claw.antigravity.security.auth_token_manager import AuthTokenManager
 from sky_claw.antigravity.security.hitl import HITLGuard, HITLRequest
 from sky_claw.antigravity.security.network_gateway import GatewayTCPConnector, NetworkGateway
 from sky_claw.antigravity.security.path_validator import PathValidator
@@ -406,6 +411,21 @@ class AppContext:
                     logger.exception("Failed to send HITL notification")
 
             self.hitl = HITLGuard(notify_fn=_hitl_notify)
+
+            # Observability: best-effort Prometheus /metrics endpoint on 127.0.0.1.
+            # Wrapped because a port collision must NOT abort the main app.
+            try:
+                metrics_token_dir = pathlib.Path.home() / ".sky_claw" / "tokens" / "metrics"
+                metrics_auth = AuthTokenManager(token_dir=str(metrics_token_dir))
+                metrics_auth.generate()
+                await metrics_auth.start_rotation()
+                self._exit_stack.push_async_callback(metrics_auth.stop_rotation)
+                metrics_runner = await start_metrics_server(validator=metrics_auth.validate)
+                self._exit_stack.push_async_callback(stop_metrics_server, metrics_runner)
+                logger.info("metrics_endpoint_enabled")
+            except Exception:
+                logger.warning("metrics_endpoint_disabled", exc_info=True)
+
             sync_engine = SyncEngine(mo2, masterlist, self.database.registry, hitl=self.hitl)
 
             if await self.database.registry.is_empty():

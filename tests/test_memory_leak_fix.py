@@ -308,14 +308,14 @@ class TestExecuteTracksTimestamps:
         initial = graph.get_initial_state()
         thread_id = initial["workflow_id"]
 
-        # Execute will likely end quickly (graph runs through nodes)
-        # We just need to verify the timestamp was recorded
         import contextlib
 
+        before = time.monotonic()
         with contextlib.suppress(Exception):
             await graph.execute(initial)
 
         assert thread_id in graph._thread_timestamps
         assert isinstance(graph._thread_timestamps[thread_id], float)
-        # Timestamp should be recent (within last 5 seconds)
-        assert (time.monotonic() - graph._thread_timestamps[thread_id]) < 5.0
+        # Timestamp must have been set during the execute call (not before it started).
+        # Avoid a fixed elapsed threshold — execute can be slow on CI under recursion-limit load.
+        assert graph._thread_timestamps[thread_id] >= before
