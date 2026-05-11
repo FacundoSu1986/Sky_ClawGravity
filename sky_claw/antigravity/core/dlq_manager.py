@@ -113,6 +113,12 @@ class DLQManager:
         if self._retry_task is not None:
             logger.warning("DLQManager ya está corriendo, ignorando start() duplicado")
             return
+        # Ensure schema exists BEFORE the retry task is created so that any
+        # enqueue() calls that arrive immediately after bus.start() see
+        # _schema_ensured=True and skip the schema setup — eliminating the
+        # race where both enqueue() and _retry_loop() call _ensure_schema()
+        # concurrently and compete on PRAGMA journal_mode=WAL.
+        await self._ensure_schema()
         self._retry_task = asyncio.create_task(self._retry_loop(), name="dlq-retry-worker")
         logger.info("DLQManager iniciado (db=%s)", self._db_path)
 
