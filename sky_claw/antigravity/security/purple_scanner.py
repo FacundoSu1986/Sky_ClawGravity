@@ -5,6 +5,8 @@ Diseñado para detectar inyección de código sin usar palabras clave literales.
 Extensión Anti-Malware: Soporte para .bat, .ps1, .ini
 """
 
+from __future__ import annotations
+
 import ast
 import logging
 import re

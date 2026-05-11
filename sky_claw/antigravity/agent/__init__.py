@@ -1,4 +1,5 @@
 """Agent layer – async tool registry and LLM router."""
+from __future__ import annotations
 
 from sky_claw.antigravity.agent.router import LLMRouter
 from sky_claw.antigravity.agent.tools_facade import AsyncToolRegistry
