@@ -27,6 +27,7 @@ dependencies = [
     "langgraph>=0.0.1,<1",
     "nicegui>=1.4,<3",
     "pyyaml>=6.0,<7",
+    "prometheus-client>=0.20,<1",
 ]
 
 [project.optional-dependencies]
