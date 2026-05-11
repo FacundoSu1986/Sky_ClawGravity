@@ -3,7 +3,7 @@ import base64
 import hashlib
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import aiosqlite
@@ -33,7 +33,10 @@ class _SQLitePool:
         self._db_path = db_path
         self._max_size = max_size
         self._timeout = timeout
-        self._semaphore = asyncio.Semaphore(max_size)
+        # BoundedSemaphore (not plain Semaphore) is required so that
+        # release() raises ValueError when the counter would exceed max_size.
+        # This lets close() and the CancelledError handler detect over-release.
+        self._semaphore = asyncio.BoundedSemaphore(max_size)
         self._pool: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue(maxsize=max_size)
         self._closed = False
         self._close_lock = asyncio.Lock()
@@ -51,34 +54,53 @@ class _SQLitePool:
             raise VaultStorageError("SQLite connection pool is closed")
 
         # Wait for a slot (bounded concurrency).
-        acquired = False
+        _semaphore_acquired = False
         try:
             await asyncio.wait_for(self._semaphore.acquire(), timeout=self._timeout)
-            acquired = True
+            _semaphore_acquired = True
         except TimeoutError as exc:
             raise VaultStorageError(f"SQLite pool timeout ({self._timeout}s) acquiring connection") from exc
+        except BaseException:
+            # asyncio.wait_for may internally decrement the semaphore before
+            # propagating CancelledError (Python 3.11 simultaneous-completion
+            # race).  If it did, _semaphore_acquired is still False here but
+            # the permit is gone.  BoundedSemaphore.release() raises ValueError
+            # when already at max_size (i.e. acquire never completed), so
+            # suppressing ValueError makes this safe in both branches.
+            if not _semaphore_acquired:
+                with suppress(ValueError):
+                    self._semaphore.release()
+            raise
 
-        conn: aiosqlite.Connection | None = None
+        # Semaphore is now held unconditionally; release it in every exit path
+        # to avoid permit leaks on CancelledError or close()-race.
         try:
-            # Try to reuse an existing connection first.
+            # Re-check after the await: close() may have flipped _closed while
+            # this coroutine was suspended on the semaphore.
+            if self._closed:
+                raise VaultStorageError("SQLite connection pool is closed")
+
+            conn: aiosqlite.Connection | None = None
             try:
-                conn = self._pool.get_nowait()
-            except asyncio.QueueEmpty:
-                conn = await asyncio.wait_for(self._create_connection(), timeout=self._timeout)
-            yield conn
-        except TimeoutError as exc:
-            raise VaultStorageError(f"SQLite pool timeout ({self._timeout}s) creating connection") from exc
-        finally:
-            if conn is not None:
-                if self._closed:
-                    await conn.close()
-                else:
-                    try:
-                        self._pool.put_nowait(conn)
-                    except asyncio.QueueFull:
+                # Try to reuse an existing connection first.
+                try:
+                    conn = self._pool.get_nowait()
+                except asyncio.QueueEmpty:
+                    conn = await asyncio.wait_for(self._create_connection(), timeout=self._timeout)
+                yield conn
+            except TimeoutError as exc:
+                raise VaultStorageError(f"SQLite pool timeout ({self._timeout}s) creating connection") from exc
+            finally:
+                if conn is not None:
+                    if self._closed:
                         await conn.close()
-            if acquired:
-                self._semaphore.release()
+                    else:
+                        try:
+                            self._pool.put_nowait(conn)
+                        except asyncio.QueueFull:
+                            await conn.close()
+        finally:
+            self._semaphore.release()
 
     async def close(self) -> None:
         """Drain the pool and close every connection."""
@@ -86,6 +108,15 @@ class _SQLitePool:
             if self._closed:
                 return
             self._closed = True
+
+        # Unblock any coroutines suspended on the semaphore so they observe
+        # _closed immediately via the post-acquire re-check and raise cleanly,
+        # instead of waiting up to self._timeout seconds for a slot.
+        for _ in range(self._max_size):
+            try:
+                self._semaphore.release()
+            except ValueError:
+                break
 
         while True:
             try:
