@@ -134,10 +134,18 @@ class SecurityRedactionFilter(logging.Filter):
 
 
 class CorrelationFilter(logging.Filter):
-    """Filter that adds correlation_id from ContextVar to each record."""
+    """Filter that adds correlation_id and trace_id from context to each record."""
 
-    def filter(self, record):
-        record.correlation_id = correlation_id_var.get()
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.correlation_id = correlation_id_var.get()  # type: ignore[attr-defined]
+        try:
+            from opentelemetry import trace as _otel_trace
+
+            span = _otel_trace.get_current_span()
+            ctx = span.get_span_context()
+            record.trace_id = format(ctx.trace_id, "032x") if ctx.is_valid else "0" * 32  # type: ignore[attr-defined]
+        except Exception:
+            record.trace_id = "0" * 32  # type: ignore[attr-defined]
         return True
 
 
