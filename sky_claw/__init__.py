@@ -1,4 +1,5 @@
 """Sky-Claw – Autonomous Skyrim mod management agent."""
+
 from __future__ import annotations
 
 __version__ = "0.1.0"
