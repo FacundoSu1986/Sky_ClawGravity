@@ -68,7 +68,9 @@ class TestMetricsServer:
         caplog.set_level(logging.WARNING)
         monkeypatch.setenv("SKYCLAW_METRICS_PORT", "invalid")
         assert _resolve_bind_port(None) == _DEFAULT_PORT
-        assert any("metrics_port_invalid_fallback" in rec.message for rec in caplog.records)
+        record = next(rec for rec in caplog.records if "metrics_port_invalid_fallback" in rec.message)
+        assert record.value == "invalid"
+        assert record.default_port == _DEFAULT_PORT
 
     def test_resolve_bind_port_allows_ephemeral_port_zero(self, monkeypatch) -> None:
         from sky_claw.antigravity.core.metrics_server import _resolve_bind_port
