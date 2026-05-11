@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+from importlib import metadata
 from typing import Final
 
 from opentelemetry import trace
@@ -28,6 +29,13 @@ SERVICE_NAME_VALUE: Final[str] = "sky-claw"
 _provider: TracerProvider | NoOpTracerProvider | None = None
 
 
+def _resolve_service_version() -> str:
+    try:
+        return metadata.version(SERVICE_NAME_VALUE)
+    except metadata.PackageNotFoundError:
+        return "unknown"
+
+
 def configure_tracing() -> TracerProvider | NoOpTracerProvider:
     """Initialize the global TracerProvider.
 
@@ -35,6 +43,9 @@ def configure_tracing() -> TracerProvider | NoOpTracerProvider:
     ensuring the app never crashes when no collector is running.
     """
     global _provider
+    if _provider is not None:
+        return _provider
+
     endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
     if not endpoint:
         logger.info("tracing_disabled: OTEL_EXPORTER_OTLP_ENDPOINT not set")
@@ -43,19 +54,14 @@ def configure_tracing() -> TracerProvider | NoOpTracerProvider:
         _provider = noop
         return noop
 
-    try:
-        from sky_claw import __version__ as _version
-    except Exception:
-        _version = "unknown"
-
     resource = Resource.create(
         {
             "service.name": SERVICE_NAME_VALUE,
-            "service.version": _version,
+            "service.version": _resolve_service_version(),
         }
     )
     provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+    exporter = OTLPSpanExporter(endpoint=endpoint)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     _provider = provider

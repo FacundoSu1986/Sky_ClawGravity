@@ -22,6 +22,12 @@ _GLOBAL_CFG = Config()
 
 
 _USERNAME_LOOKUP_ERRORS = (OSError, KeyError, ImportError)
+_NO_TRACE_ID = "0" * 32
+
+try:
+    from opentelemetry import trace as _otel_trace
+except ImportError:
+    _otel_trace = None
 
 
 def _resolve_current_user() -> str:
@@ -140,14 +146,16 @@ class CorrelationFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.correlation_id = correlation_id_var.get()  # type: ignore[attr-defined]
-        try:
-            from opentelemetry import trace as _otel_trace
-
-            span = _otel_trace.get_current_span()
-            ctx = span.get_span_context()
-            record.trace_id = format(ctx.trace_id, "032x") if ctx.is_valid else "0" * 32  # type: ignore[attr-defined]
-        except Exception:
-            record.trace_id = "0" * 32  # type: ignore[attr-defined]
+        trace_id = _NO_TRACE_ID
+        if _otel_trace is not None:
+            try:
+                span = _otel_trace.get_current_span()
+                ctx = span.get_span_context()
+                if ctx.is_valid:
+                    trace_id = format(ctx.trace_id, "032x")
+            except AttributeError:
+                pass
+        record.trace_id = trace_id  # type: ignore[attr-defined]
         return True
 
 

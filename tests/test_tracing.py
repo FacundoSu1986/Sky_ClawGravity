@@ -51,6 +51,34 @@ class TestTracingModule:
         t.shutdown_tracing()
         t.shutdown_tracing()  # second call — must not raise
 
+    def test_configure_is_idempotent(self, monkeypatch) -> None:
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+        import importlib
+
+        from sky_claw.antigravity.core import tracing as t
+
+        importlib.reload(t)
+        provider = t.configure_tracing()
+        assert t.configure_tracing() is provider
+
+    def test_service_version_falls_back_when_distribution_missing(self, monkeypatch) -> None:
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+        import importlib
+        from importlib import metadata
+
+        from sky_claw.antigravity.core import tracing as t
+
+        importlib.reload(t)
+
+        def _raise_pkg_not_found(_: str) -> str:
+            raise metadata.PackageNotFoundError
+
+        monkeypatch.setattr(t.metadata, "version", _raise_pkg_not_found)
+        provider = t.configure_tracing()
+        assert isinstance(provider, SDKTracerProvider)
+        assert provider.resource.attributes["service.version"] == "unknown"
+        provider.shutdown()
+
 
 class TestTracingLogCorrelation:
     def test_trace_id_injected_in_log_record(self, monkeypatch) -> None:
