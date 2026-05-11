@@ -112,10 +112,57 @@ jobs:
       - name: Pip-audit (SCA)
         run: pip-audit --skip-editable -r requirements.lock
 
+  # ── Summary jobs: exact names required by branch protection ──────────────
+  # Branch protection requires single-name checks; matrix produces /py3.11
+  # variants.  These fan-in jobs re-publish a result under the protected names
+  # so the gate is satisfied without changing branch protection settings.
+
+  lint-summary:
+    name: "🔍 Lint (Ruff)"
+    needs: [lint]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check lint matrix result
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "Lint matrix failed: ${{ needs.lint.result }}"
+            exit 1
+          fi
+
+  typecheck-summary:
+    name: "🏷️ Type Check (Mypy)"
+    needs: [typecheck]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check typecheck matrix result
+        run: |
+          if [[ "${{ needs.typecheck.result }}" != "success" ]]; then
+            echo "Typecheck matrix failed: ${{ needs.typecheck.result }}"
+            exit 1
+          fi
+
+  test-summary:
+    name: "🧪 Tests (Pytest)"
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test matrix result
+        run: |
+          # Ubuntu matrix jobs use continue-on-error so their failures are
+          # already masked in needs.test.result.  A 'failure' here means a
+          # Windows job failed — that is a hard blocker.
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "Test matrix failed: ${{ needs.test.result }}"
+            exit 1
+          fi
+
   # ── Gate 5: Build ────────────────────────────────────
   build:
     name: "📦 Build"
-    needs: [lint, typecheck, test, security]
+    needs: [lint-summary, typecheck-summary, test-summary, security]
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
