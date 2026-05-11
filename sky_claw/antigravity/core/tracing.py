@@ -44,7 +44,7 @@ def configure_tracing() -> TracerProvider | NoOpTracerProvider:
         return noop
 
     try:
-        from sky_claw import __version__ as _version  # type: ignore[attr-defined]
+        from sky_claw import __version__ as _version
     except Exception:
         _version = "unknown"
 

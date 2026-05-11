@@ -139,6 +139,22 @@ module = [
 ]
 ignore_errors = true  # TODO: Remove after type-coverage sprint. Currently 1,684 mypy errors across ~30 modules; re-enable incrementally per-module.
 
+# Wave-1 mypy sprint: core/ foundational modules enabled for checking.
+# These override the broad sky_claw.antigravity.core.* ignore above.
+[[tool.mypy.overrides]]
+module = [
+    "sky_claw.antigravity.core.errors",
+    "sky_claw.antigravity.core.contracts",
+    "sky_claw.antigravity.core.models",
+    "sky_claw.antigravity.core.schemas",
+    "sky_claw.antigravity.core.event_payloads",
+    "sky_claw.antigravity.core.metrics",
+    "sky_claw.antigravity.core.metrics_server",
+    "sky_claw.antigravity.core.tracing",
+    "sky_claw.antigravity.core.dlq_manager",
+]
+ignore_errors = false
+
 # Strict mode for refactored modules — overrides the broad ignore above
 [[tool.mypy.overrides]]
 module = [
