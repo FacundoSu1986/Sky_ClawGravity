@@ -83,6 +83,7 @@ class TestWatcherDaemonIO:
         main_thread_name = threading.current_thread().name
 
         import os as _os
+
         os_stat_real = _os.stat
 
         def recording_stat(path: str) -> object:
@@ -101,6 +102,5 @@ class TestWatcherDaemonIO:
         assert called_from_threads, "os.stat was never called"
         for thread_name in called_from_threads:
             assert thread_name != main_thread_name, (
-                f"os.stat ran on the event loop thread ({thread_name!r}); "
-                "it must be offloaded via asyncio.to_thread"
+                f"os.stat ran on the event loop thread ({thread_name!r}); it must be offloaded via asyncio.to_thread"
             )

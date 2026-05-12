@@ -28,9 +28,7 @@ from sky_claw.config import SystemPaths
 class TestExtractNexusIdPathTraversal:
     """RED path: current code has no guard, FS branch reachable via traversal."""
 
-    def test_traversal_reads_crafted_file_without_guard(
-        self, tmp_path: pathlib.Path, monkeypatch
-    ) -> None:
+    def test_traversal_reads_crafted_file_without_guard(self, tmp_path: pathlib.Path, monkeypatch) -> None:
         """Demonstrate the vulnerability: traversal input reaches the FS.
 
         Without assert_safe_component, _extract_nexus_id("../../evil")
@@ -72,9 +70,7 @@ class TestExtractNexusIdPathTraversal:
     def test_traversal_inputs_return_none(self, malicious: str) -> None:
         """assert_safe_component must reject these before any FS access."""
         result = _extract_nexus_id(malicious)
-        assert result is None, (
-            f"_extract_nexus_id({malicious!r}) should return None, got {result!r}"
-        )
+        assert result is None, f"_extract_nexus_id({malicious!r}) should return None, got {result!r}"
 
     def test_valid_name_with_numeric_id_still_works(self) -> None:
         """Normal mod names with an embedded numeric ID are unaffected."""
