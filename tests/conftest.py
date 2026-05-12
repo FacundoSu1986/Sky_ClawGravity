@@ -92,7 +92,14 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # n
     On Windows, temp dirs created under AppData can accumulate ACL entries that
     cause PermissionError on the next pytest run. Using a workspace-local basetemp
     (.pytest-tmp) and cleaning it here keeps CI and local runs reproducible.
+
+    Only runs on the controller process — xdist workers set ``workerinput`` on
+    their config, so we skip cleanup there to avoid deleting the shared basetemp
+    root while sibling workers are still writing to it.
     """
+    if hasattr(session.config, "workerinput"):
+        return  # xdist worker — controller handles cleanup
+
     basetemp = pathlib.Path(".pytest-tmp")
     if not basetemp.exists():
         return
