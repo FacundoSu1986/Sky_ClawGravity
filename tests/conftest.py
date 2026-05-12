@@ -12,7 +12,10 @@ Current gate: 55% (raised from 49% on 2026-05-11).
 
 from __future__ import annotations
 
+import os
 import pathlib
+import shutil
+import stat
 import uuid
 from collections.abc import AsyncGenerator, Iterator
 from unittest.mock import AsyncMock, MagicMock
@@ -81,3 +84,32 @@ def correlation_id() -> Iterator[str]:
     token = correlation_id_var.set(cid)
     yield cid
     correlation_id_var.reset(token)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # noqa: ARG001
+    """Remove .pytest-tmp after every session to prevent Windows ACL lock buildup.
+
+    On Windows, temp dirs created under AppData can accumulate ACL entries that
+    cause PermissionError on the next pytest run. Using a workspace-local basetemp
+    (.pytest-tmp) and cleaning it here keeps CI and local runs reproducible.
+
+    Only runs on the controller process — xdist workers set ``workerinput`` on
+    their config, so we skip cleanup there to avoid deleting the shared basetemp
+    root while sibling workers are still writing to it.
+    """
+    if hasattr(session.config, "workerinput"):
+        return  # xdist worker — controller handles cleanup
+
+    basetemp = pathlib.Path(".pytest-tmp")
+    if not basetemp.exists():
+        return
+
+    def _force_remove(func: object, path: str, _exc: object) -> None:
+        """onerror handler: remove read-only flag then retry."""
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            os.unlink(path) if os.path.isfile(path) else os.rmdir(path)
+        except OSError:
+            pass  # Best-effort — leave orphan rather than crash session teardown
+
+    shutil.rmtree(basetemp, onerror=_force_remove)
