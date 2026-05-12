@@ -48,6 +48,10 @@ from sky_claw.antigravity.scraper.masterlist import (
     MasterlistFetchError,
 )
 from sky_claw.antigravity.security.hitl import Decision, HITLGuard
+from sky_claw.antigravity.security.path_validator import (
+    PathViolationError,
+    assert_safe_component,
+)
 from sky_claw.config import SystemPaths
 
 _tracer = _get_tracer("sky_claw.sync_engine")
@@ -64,6 +68,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _POISON = None
+# Max seconds to wait for each POISON pill delivery. If the queue is full
+# because all workers died without consuming, the put would block forever
+# without this bound.
+_POISON_DELIVERY_TIMEOUT: float = 5.0
 
 # FASE 1.5: Constante para directorio de staging de backups
 BACKUP_STAGING_DIR = pathlib.Path(".skyclaw_backups/")
@@ -630,7 +638,14 @@ class SyncEngine:
                 await self._produce(queue, profile)
             finally:
                 for _ in range(self._cfg.worker_count):
-                    await queue.put(_POISON)
+                    try:
+                        await asyncio.wait_for(queue.put(_POISON), timeout=_POISON_DELIVERY_TIMEOUT)
+                    except TimeoutError:
+                        logger.critical(
+                            "POISON delivery timed out after %.1fs — cancelling remaining workers",
+                            _POISON_DELIVERY_TIMEOUT,
+                        )
+                        raise
 
         async with asyncio.TaskGroup() as tg:
             tg.create_task(_produce_then_poison(), name="sync-producer")
@@ -810,6 +825,12 @@ class SyncEngine:
 
 
 def _extract_nexus_id(mod_name: str) -> int | None:
+    try:
+        assert_safe_component(mod_name, field="mod_name")
+    except PathViolationError as exc:
+        logger.warning("_extract_nexus_id: rejected unsafe mod_name %r — %s", mod_name, exc)
+        return None
+
     parts = mod_name.split("-")
     for part in parts:
         stripped = part.strip()
