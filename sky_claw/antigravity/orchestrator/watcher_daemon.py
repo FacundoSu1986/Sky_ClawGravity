@@ -93,8 +93,8 @@ class WatcherDaemon:
 
         while True:
             try:
-                if os.path.exists(self._modlist_path):
-                    current_mtime = os.stat(self._modlist_path).st_mtime
+                if await asyncio.to_thread(os.path.exists, self._modlist_path):
+                    current_mtime = (await asyncio.to_thread(os.stat, self._modlist_path)).st_mtime
                     last_mtime_str = await self._db.get_memory(mem_key)
                     last_mtime = float(last_mtime_str) if last_mtime_str else 0.0
 
