@@ -48,6 +48,10 @@ from sky_claw.antigravity.scraper.masterlist import (
     MasterlistFetchError,
 )
 from sky_claw.antigravity.security.hitl import Decision, HITLGuard
+from sky_claw.antigravity.security.path_validator import (
+    PathViolationError,
+    assert_safe_component,
+)
 from sky_claw.config import SystemPaths
 
 _tracer = _get_tracer("sky_claw.sync_engine")
@@ -810,6 +814,12 @@ class SyncEngine:
 
 
 def _extract_nexus_id(mod_name: str) -> int | None:
+    try:
+        assert_safe_component(mod_name, field="mod_name")
+    except PathViolationError as exc:
+        logger.warning("_extract_nexus_id: rejected unsafe mod_name %r — %s", mod_name, exc)
+        return None
+
     parts = mod_name.split("-")
     for part in parts:
         stripped = part.strip()
