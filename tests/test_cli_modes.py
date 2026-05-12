@@ -31,11 +31,7 @@ def _argparse_mode_choices() -> set[str]:
             continue
         for kw in node.keywords:
             if kw.arg == "choices" and isinstance(kw.value, ast.List):
-                return {
-                    elt.value
-                    for elt in kw.value.elts
-                    if isinstance(elt, ast.Constant)
-                }
+                return {elt.value for elt in kw.value.elts if isinstance(elt, ast.Constant)}
     return set()
 
 
@@ -74,9 +70,7 @@ def test_argparse_choices_matches_documented_modes() -> None:
     # Extract modes mentioned in the module docstring (``--mode <word>``)
     docstring_modes = re.findall(r"--mode\s+(\w+)", source.split('"""')[1])
     invalid = [m for m in docstring_modes if m not in valid_choices]
-    assert not invalid, (
-        f"__main__.py docstring references undeclared modes: {invalid}"
-    )
+    assert not invalid, f"__main__.py docstring references undeclared modes: {invalid}"
 
 
 # ---------------------------------------------------------------------------
@@ -102,12 +96,9 @@ def test_build_bat_exits_on_test_failure() -> None:
     block = pytest_block_match.group(0)
 
     assert "Proceeding with build anyway" not in block, (
-        "build.bat must NOT continue after pytest failures — "
-        "remove the 'Proceeding with build anyway' path"
+        "build.bat must NOT continue after pytest failures — remove the 'Proceeding with build anyway' path"
     )
-    assert re.search(r"exit\s*/b\s*1", block, re.IGNORECASE), (
-        "build.bat must call 'exit /b 1' when pytest errorlevel 1"
-    )
+    assert re.search(r"exit\s*/b\s*1", block, re.IGNORECASE), "build.bat must call 'exit /b 1' when pytest errorlevel 1"
 
 
 def test_build_bat_no_artifact_on_failure_ordering() -> None:
@@ -120,6 +111,4 @@ def test_build_bat_no_artifact_on_failure_ordering() -> None:
 
     assert pytest_pos != -1, "pytest tests/ invocation not found in build.bat"
     assert pyinstaller_pos != -1, "pyinstaller sky_claw.spec invocation not found in build.bat"
-    assert pytest_pos < pyinstaller_pos, (
-        "pytest tests/ must appear before pyinstaller sky_claw.spec in build.bat"
-    )
+    assert pytest_pos < pyinstaller_pos, "pytest tests/ must appear before pyinstaller sky_claw.spec in build.bat"

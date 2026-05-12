@@ -28,20 +28,14 @@ def test_pytest_addopts_sets_basetemp() -> None:
     with (REPO_ROOT / "pyproject.toml").open("rb") as f:
         pyproject = tomllib.load(f)
 
-    addopts: str = (
-        pyproject.get("tool", {})
-        .get("pytest", {})
-        .get("ini_options", {})
-        .get("addopts", "")
-    )
+    addopts: str = pyproject.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("addopts", "")
     assert "--basetemp" in addopts, (
         "[tool.pytest.ini_options] must include addopts with '--basetemp=.pytest-tmp' "
         "to avoid PermissionError on Windows (AppData ACL residues). "
         f"Current addopts: {addopts!r}"
     )
     assert ".pytest-tmp" in addopts, (
-        "basetemp must point to '.pytest-tmp' (workspace-local, gitignored). "
-        f"Current addopts: {addopts!r}"
+        f"basetemp must point to '.pytest-tmp' (workspace-local, gitignored). Current addopts: {addopts!r}"
     )
 
 
@@ -52,8 +46,7 @@ def test_pytest_tmp_dir_is_gitignored() -> None:
     """
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert re.search(r"^\.pytest-tmp", gitignore, re.MULTILINE), (
-        ".gitignore must contain an entry matching '.pytest-tmp' "
-        "so pytest basetemp artefacts are never committed."
+        ".gitignore must contain an entry matching '.pytest-tmp' so pytest basetemp artefacts are never committed."
     )
 
 
