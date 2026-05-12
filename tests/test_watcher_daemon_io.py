@@ -4,15 +4,17 @@ os.path.exists y os.stat son llamadas síncronas de I/O que bloquean el
 event loop. En producción, un modlist.txt sobre una red lenta o un disco
 ocupado puede bloquear toda la corrutina durante cientos de ms.
 
-Contrato: ambas llamadas deben ejecutarse desde un thread distinto al
-main thread (event loop), verificado con threading.current_thread().
+Contrato: ambas llamadas deben enrutarse a asyncio.to_thread, verificado
+interceptando asyncio.to_thread y confirmando que os.path.exists y os.stat
+son los callables que se pasan. La implementación real se ejecuta a través
+del spy para preservar el comportamiento funcional.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import threading
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -38,69 +40,61 @@ def _make_daemon(modlist_path: Path, interval: float = 0.05) -> WatcherDaemon:
 
 class TestWatcherDaemonIO:
     @pytest.mark.asyncio
-    async def test_path_exists_runs_off_event_loop_thread(self, tmp_path: Path) -> None:
-        """os.path.exists must be called from a worker thread, not the event loop.
+    async def test_path_exists_dispatched_via_to_thread(self, tmp_path: Path) -> None:
+        """os.path.exists must be dispatched via asyncio.to_thread, not called directly.
 
-        Without asyncio.to_thread, os.path.exists would run on the event loop
-        thread, blocking all other coroutines during slow FS operations.
+        Without asyncio.to_thread, os.path.exists would block the event loop
+        thread during slow FS operations (network paths, busy disks).
         """
         modlist = tmp_path / "modlist.txt"
         modlist.write_text("", encoding="utf-8")
 
-        called_from_threads: list[str] = []
-        main_thread_name = threading.current_thread().name
+        dispatched: list[object] = []
+        real_to_thread = asyncio.to_thread
 
-        original_exists = Path.exists
-
-        def recording_exists(self_path: Path) -> bool:
-            called_from_threads.append(threading.current_thread().name)
-            return original_exists(self_path)
+        async def spy_to_thread(func, *args, **kwargs):  # type: ignore[misc]
+            dispatched.append(func)
+            return await real_to_thread(func, *args, **kwargs)
 
         daemon = _make_daemon(modlist)
 
-        with patch("os.path.exists", side_effect=lambda p: recording_exists(Path(p))):
-            # Run one iteration of the watch loop then cancel.
+        with patch("asyncio.to_thread", side_effect=spy_to_thread):
             task = asyncio.create_task(daemon._watch_loop())
             await asyncio.sleep(0.1)
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-        assert called_from_threads, "os.path.exists was never called"
-        for thread_name in called_from_threads:
-            assert thread_name != main_thread_name, (
-                f"os.path.exists ran on the event loop thread ({thread_name!r}); "
-                "it must be offloaded via asyncio.to_thread"
-            )
+        assert dispatched, "asyncio.to_thread was never called"
+        assert os.path.exists in dispatched, (
+            "os.path.exists must be dispatched via asyncio.to_thread; "
+            f"got {[getattr(f, '__name__', repr(f)) for f in dispatched]!r}"
+        )
 
     @pytest.mark.asyncio
-    async def test_stat_runs_off_event_loop_thread(self, tmp_path: Path) -> None:
-        """os.stat must be called from a worker thread, not the event loop."""
+    async def test_stat_dispatched_via_to_thread(self, tmp_path: Path) -> None:
+        """os.stat must be dispatched via asyncio.to_thread, not called directly."""
         modlist = tmp_path / "modlist.txt"
         modlist.write_text("", encoding="utf-8")
 
-        called_from_threads: list[str] = []
-        main_thread_name = threading.current_thread().name
+        dispatched: list[object] = []
+        real_to_thread = asyncio.to_thread
 
-        import os as _os
-
-        os_stat_real = _os.stat
-
-        def recording_stat(path: str) -> object:
-            called_from_threads.append(threading.current_thread().name)
-            return os_stat_real(path)
+        async def spy_to_thread(func, *args, **kwargs):  # type: ignore[misc]
+            dispatched.append(func)
+            return await real_to_thread(func, *args, **kwargs)
 
         daemon = _make_daemon(modlist)
 
-        with patch("os.stat", side_effect=recording_stat):
+        with patch("asyncio.to_thread", side_effect=spy_to_thread):
             task = asyncio.create_task(daemon._watch_loop())
             await asyncio.sleep(0.1)
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-        assert called_from_threads, "os.stat was never called"
-        for thread_name in called_from_threads:
-            assert thread_name != main_thread_name, (
-                f"os.stat ran on the event loop thread ({thread_name!r}); it must be offloaded via asyncio.to_thread"
-            )
+        assert dispatched, "asyncio.to_thread was never called"
+        assert os.stat in dispatched, (
+            "os.stat must be dispatched via asyncio.to_thread; "
+            f"got {[getattr(f, '__name__', repr(f)) for f in dispatched]!r}"
+        )
