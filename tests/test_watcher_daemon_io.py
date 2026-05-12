@@ -11,6 +11,7 @@ main thread (event loop), verificado con threading.current_thread().
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -62,10 +63,8 @@ class TestWatcherDaemonIO:
             task = asyncio.create_task(daemon._watch_loop())
             await asyncio.sleep(0.1)
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         assert called_from_threads, "os.path.exists was never called"
         for thread_name in called_from_threads:
@@ -96,10 +95,8 @@ class TestWatcherDaemonIO:
             task = asyncio.create_task(daemon._watch_loop())
             await asyncio.sleep(0.1)
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         assert called_from_threads, "os.stat was never called"
         for thread_name in called_from_threads:

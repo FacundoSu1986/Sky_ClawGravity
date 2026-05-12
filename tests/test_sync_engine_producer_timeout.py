@@ -15,7 +15,7 @@ On timeout log CRITICAL and break — bounded completion guaranteed.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -61,7 +61,7 @@ async def test_poison_delivery_doesnt_deadlock_when_workers_die() -> None:
     with patch("sky_claw.antigravity.orchestrator.sync_engine._POISON_DELIVERY_TIMEOUT", 0.05):
         try:
             await asyncio.wait_for(engine.run(session, profile="Default"), timeout=3.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail(
                 "engine.run() hung — POISON delivery is blocking indefinitely "
                 "(missing asyncio.wait_for in _produce_then_poison)"
