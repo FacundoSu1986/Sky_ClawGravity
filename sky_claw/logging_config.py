@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import getpass
 import logging
 import logging.handlers
@@ -22,12 +20,6 @@ _GLOBAL_CFG = Config()
 
 
 _USERNAME_LOOKUP_ERRORS = (OSError, KeyError, ImportError)
-_NO_TRACE_ID = "0" * 32
-
-try:
-    from opentelemetry import trace as _otel_trace
-except ImportError:
-    _otel_trace = None
 
 
 def _resolve_current_user() -> str:
@@ -43,11 +35,16 @@ _REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b[0-9]{6,12}:[a-zA-Z0-9_\-]{30,90}\b"), "[REDACTED]"),
     (re.compile(r"\bsk-(?:proj|ant|live|test)?-?[a-zA-Z0-9_\-]{20,}\b"), "[REDACTED]"),
     (re.compile(r"(?i)\b(Bearer\s+)[^\s\"',;}{]{8,}"), r"\1[REDACTED]"),
+    # GitHub tokens (classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained github_pat_)
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"), "[REDACTED]"),
     (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{82}\b"), "[REDACTED]"),
+    # AWS Access Key ID
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED]"),
+    # Slack tokens
     (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "[REDACTED]"),
+    # GitLab personal/project/group tokens
     (re.compile(r"\bglpat-[A-Za-z0-9_\-]{20,}\b"), "[REDACTED]"),
+    # Raw JWT (3-segment eyJ… header.payload.signature)
     (re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b"), "[REDACTED]"),
     (
         re.compile(r"(?i)\b(api[_-]?key|apikey|x-api-key|token|secret|password)([\"'\s:=]+)([^\s\"',;}{]{8,})"),
@@ -71,7 +68,7 @@ _LOG_RECORD_RESERVED_ATTRS = frozenset(
 class SecurityRedactionFilter(logging.Filter):
     """Filter that redacts sensitive credentials and PII from log messages."""
 
-    _MAX_DEPTH: int = 64
+    _MAX_DEPTH: int = 64  # Guard against pathologically deep (non-cyclic) structures.
 
     def _redact(self, text: str) -> str:
         if not isinstance(text, str):
@@ -111,7 +108,7 @@ class SecurityRedactionFilter(logging.Filter):
         finally:
             seen.remove(value_id)
 
-    def _redact_container(self, value: Any, seen: set[int], depth: int) -> Any:
+    def _redact_container(self, value: Any, seen: set[int], depth: int = 0) -> Any:
         if isinstance(value, Mapping):
             return {
                 self._redact(key) if isinstance(key, str) else key: self._redact_value(item, seen, depth)
@@ -142,20 +139,10 @@ class SecurityRedactionFilter(logging.Filter):
 
 
 class CorrelationFilter(logging.Filter):
-    """Filter that adds correlation_id and trace_id from context to each record."""
+    """Filter that adds correlation_id from ContextVar to each record."""
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.correlation_id = correlation_id_var.get()  # type: ignore[attr-defined]
-        trace_id = _NO_TRACE_ID
-        if _otel_trace is not None:
-            try:
-                span = _otel_trace.get_current_span()
-                ctx = span.get_span_context()
-                if ctx.is_valid:
-                    trace_id = format(ctx.trace_id, "032x")
-            except AttributeError:
-                pass
-        record.trace_id = trace_id  # type: ignore[attr-defined]
+    def filter(self, record):
+        record.correlation_id = correlation_id_var.get()
         return True
 
 

@@ -188,10 +188,11 @@ class TestEnsureLoot:
         mock_dl_resp.content.iter_chunked = _iter_chunks
 
         session = MagicMock(spec=aiohttp.ClientSession)
-        session.get = MagicMock(return_value=mock_api_resp)
 
-        # Route the asset download through the gateway mock (redirect-reauth path).
-        installer._gateway.request = AsyncMock(return_value=mock_dl_resp)
+        # Both _find_github_asset and _download_asset now go through gateway.request.
+        # First call: GitHub releases API → returns JSON metadata (mock_api_resp).
+        # Second call: asset download URL → returns binary stream (mock_dl_resp).
+        installer._gateway.request = AsyncMock(side_effect=[mock_api_resp, mock_dl_resp])
 
         # Auto-approve HITL.
         async def _auto_approve() -> None:
@@ -207,8 +208,9 @@ class TestEnsureLoot:
         assert result.version == "0.22.4"
         assert result.exe_path.name == "loot.exe"
         assert result.exe_path.exists()
-        installer._gateway.request.assert_awaited_once()
-        assert installer._gateway.request.call_args.args[1] == "https://api.github.com/repos/loot/loot/releases/assets/1001"
+        assert installer._gateway.request.await_count == 2
+        # Second call must be the asset's API URL (redirect-reauth enforced via gateway).
+        assert installer._gateway.request.call_args_list[1].args[1] == "https://api.github.com/repos/loot/loot/releases/assets/1001"
 
     @pytest.mark.asyncio
     async def test_hitl_denial_raises(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:
@@ -217,14 +219,12 @@ class TestEnsureLoot:
         install_dir.mkdir()
 
         release_json = _github_release_json()
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.json = AsyncMock(return_value=release_json)
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
+        mock_api_resp = AsyncMock()
+        mock_api_resp.status = 200
+        mock_api_resp.json = AsyncMock(return_value=release_json)
 
         session = MagicMock(spec=aiohttp.ClientSession)
-        session.get = MagicMock(return_value=mock_resp)
+        installer._gateway.request = AsyncMock(return_value=mock_api_resp)
 
         async def _auto_deny() -> None:
             await asyncio.sleep(0.01)
@@ -243,11 +243,9 @@ class TestEnsureLoot:
 
         mock_resp = AsyncMock()
         mock_resp.status = 403
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
 
         session = MagicMock(spec=aiohttp.ClientSession)
-        session.get = MagicMock(return_value=mock_resp)
+        installer._gateway.request = AsyncMock(return_value=mock_resp)
 
         with pytest.raises(ToolInstallError, match="403"):
             await installer.ensure_loot(install_dir, session)
@@ -304,10 +302,9 @@ class TestEnsureXedit:
         mock_dl_resp.content.iter_chunked = _iter_chunks
 
         session = MagicMock(spec=aiohttp.ClientSession)
-        session.get = MagicMock(return_value=mock_api_resp)
 
-        # Route the asset download through the gateway mock (redirect-reauth path).
-        installer._gateway.request = AsyncMock(return_value=mock_dl_resp)
+        # Both _find_github_asset and _download_asset go through gateway.request.
+        installer._gateway.request = AsyncMock(side_effect=[mock_api_resp, mock_dl_resp])
 
         async def _auto_approve() -> None:
             await asyncio.sleep(0.01)
@@ -321,9 +318,9 @@ class TestEnsureXedit:
         assert result.tool_name == "SSEEdit"
         assert result.version == "4.1.5"
         assert result.exe_path.name == "SSEEdit.exe"
-        installer._gateway.request.assert_awaited_once()
+        assert installer._gateway.request.await_count == 2
         assert (
-            installer._gateway.request.call_args.args[1]
+            installer._gateway.request.call_args_list[1].args[1]
             == "https://api.github.com/repos/TES5Edit/TES5Edit/releases/assets/2001"
         )
 
@@ -333,14 +330,12 @@ class TestEnsureXedit:
         install_dir.mkdir()
 
         release_json = _xedit_release_json(asset_name="SSEEdit_4.1.5.zip")
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.json = AsyncMock(return_value=release_json)
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
+        mock_api_resp = AsyncMock()
+        mock_api_resp.status = 200
+        mock_api_resp.json = AsyncMock(return_value=release_json)
 
         session = MagicMock(spec=aiohttp.ClientSession)
-        session.get = MagicMock(return_value=mock_resp)
+        installer._gateway.request = AsyncMock(return_value=mock_api_resp)
 
         async def _auto_deny() -> None:
             await asyncio.sleep(0.01)
