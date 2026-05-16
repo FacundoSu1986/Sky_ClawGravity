@@ -35,8 +35,8 @@ _REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b[0-9]{6,12}:[a-zA-Z0-9_\-]{30,90}\b"), "[REDACTED]"),
     (re.compile(r"\bsk-(?:proj|ant|live|test)?-?[a-zA-Z0-9_\-]{20,}\b"), "[REDACTED]"),
     (re.compile(r"(?i)\b(Bearer\s+)[^\s\"',;}{]{8,}"), r"\1[REDACTED]"),
-    # GitHub tokens (classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained github_pat_)
-    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"), "[REDACTED]"),
+    # GitHub tokens (classic ghp_/gho_/ghu_/ghs_/ghr_ are 36 chars; cap at 255 for future-compat)
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b"), "[REDACTED]"),
     (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{82}\b"), "[REDACTED]"),
     # AWS Access Key ID
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED]"),
@@ -108,7 +108,7 @@ class SecurityRedactionFilter(logging.Filter):
         finally:
             seen.remove(value_id)
 
-    def _redact_container(self, value: Any, seen: set[int], depth: int = 0) -> Any:
+    def _redact_container(self, value: Any, seen: set[int], depth: int) -> Any:
         if isinstance(value, Mapping):
             return {
                 self._redact(key) if isinstance(key, str) else key: self._redact_value(item, seen, depth)
