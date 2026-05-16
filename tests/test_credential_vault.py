@@ -271,9 +271,7 @@ class TestCredentialVaultConnectionPool:
         w = asyncio.create_task(waiter())
         # Wait until the waiter is genuinely blocked on the semaphore (i.e. it
         # has added itself to _waiters) instead of relying on a fixed sleep.
-        await asyncio.wait_for(
-            _wait_for_semaphore_waiter(pool._semaphore), timeout=1.0
-        )
+        await asyncio.wait_for(_wait_for_semaphore_waiter(pool._semaphore), timeout=1.0)
 
         await pool.close()
         release_holder.set()
@@ -310,9 +308,7 @@ class TestCredentialVaultConnectionPool:
         w = asyncio.create_task(waiter())
         # Wait until the waiter is genuinely blocked on the semaphore before
         # measuring elapsed time — avoids timing-dependent flakiness on CI.
-        await asyncio.wait_for(
-            _wait_for_semaphore_waiter(pool._semaphore), timeout=1.0
-        )
+        await asyncio.wait_for(_wait_for_semaphore_waiter(pool._semaphore), timeout=1.0)
 
         loop = asyncio.get_running_loop()
         start = loop.time()

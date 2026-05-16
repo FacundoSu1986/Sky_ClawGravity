@@ -96,9 +96,7 @@ class _SQLitePool:
                 try:
                     conn = await asyncio.wait_for(self._create_connection(), timeout=self._timeout)
                 except TimeoutError as exc:
-                    raise VaultStorageError(
-                        f"SQLite pool timeout ({self._timeout}s) creating connection"
-                    ) from exc
+                    raise VaultStorageError(f"SQLite pool timeout ({self._timeout}s) creating connection") from exc
 
             try:
                 yield conn
