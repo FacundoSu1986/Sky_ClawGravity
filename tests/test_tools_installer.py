@@ -210,7 +210,10 @@ class TestEnsureLoot:
         assert result.exe_path.exists()
         assert installer._gateway.request.await_count == 2
         # Second call must be the asset's API URL (redirect-reauth enforced via gateway).
-        assert installer._gateway.request.call_args_list[1].args[1] == "https://api.github.com/repos/loot/loot/releases/assets/1001"
+        assert (
+            installer._gateway.request.call_args_list[1].args[1]
+            == "https://api.github.com/repos/loot/loot/releases/assets/1001"
+        )
 
     @pytest.mark.asyncio
     async def test_hitl_denial_raises(self, installer: ToolsInstaller, tmp_path: pathlib.Path) -> None:

@@ -485,16 +485,18 @@ class ToolsInstaller:
         headers = {"Accept": "application/vnd.github+json"}
 
         resp = await self._gateway.request(
-            "GET", releases_url, session,
-            headers=headers, timeout=timeout,
+            "GET",
+            releases_url,
+            session,
+            headers=headers,
+            timeout=timeout,
             allowed_redirect_hosts=GITHUB_RELEASE_ASSET_REDIRECT_HOSTS,
         )
         try:
             if resp.status != 200:
                 raise ToolInstallError(f"GitHub API returned {resp.status} for {releases_url}")
             data: dict[str, Any] = await resp.json()
-        except (aiohttp.ClientError, TimeoutError,
-                EgressViolationError, NetworkGatewayTimeoutError) as exc:
+        except (aiohttp.ClientError, TimeoutError, EgressViolationError, NetworkGatewayTimeoutError) as exc:
             logger.error("GitHub API request failed for %s: %s", releases_url, exc)
             raise
         finally:
@@ -553,8 +555,11 @@ class ToolsInstaller:
         )
 
         resp = await self._gateway.request(
-            "GET", asset.download_url, session,
-            headers=headers, timeout=timeout,
+            "GET",
+            asset.download_url,
+            session,
+            headers=headers,
+            timeout=timeout,
             allowed_redirect_hosts=GITHUB_RELEASE_ASSET_REDIRECT_HOSTS,
         )
         try:
@@ -571,8 +576,7 @@ class ToolsInstaller:
                             asset.size,
                             (downloaded / asset.size * 100) if asset.size else 0,
                         )
-        except (aiohttp.ClientError, OSError, TimeoutError,
-                EgressViolationError, NetworkGatewayTimeoutError) as exc:
+        except (aiohttp.ClientError, OSError, TimeoutError, EgressViolationError, NetworkGatewayTimeoutError) as exc:
             logger.error("Download failed for %s: %s", asset.name, exc)
             if dest.exists():
                 dest.unlink()

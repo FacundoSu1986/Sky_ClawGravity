@@ -244,9 +244,7 @@ class NetworkGateway:
                         if self._policy.block_private_ips and (
                             addr.is_private or addr.is_loopback or addr.is_link_local
                         ):
-                            raise EgressViolationError(
-                                f"Redirect target {addr} is a private/loopback IP"
-                            )
+                            raise EgressViolationError(f"Redirect target {addr} is a private/loopback IP")
                     except ValueError:
                         pass
                     logger.debug("Redirect hop %d allowed via redirect-host list: %s", hop, redir_host)
@@ -282,6 +280,8 @@ class NetworkGateway:
                     redirect_url = f"{base.scheme}://{base.netloc}{redirect_url}"
                 current_url = redirect_url
                 logger.debug("Following redirect hop %d: %s", hop + 1, current_url)
+                # Release the redirect response body before issuing the next request.
+                response.release()
                 continue
 
             return response
