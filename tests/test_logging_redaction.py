@@ -170,6 +170,22 @@ def test_redacts_google_api_key() -> None:
     assert "safe" in redacted  # surrounding context preserved
 
 
+def test_redacts_google_api_key_ending_in_dash() -> None:
+    """Google API keys whose last character is '-' must still be redacted.
+
+    The final \\b anchor fails for non-word trailing chars; the pattern must
+    use a negative lookahead instead.
+    """
+    redact_filter = SecurityRedactionFilter()
+    key_dash = _token("AI", "zaSyDaBcDeFgHiJkLmNoPqRsTuVwXyZ01234-")
+    text = f"google_key={key_dash} other=safe"
+
+    redacted = redact_filter._redact(text)
+
+    assert "AIza" not in redacted
+    assert "[REDACTED]" in redacted
+
+
 def test_redacts_stripe_api_keys() -> None:
     """Stripe live/test secret and publishable keys must be redacted (all 4 variants)."""
     redact_filter = SecurityRedactionFilter()

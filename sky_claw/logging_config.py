@@ -52,8 +52,9 @@ _REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bglpat-[A-Za-z0-9_\-]{20,}\b"), "[REDACTED]"),
     # Raw JWT (3-segment eyJ… header.payload.signature)
     (re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b"), "[REDACTED]"),
-    # Google API key (AIza prefix + 35 alphanumeric chars)
-    (re.compile(r"\bAIza[A-Za-z0-9_\-]{35}\b"), "[REDACTED]"),
+    # Google API key (AIza prefix + 35 alphanumeric/dash/underscore chars).
+    # Lookahead instead of \b: \b fails when the key ends in '-' (non-word char).
+    (re.compile(r"\bAIza[A-Za-z0-9_\-]{35}(?![A-Za-z0-9_\-])"), "[REDACTED]"),
     # Stripe secret/publishable keys (live and test environments)
     (re.compile(r"\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9]{20,}\b"), "[REDACTED]"),
     # AWS Secret Access Key — redact the value in key=value context;
