@@ -13,7 +13,7 @@ from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt,
 from sky_claw.antigravity.core.database import DatabaseAgent
 from sky_claw.antigravity.core.models import CircuitBreakerTrippedError
 from sky_claw.antigravity.core.schemas import ModMetadata, ScrapingQuery
-from sky_claw.antigravity.security.network_gateway import EgressViolationError, GatewayTCPConnector
+from sky_claw.antigravity.security.network_gateway import GatewayTCPConnector
 
 if TYPE_CHECKING:
     from sky_claw.antigravity.security.network_gateway import NetworkGateway
@@ -103,9 +103,6 @@ class ScraperAgent:
         Returns:
             dict con los datos de respuesta del API.
         """
-        if self._gateway is None:
-            raise EgressViolationError("NetworkGateway is required for ScraperAgent API egress")
-
         nexus_id = query.mod_id or 0
         url = f"https://api.nexusmods.com/v1/games/skyrimspecialedition/mods/{nexus_id}.json"
         headers = {"apikey": self.nexus_api_key or "", "User-Agent": "SkyClaw/1.0"}
